@@ -1,0 +1,54 @@
+# IDE
+.vscode
+.idea
+.idea/
+*.iml
+.idea_modules
+*.ipr
+*.iws
+*.bak
+*.swp
+*.swo
+*.swn
+*.suo
+*.workspace
+
+# Compile output
+dist/
+build/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log*
+yarn.lock
+
+# Python
+__pycache__/
+*.pyc
+.env/
+.venv/
+venv/
+env/
+
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Keys
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+*.cer
+*.jks
+*.pub

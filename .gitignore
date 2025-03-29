@@ -16,6 +16,7 @@
 # Compile output
 dist/
 build/
+bin/
 
 # Node.js
 node_modules/
@@ -52,3 +53,6 @@ Desktop.ini
 *.cer
 *.jks
 *.pub
+
+mirroring.json
+go.sum

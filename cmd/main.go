@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"strings"
 
+	"github.com/boxboxjason/gitlab-sync/mirroring"
 	"github.com/boxboxjason/gitlab-sync/utils"
 	"github.com/spf13/cobra"
 )
@@ -46,15 +47,21 @@ func main() {
 
 			// Check if the Mirror Mapping file path is provided
 			mirrorMappingPath = promptForMandatoryInput(mirrorMappingPath, "Input Mirror Mapping file path (MANDATORY)", "Mirror Mapping file path is mandatory", "Mirror Mapping file path set", args.NoPrompt, false)
-			utils.LogVerbose("Mirror Mapping file resolved path: " + path.Clean(mirrorMappingPath))
+			utils.LogVerbose("Mirror Mapping file resolved path: " + filepath.Clean(mirrorMappingPath))
 
 			utils.LogVerbose("Parsing mirror mapping file")
 			mapping, err := utils.OpenMirrorMapping(mirrorMappingPath)
 			if err != nil {
-				log.Fatalf("Error opening mirror mapping file: %v", err)
+				log.Fatalf("Error opening mirror mapping file: %s", err)
 			}
-			args.MirrorMapping = *mapping
 			utils.LogVerbose("Mirror mapping file parsed successfully")
+
+			err = mirroring.MirrorGitlabs(args.SourceGitlabURL, args.SourceGitlabToken, args.DestinationGitlabURL, args.DestinationGitlabToken, mapping)
+			if err != nil {
+				fmt.Println("Error during mirroring process:")
+				fmt.Println(err)
+			}
+			log.Println("Mirroring completed")
 		},
 	}
 
@@ -70,7 +77,6 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
-
 }
 
 func promptForInput(prompt string) string {
@@ -80,10 +86,10 @@ func promptForInput(prompt string) string {
 	return input
 }
 
-func promptForMandatoryInput(defaultValue string, prompt string, errorMsg string, loggerMsg string, promptsEnabled bool, hideOutput bool) string {
+func promptForMandatoryInput(defaultValue string, prompt string, errorMsg string, loggerMsg string, promptsDisabled bool, hideOutput bool) string {
 	input := strings.TrimSpace(defaultValue)
 	if input == "" {
-		if promptsEnabled {
+		if !promptsDisabled {
 			input = strings.TrimSpace(promptForInput(prompt))
 			if input == "" {
 				log.Fatal(errorMsg)

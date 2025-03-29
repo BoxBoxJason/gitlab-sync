@@ -1,69 +1,91 @@
 package mirroring
 
 import (
+	"path/filepath"
 	"sync"
 
-	"github.com/boxboxjason/gitlab-sync/graphql"
 	"github.com/boxboxjason/gitlab-sync/utils"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
-type GitlabInstance struct {
-	Gitlab        *gitlab.Client
-	Projects      map[string]*gitlab.Project
-	muProjects    sync.RWMutex
-	Groups        map[string]*gitlab.Group
-	muGroups      sync.RWMutex
-	MirrorMapping *utils.MirrorMapping
-	GraphQLClient *graphql.GraphQLClient
-}
-
-func NewGitlabInstance(gitlabURL, gitlabToken string, mirrorMapping *utils.MirrorMapping) (*GitlabInstance, error) {
-	gitlabClient, err := gitlab.NewClient(gitlabToken, gitlab.WithBaseURL(gitlabURL))
+func MirrorGitlabs(sourceGitlabURL string, sourceGitlabToken string, destinationGitlabURL string, destinationGitlabToken string, mirrorMapping *utils.MirrorMapping) error {
+	sourceGitlabInstance, err := newGitlabInstance(sourceGitlabURL, sourceGitlabToken)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	gitlabInstance := &GitlabInstance{
-		Gitlab:        gitlabClient,
-		Projects:      make(map[string]*gitlab.Project),
-		Groups:        make(map[string]*gitlab.Group),
-		MirrorMapping: mirrorMapping,
+	destinationGitlabInstance, err := newGitlabInstance(destinationGitlabURL, destinationGitlabToken)
+	if err != nil {
+		return err
 	}
 
-	return gitlabInstance, nil
-}
+	sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters := processFilters(mirrorMapping)
 
-func (g *GitlabInstance) addProject(projectPath string, project *gitlab.Project) {
-	g.muProjects.Lock()
-	defer g.muProjects.Unlock()
-	g.Projects[projectPath] = project
-}
+	wg := sync.WaitGroup{}
+	errCh := make(chan error, 4)
+	wg.Add(2)
 
-func (g *GitlabInstance) getProject(projectPath string) *gitlab.Project {
-	g.muProjects.RLock()
-	defer g.muProjects.RUnlock()
-	var project *gitlab.Project
-	project, exists := g.Projects[projectPath]
-	if !exists {
-		project = nil
+	go func() {
+		defer wg.Done()
+		if err := fetchAll(sourceGitlabInstance, sourceProjectFilters, sourceGroupFilters, mirrorMapping, true); err != nil {
+			errCh <- err
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if err := fetchAll(destinationGitlabInstance, destinationProjectFilters, destinationGroupFilters, mirrorMapping, false); err != nil {
+			errCh <- err
+		}
+	}()
+
+	wg.Wait()
+
+	err = createGroups(sourceGitlabInstance, destinationGitlabInstance, mirrorMapping)
+	if err != nil {
+		errCh <- err
 	}
-	return project
-}
-
-func (g *GitlabInstance) addGroup(groupPath string, group *gitlab.Group) {
-	g.muGroups.Lock()
-	defer g.muGroups.Unlock()
-	g.Groups[groupPath] = group
-}
-
-func (g *GitlabInstance) getGroup(groupPath string) *gitlab.Group {
-	g.muGroups.RLock()
-	defer g.muGroups.RUnlock()
-	var group *gitlab.Group
-	group, exists := g.Groups[groupPath]
-	if !exists {
-		group = nil
+	err = createProjects(sourceGitlabInstance, destinationGitlabInstance, mirrorMapping)
+	if err != nil {
+		errCh <- err
 	}
-	return group
+	close(errCh)
+	return utils.MergeErrors(errCh, 2)
+}
+
+func processFilters(filters *utils.MirrorMapping) (map[string]bool, map[string]bool, map[string]bool, map[string]bool) {
+	sourceProjectFilters := make(map[string]bool)
+	sourceGroupFilters := make(map[string]bool)
+	destinationProjectFilters := make(map[string]bool)
+	destinationGroupFilters := make(map[string]bool)
+
+	// Use a mutex to ensure safe updates to destinationGroupFilters, and a waitgroup to
+	// iterate over the groups and projects concurrently.
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Process group filters concurrently.
+	go func() {
+		defer wg.Done()
+		for group, copyOptions := range filters.Groups {
+			sourceGroupFilters[group] = true
+			mu.Lock()
+			destinationGroupFilters[copyOptions.DestinationURL] = true
+			mu.Unlock()
+		}
+	}()
+
+	// Process project filters concurrently.
+	go func() {
+		defer wg.Done()
+		for project, copyOptions := range filters.Projects {
+			sourceProjectFilters[project] = true
+			destinationProjectFilters[copyOptions.DestinationURL] = true
+			mu.Lock()
+			destinationGroupFilters[filepath.Dir(copyOptions.DestinationURL)] = true
+			mu.Unlock()
+		}
+	}()
+
+	wg.Wait()
+	return sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters
 }

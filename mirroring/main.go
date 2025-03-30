@@ -57,8 +57,7 @@ func processFilters(filters *utils.MirrorMapping) (map[string]bool, map[string]b
 	destinationProjectFilters := make(map[string]bool)
 	destinationGroupFilters := make(map[string]bool)
 
-	// Use a mutex to ensure safe updates to destinationGroupFilters, and a waitgroup to
-	// iterate over the groups and projects concurrently.
+	// Initialize concurrency control
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -69,7 +68,7 @@ func processFilters(filters *utils.MirrorMapping) (map[string]bool, map[string]b
 		for group, copyOptions := range filters.Groups {
 			sourceGroupFilters[group] = true
 			mu.Lock()
-			destinationGroupFilters[copyOptions.DestinationURL] = true
+			destinationGroupFilters[copyOptions.DestinationPath] = true
 			mu.Unlock()
 		}
 	}()
@@ -79,10 +78,14 @@ func processFilters(filters *utils.MirrorMapping) (map[string]bool, map[string]b
 		defer wg.Done()
 		for project, copyOptions := range filters.Projects {
 			sourceProjectFilters[project] = true
-			destinationProjectFilters[copyOptions.DestinationURL] = true
-			mu.Lock()
-			destinationGroupFilters[filepath.Dir(copyOptions.DestinationURL)] = true
-			mu.Unlock()
+			destinationProjectFilters[copyOptions.DestinationPath] = true
+			destinationGroupPath := filepath.Dir(copyOptions.DestinationPath)
+			if destinationGroupPath != "" && destinationGroupPath != "." && destinationGroupPath != "/" {
+				mu.Lock()
+				destinationGroupFilters[destinationGroupPath] = true
+				mu.Unlock()
+			}
+
 		}
 	}()
 

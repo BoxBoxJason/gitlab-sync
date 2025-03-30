@@ -67,9 +67,9 @@ func (g *GitlabInstance) fetchProjects(projectFilters *map[string]bool, groupFil
 
 							// Add the project to the mirror mapping
 							mirrorMapping.AddProject(project.PathWithNamespace, &utils.ProjectMirroringOptions{
-								CI_CD_Catalog:  groupCreationOptions.CI_CD_Catalog,
-								Issues:         groupCreationOptions.Issues,
-								DestinationURL: filepath.Join(groupCreationOptions.DestinationURL, relativePath),
+								CI_CD_Catalog:   groupCreationOptions.CI_CD_Catalog,
+								Issues:          groupCreationOptions.Issues,
+								DestinationPath: filepath.Join(groupCreationOptions.DestinationPath, relativePath),
 							})
 						}
 						break
@@ -143,9 +143,9 @@ func (g *GitlabInstance) fetchGroups(groupFilters *map[string]bool, mirrorMappin
 
 							// Add the group to the mirror mapping
 							mirrorMapping.AddGroup(group.FullPath, &utils.GroupMirroringOptions{
-								CI_CD_Catalog:  groupCreationOptions.CI_CD_Catalog,
-								Issues:         groupCreationOptions.Issues,
-								DestinationURL: filepath.Join(groupCreationOptions.DestinationURL, relativePath),
+								CI_CD_Catalog:   groupCreationOptions.CI_CD_Catalog,
+								Issues:          groupCreationOptions.Issues,
+								DestinationPath: filepath.Join(groupCreationOptions.DestinationPath, relativePath),
 							})
 						}
 						break

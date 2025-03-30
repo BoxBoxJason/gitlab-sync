@@ -18,8 +18,8 @@ func createGroups(sourceGitlab *GitlabInstance, destinationGitlab *GitlabInstanc
 	// This ensures that the parent groups are created before their children
 	destinationGroupPaths := make([]string, 0, len(sourceGitlab.Groups))
 	for sourceGroupPath, createOptions := range mirrorMapping.Groups {
-		reversedMirrorMap[createOptions.DestinationURL] = sourceGroupPath
-		destinationGroupPaths = append(destinationGroupPaths, createOptions.DestinationURL)
+		reversedMirrorMap[createOptions.DestinationPath] = sourceGroupPath
+		destinationGroupPaths = append(destinationGroupPaths, createOptions.DestinationPath)
 	}
 	sort.Strings(destinationGroupPaths)
 
@@ -71,7 +71,7 @@ func createProjects(sourceGitlab *GitlabInstance, destinationGitlab *GitlabInsta
 	// Reverse the mirror mapping to get the source project path for each destination project
 	reversedMirrorMap := make(map[string]string, len(mirrorMapping.Projects))
 	for sourceProjectPath, projectOptions := range mirrorMapping.Projects {
-		reversedMirrorMap[projectOptions.DestinationURL] = sourceProjectPath
+		reversedMirrorMap[projectOptions.DestinationPath] = sourceProjectPath
 	}
 
 	// Create a wait group to wait for all goroutines to finish
@@ -153,21 +153,21 @@ func (g *GitlabInstance) createProjectFromSource(sourceProject *gitlab.Project, 
 		Topics:              &sourceProject.Topics,
 	}
 
-	utils.LogVerbosef("Retrieving project namespace ID for %s", copyOptions.DestinationURL)
-	parentNamespaceId, err := g.getParentNamespaceID(copyOptions.DestinationURL)
+	utils.LogVerbosef("Retrieving project namespace ID for %s", copyOptions.DestinationPath)
+	parentNamespaceId, err := g.getParentNamespaceID(copyOptions.DestinationPath)
 	if err != nil {
 		return nil, err
 	} else if parentNamespaceId >= 0 {
 		projectCreationArgs.NamespaceID = &parentNamespaceId
 	}
 
-	utils.LogVerbosef("Creating project %s in destination GitLab instance", copyOptions.DestinationURL)
+	utils.LogVerbosef("Creating project %s in destination GitLab instance", copyOptions.DestinationPath)
 	destinationProject, _, err := g.Gitlab.Projects.CreateProject(projectCreationArgs)
 	if err != nil {
 		return nil, err
 	}
 	utils.LogVerbosef("Project %s created successfully", destinationProject.PathWithNamespace)
-	g.addProject(copyOptions.DestinationURL, destinationProject)
+	g.addProject(copyOptions.DestinationPath, destinationProject)
 
 	return destinationProject, nil
 }
@@ -181,7 +181,7 @@ func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOp
 		DefaultBranch: &sourceGroup.DefaultBranch,
 	}
 
-	parentGroupID, err := g.getParentNamespaceID(copyOptions.DestinationURL)
+	parentGroupID, err := g.getParentNamespaceID(copyOptions.DestinationPath)
 	if err != nil {
 		return nil, err
 	} else if parentGroupID >= 0 {
@@ -190,7 +190,7 @@ func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOp
 
 	destinationGroup, _, err := g.Gitlab.Groups.CreateGroup(groupCreationArgs)
 	if err == nil {
-		g.addGroup(copyOptions.DestinationURL, destinationGroup)
+		g.addGroup(copyOptions.DestinationPath, destinationGroup)
 	}
 
 	return destinationGroup, err

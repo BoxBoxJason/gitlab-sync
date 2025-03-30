@@ -58,10 +58,5 @@ func (g *GitlabInstance) addGroup(groupPath string, group *gitlab.Group) {
 func (g *GitlabInstance) getGroup(groupPath string) *gitlab.Group {
 	g.muGroups.RLock()
 	defer g.muGroups.RUnlock()
-	var group *gitlab.Group
-	group, exists := g.Groups[groupPath]
-	if !exists {
-		group = nil
-	}
-	return group
+	return g.Groups[groupPath]
 }

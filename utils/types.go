@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -20,9 +21,9 @@ import (
 // - ci_cd_catalog: whether to add the project to the CI/CD catalog
 // - issues: whether to mirror the issues
 type ProjectMirroringOptions struct {
-	DestinationURL string `json:"destination_url"`
-	CI_CD_Catalog  bool   `json:"ci_cd_catalog"`
-	Issues         bool   `json:"issues"`
+	DestinationPath string `json:"destination_path"`
+	CI_CD_Catalog   bool   `json:"ci_cd_catalog"`
+	Issues          bool   `json:"issues"`
 }
 
 // GroupMirrorOptions defines how the group should be mirrored
@@ -31,9 +32,9 @@ type ProjectMirroringOptions struct {
 // - ci_cd_catalog: whether to add the group to the CI/CD catalog
 // - issues: whether to mirror the issues
 type GroupMirroringOptions struct {
-	DestinationURL string `json:"destination_url"`
-	CI_CD_Catalog  bool   `json:"ci_cd_catalog"`
-	Issues         bool   `json:"issues"`
+	DestinationPath string `json:"destination_path"`
+	CI_CD_Catalog   bool   `json:"ci_cd_catalog"`
+	Issues          bool   `json:"issues"`
 }
 
 // MirrorMapping defines the mapping of projects and groups
@@ -92,33 +93,41 @@ func OpenMirrorMapping(path string) (*MirrorMapping, error) {
 }
 
 func (m *MirrorMapping) check() error {
-	errors := make([]string, 0)
+	errChan := make(chan error, 3*(len(m.Projects)+len(m.Groups)+1))
 	// Check if the mapping is valid
 	if len(m.Projects) == 0 && len(m.Groups) == 0 {
-		errors = append(errors, "no projects or groups defined in the mapping")
+		errChan <- errors.New("no projects or groups defined in the mapping")
 	}
 
 	// Check if the projects are valid
 	for project, options := range m.Projects {
-		if project == "" || options.DestinationURL == "" {
-			errors = append(errors, fmt.Sprintf("  - invalid project mapping: %s", project))
+		if project == "" || options.DestinationPath == "" {
+			errChan <- fmt.Errorf("invalid (empty) string in project mapping: %s", project)
+		}
+		if strings.HasPrefix(project, "/") || strings.HasSuffix(project, "/") {
+			errChan <- fmt.Errorf("invalid project mapping (must not start or end with /): %s", project)
+		}
+		if strings.HasPrefix(options.DestinationPath, "/") || strings.HasSuffix(options.DestinationPath, "/") {
+			errChan <- fmt.Errorf("invalid destination path (must not start or end with /): %s", options.DestinationPath)
+		} else if strings.Count(options.DestinationPath, "/") < 1 {
+			errChan <- fmt.Errorf("invalid project destination path (must be in a namespace): %s", options.DestinationPath)
 		}
 	}
 
 	// Check if the groups are valid
 	for group, options := range m.Groups {
-		if group == "" || options.DestinationURL == "" {
-			errors = append(errors, fmt.Sprintf("  - invalid group mapping: %s", group))
+		if group == "" || options.DestinationPath == "" {
+			errChan <- fmt.Errorf("invalid (empty) string in group mapping: %s", group)
+		}
+		if strings.HasPrefix(group, "/") || strings.HasSuffix(group, "/") {
+			errChan <- fmt.Errorf("invalid group mapping (must not start or end with /): %s", group)
+		}
+		if strings.HasPrefix(options.DestinationPath, "/") || strings.HasSuffix(options.DestinationPath, "/") {
+			errChan <- fmt.Errorf("invalid destination path (must not start or end with /): %s", options.DestinationPath)
 		}
 	}
-
-	// Aggregate errors
-	var err error = nil
-	if len(errors) > 0 {
-		err = fmt.Errorf("invalid mapping: %s", errors)
-	}
-
-	return err
+	close(errChan)
+	return MergeErrors(errChan, 2)
 }
 
 // GraphQLClient is a client for sending GraphQL requests to GitLab

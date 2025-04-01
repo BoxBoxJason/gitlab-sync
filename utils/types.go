@@ -15,6 +15,28 @@ import (
 	"sync"
 )
 
+// ParserArgs defines the command line arguments
+// - source_gitlab_url: the URL of the source GitLab instance
+// - source_gitlab_token: the token for the source GitLab instance
+// - destination_gitlab_url: the URL of the destination GitLab instance
+// - destination_gitlab_token: the token for the destination GitLab instance
+// - mirror_mapping: the path to the JSON file that contains the mapping
+// - verbose: whether to enable verbose logging
+// - no_prompt: whether to disable prompts
+// - dry_run: whether to perform a dry run
+// - version: whether to show the version
+type ParserArgs struct {
+	SourceGitlabURL        string
+	SourceGitlabToken      string
+	DestinationGitlabURL   string
+	DestinationGitlabToken string
+	MirrorMapping          *MirrorMapping
+	Verbose                bool
+	NoPrompt               bool
+	DryRun                 bool
+	Version                bool
+}
+
 // ProjectMirrorOptions defines how the project should be mirrored
 // to the destination GitLab instance
 // - destination_url: the URL of the destination GitLab instance

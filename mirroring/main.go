@@ -1,24 +1,26 @@
 package mirroring
 
 import (
+	"fmt"
+	"log"
 	"path/filepath"
 	"sync"
 
 	"gitlab-sync/utils"
 )
 
-func MirrorGitlabs(sourceGitlabURL string, sourceGitlabToken string, destinationGitlabURL string, destinationGitlabToken string, mirrorMapping *utils.MirrorMapping) error {
-	sourceGitlabInstance, err := newGitlabInstance(sourceGitlabURL, sourceGitlabToken)
+func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
+	sourceGitlabInstance, err := newGitlabInstance(gitlabMirrorArgs.SourceGitlabURL, gitlabMirrorArgs.SourceGitlabToken)
 	if err != nil {
 		return err
 	}
 
-	destinationGitlabInstance, err := newGitlabInstance(destinationGitlabURL, destinationGitlabToken)
+	destinationGitlabInstance, err := newGitlabInstance(gitlabMirrorArgs.DestinationGitlabURL, gitlabMirrorArgs.DestinationGitlabToken)
 	if err != nil {
 		return err
 	}
 
-	sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters := processFilters(mirrorMapping)
+	sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters := processFilters(gitlabMirrorArgs.MirrorMapping)
 
 	wg := sync.WaitGroup{}
 	errCh := make(chan error, 4)
@@ -26,24 +28,43 @@ func MirrorGitlabs(sourceGitlabURL string, sourceGitlabToken string, destination
 
 	go func() {
 		defer wg.Done()
-		if err := fetchAll(sourceGitlabInstance, sourceProjectFilters, sourceGroupFilters, mirrorMapping, true); err != nil {
+		if err := fetchAll(sourceGitlabInstance, sourceProjectFilters, sourceGroupFilters, gitlabMirrorArgs.MirrorMapping, true); err != nil {
 			errCh <- err
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		if err := fetchAll(destinationGitlabInstance, destinationProjectFilters, destinationGroupFilters, mirrorMapping, false); err != nil {
+		if err := fetchAll(destinationGitlabInstance, destinationProjectFilters, destinationGroupFilters, gitlabMirrorArgs.MirrorMapping, false); err != nil {
 			errCh <- err
 		}
 	}()
 
 	wg.Wait()
 
-	err = createGroups(sourceGitlabInstance, destinationGitlabInstance, mirrorMapping)
+	// In case of dry run, simply print the groups and projects that would be created or updated
+	if gitlabMirrorArgs.DryRun {
+		log.Println("Dry run mode enabled, will not create groups or projects")
+		fmt.Println("Groups that will be created (or updated if they already exist):")
+		for sourceGroupPath, copyOptions := range gitlabMirrorArgs.MirrorMapping.Groups {
+			if sourceGitlabInstance.Groups[sourceGroupPath] != nil {
+				fmt.Printf("  - %s (source gitlab) -> %s (destination gitlab)\n", sourceGroupPath, copyOptions.DestinationPath)
+			}
+		}
+		fmt.Println("Projects that will be created (or updated if they already exist):")
+		for sourceProjectPath, copyOptions := range gitlabMirrorArgs.MirrorMapping.Projects {
+			if sourceGitlabInstance.Projects[sourceProjectPath] != nil {
+				fmt.Printf("  - %s (source gitlab) -> %s (destination gitlab)\n", sourceProjectPath, copyOptions.DestinationPath)
+			}
+		}
+		return nil
+	}
+
+	// Create groups and projects in the destination GitLab instance
+	err = createGroups(sourceGitlabInstance, destinationGitlabInstance, gitlabMirrorArgs.MirrorMapping)
 	if err != nil {
 		errCh <- err
 	}
-	err = createProjects(sourceGitlabInstance, destinationGitlabInstance, mirrorMapping)
+	err = createProjects(sourceGitlabInstance, destinationGitlabInstance, gitlabMirrorArgs.MirrorMapping)
 	if err != nil {
 		errCh <- err
 	}

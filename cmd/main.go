@@ -7,8 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/boxboxjason/gitlab-sync/mirroring"
-	"github.com/boxboxjason/gitlab-sync/utils"
+	"gitlab-sync/mirroring"
+	"gitlab-sync/utils"
+
 	"github.com/spf13/cobra"
 )
 

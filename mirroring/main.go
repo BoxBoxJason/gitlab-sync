@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/boxboxjason/gitlab-sync/utils"
+	"gitlab-sync/utils"
 )
 
 func MirrorGitlabs(sourceGitlabURL string, sourceGitlabToken string, destinationGitlabURL string, destinationGitlabToken string, mirrorMapping *utils.MirrorMapping) error {

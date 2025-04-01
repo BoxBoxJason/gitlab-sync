@@ -1,4 +1,4 @@
-module github.com/boxboxjason/gitlab-sync
+module gitlab-sync
 
 go 1.23.7
 

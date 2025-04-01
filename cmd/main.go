@@ -13,18 +13,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type ParserArgs struct {
-	SourceGitlabURL        string
-	SourceGitlabToken      string
-	DestinationGitlabURL   string
-	DestinationGitlabToken string
-	MirrorMapping          utils.MirrorMapping
-	Verbose                bool
-	NoPrompt               bool
-}
+var (
+	version = "dev"
+)
 
 func main() {
-	var args ParserArgs
+	var args utils.ParserArgs
 	var mirrorMappingPath string
 
 	var rootCmd = &cobra.Command{
@@ -32,6 +26,10 @@ func main() {
 		Short: "Copy and enable mirroring of gitlab projects and groups",
 		Long:  "Fully customizable gitlab repositories and groups mirroring between two (or one) gitlab instances.",
 		Run: func(cmd *cobra.Command, cmdArgs []string) {
+			if args.Version {
+				fmt.Printf("gitlab-sync version: %s\n", version)
+				return
+			}
 
 			utils.SetVerbose(args.Verbose)
 			utils.LogVerbose("Verbose mode enabled")
@@ -56,8 +54,9 @@ func main() {
 				log.Fatalf("Error opening mirror mapping file: %s", err)
 			}
 			utils.LogVerbose("Mirror mapping file parsed successfully")
+			args.MirrorMapping = mapping
 
-			err = mirroring.MirrorGitlabs(args.SourceGitlabURL, args.SourceGitlabToken, args.DestinationGitlabURL, args.DestinationGitlabToken, mapping)
+			err = mirroring.MirrorGitlabs(&args)
 			if err != nil {
 				fmt.Println("Error during mirroring process:")
 				fmt.Println(err)
@@ -66,13 +65,15 @@ func main() {
 		},
 	}
 
+	rootCmd.Flags().BoolVarP(&args.Version, "version", "V", false, "Show version")
 	rootCmd.Flags().StringVar(&args.SourceGitlabURL, "source-url", os.Getenv("SOURCE_GITLAB_URL"), "Source GitLab URL")
 	rootCmd.Flags().StringVar(&args.SourceGitlabToken, "source-token", os.Getenv("SOURCE_GITLAB_TOKEN"), "Source GitLab Token")
 	rootCmd.Flags().StringVar(&args.DestinationGitlabURL, "destination-url", os.Getenv("DESTINATION_GITLAB_URL"), "Destination GitLab URL")
 	rootCmd.Flags().StringVar(&args.DestinationGitlabToken, "destination-token", os.Getenv("DESTINATION_GITLAB_TOKEN"), "Destination GitLab Token")
-	rootCmd.Flags().BoolVar(&args.Verbose, "verbose", false, "Enable verbose output")
-	rootCmd.Flags().BoolVar(&args.NoPrompt, "no-prompt", false, "Disable prompting for missing values")
+	rootCmd.Flags().BoolVarP(&args.Verbose, "verbose", "v", false, "Enable verbose output")
+	rootCmd.Flags().BoolVarP(&args.NoPrompt, "no-prompt", "n", strings.TrimSpace(os.Getenv("NO_PROMPT")) != "", "Disable prompting for missing values")
 	rootCmd.Flags().StringVar(&mirrorMappingPath, "mirror-mapping", os.Getenv("MIRROR_MAPPING"), "Path to the mirror mapping file")
+	rootCmd.Flags().BoolVar(&args.DryRun, "dry-run", false, "Perform a dry run without making any changes")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

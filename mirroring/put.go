@@ -5,7 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/boxboxjason/gitlab-sync/utils"
+	"gitlab-sync/utils"
+
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 

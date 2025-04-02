@@ -69,7 +69,7 @@ func (g *GitlabInstance) copyGroupAvatar(destinationGitlabInstance *GitlabInstan
 	return nil
 }
 
-func (g *GitlabInstance) updateProjectFromSource(sourceGitlab *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project, copyOptions *utils.ProjectMirroringOptions) error {
+func (g *GitlabInstance) updateProjectFromSource(sourceGitlab *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) error {
 	wg := sync.WaitGroup{}
 	maxErrors := 2
 	if copyOptions.CI_CD_Catalog {

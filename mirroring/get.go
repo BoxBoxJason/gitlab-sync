@@ -67,10 +67,12 @@ func (g *GitlabInstance) fetchProjects(projectFilters *map[string]bool, groupFil
 							}
 
 							// Add the project to the mirror mapping
-							mirrorMapping.AddProject(project.PathWithNamespace, &utils.ProjectMirroringOptions{
-								CI_CD_Catalog:   groupCreationOptions.CI_CD_Catalog,
-								Issues:          groupCreationOptions.Issues,
-								DestinationPath: filepath.Join(groupCreationOptions.DestinationPath, relativePath),
+							mirrorMapping.AddProject(project.PathWithNamespace, &utils.MirroringOptions{
+								DestinationPath:     filepath.Join(groupCreationOptions.DestinationPath, relativePath),
+								CI_CD_Catalog:       groupCreationOptions.CI_CD_Catalog,
+								Issues:              groupCreationOptions.Issues,
+								MirrorTriggerBuilds: groupCreationOptions.MirrorTriggerBuilds,
+								Visibility:          groupCreationOptions.Visibility,
 							})
 						}
 						break
@@ -143,10 +145,12 @@ func (g *GitlabInstance) fetchGroups(groupFilters *map[string]bool, mirrorMappin
 							}
 
 							// Add the group to the mirror mapping
-							mirrorMapping.AddGroup(group.FullPath, &utils.GroupMirroringOptions{
-								CI_CD_Catalog:   groupCreationOptions.CI_CD_Catalog,
-								Issues:          groupCreationOptions.Issues,
-								DestinationPath: filepath.Join(groupCreationOptions.DestinationPath, relativePath),
+							mirrorMapping.AddGroup(group.FullPath, &utils.MirroringOptions{
+								DestinationPath:     filepath.Join(groupCreationOptions.DestinationPath, relativePath),
+								CI_CD_Catalog:       groupCreationOptions.CI_CD_Catalog,
+								Issues:              groupCreationOptions.Issues,
+								MirrorTriggerBuilds: groupCreationOptions.MirrorTriggerBuilds,
+								Visibility:          groupCreationOptions.Visibility,
 							})
 						}
 						break

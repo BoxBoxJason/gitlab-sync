@@ -8,19 +8,10 @@ import (
 	"testing"
 )
 
-// testProjectMirroringOptions is a helper function to create a ProjectMirroringOptions instance for testing
-func testProjectMirroringOptions() *ProjectMirroringOptions {
-	return &ProjectMirroringOptions{
+// testMirroringOptions is a helper function to create a MirroringOptions instance for testing
+func testMirroringOptions() *MirroringOptions {
+	return &MirroringOptions{
 		DestinationPath: "project",
-		CI_CD_Catalog:   true,
-		Issues:          true,
-	}
-}
-
-// testGroupMirroringOptions is a helper function to create a GroupMirroringOptions instance for testing
-func testGroupMirroringOptions() *GroupMirroringOptions {
-	return &GroupMirroringOptions{
-		DestinationPath: "group",
 		CI_CD_Catalog:   true,
 		Issues:          true,
 	}
@@ -29,11 +20,11 @@ func testGroupMirroringOptions() *GroupMirroringOptions {
 // TestAddProject tests adding a project to the MirrorMapping
 func TestAddProject(t *testing.T) {
 	m := &MirrorMapping{
-		Projects: make(map[string]*ProjectMirroringOptions),
+		Projects: make(map[string]*MirroringOptions),
 	}
 
 	project := "test-project"
-	options := testProjectMirroringOptions()
+	options := testMirroringOptions()
 
 	m.AddProject(project, options)
 
@@ -47,11 +38,11 @@ func TestAddProject(t *testing.T) {
 // TestAddGroup tests adding a group to the MirrorMapping
 func TestAddGroup(t *testing.T) {
 	m := &MirrorMapping{
-		Groups: make(map[string]*GroupMirroringOptions),
+		Groups: make(map[string]*MirroringOptions),
 	}
 
 	group := "test-group"
-	options := testGroupMirroringOptions()
+	options := testMirroringOptions()
 
 	m.AddGroup(group, options)
 
@@ -65,18 +56,22 @@ func TestAddGroup(t *testing.T) {
 // TestOpenMirrorMapping tests opening and parsing a JSON file into a MirrorMapping
 func TestOpenMirrorMapping(t *testing.T) {
 	expectedMapping := &MirrorMapping{
-		Projects: map[string]*ProjectMirroringOptions{
+		Projects: map[string]*MirroringOptions{
 			"project1": {
-				DestinationPath: "http://example.com/project",
-				CI_CD_Catalog:   true,
-				Issues:          true,
+				DestinationPath:     "http://example.com/project",
+				CI_CD_Catalog:       true,
+				Issues:              true,
+				MirrorTriggerBuilds: false,
+				Visibility:          "private",
 			},
 		},
-		Groups: map[string]*GroupMirroringOptions{
+		Groups: map[string]*MirroringOptions{
 			"group1": {
-				DestinationPath: "http://example.com/group",
-				CI_CD_Catalog:   true,
-				Issues:          true,
+				DestinationPath:     "http://example.com/group",
+				CI_CD_Catalog:       true,
+				Issues:              true,
+				MirrorTriggerBuilds: false,
+				Visibility:          "private",
 			},
 		},
 	}
@@ -86,14 +81,18 @@ func TestOpenMirrorMapping(t *testing.T) {
 			"project1": {
 				"destination_path": "http://example.com/project",
 				"ci_cd_catalog": true,
-				"issues": true
+				"issues": true,
+				"mirror_trigger_builds": false,
+				"visibility": "private"
 			}
 		},
 		"groups": {
 			"group1": {
 				"destination_path": "http://example.com/group",
 				"ci_cd_catalog": true,
-				"issues": true
+				"issues": true,
+				"mirror_trigger_builds": false,
+				"visibility": "private"
 			}
 		}
 	}`
@@ -115,8 +114,27 @@ func TestOpenMirrorMapping(t *testing.T) {
 		t.Fatalf("OpenMirrorMapping() error = %v", err)
 	}
 
-	if !reflect.DeepEqual(mapping, expectedMapping) {
-		t.Errorf("expected mapping %v, got %v", expectedMapping, mapping)
+	// Check if projects and groups are equal
+	if len(mapping.Projects) != len(expectedMapping.Projects) || len(mapping.Groups) != len(expectedMapping.Groups) {
+		t.Fatalf("expected mapping to have %d projects and %d groups, got %d projects and %d groups", len(expectedMapping.Projects), len(expectedMapping.Groups), len(mapping.Projects), len(mapping.Groups))
+	}
+	for k, v := range mapping.Projects {
+		if expected, ok := expectedMapping.Projects[k]; ok {
+			if !reflect.DeepEqual(v, expected) {
+				t.Errorf("expected project %s options %v, got %v", k, expected, v)
+			}
+		} else {
+			t.Errorf("unexpected project %s in mapping", k)
+		}
+	}
+	for k, v := range mapping.Groups {
+		if expected, ok := expectedMapping.Groups[k]; ok {
+			if !reflect.DeepEqual(v, expected) {
+				t.Errorf("expected group %s options %v, got %v", k, expected, v)
+			}
+		} else {
+			t.Errorf("unexpected group %s in mapping", k)
+		}
 	}
 }
 
@@ -130,14 +148,14 @@ func TestCheck(t *testing.T) {
 		{
 			name: "ValidMapping",
 			mapping: &MirrorMapping{
-				Projects: map[string]*ProjectMirroringOptions{
+				Projects: map[string]*MirroringOptions{
 					"project1": {
 						DestinationPath: "http://example.com/project",
 						CI_CD_Catalog:   true,
 						Issues:          true,
 					},
 				},
-				Groups: map[string]*GroupMirroringOptions{
+				Groups: map[string]*MirroringOptions{
 					"group1": {
 						DestinationPath: "http://example.com/group",
 						CI_CD_Catalog:   true,
@@ -150,28 +168,28 @@ func TestCheck(t *testing.T) {
 		{
 			name: "InvalidMappingNoProjectsOrGroups",
 			mapping: &MirrorMapping{
-				Projects: map[string]*ProjectMirroringOptions{},
-				Groups:   map[string]*GroupMirroringOptions{},
+				Projects: map[string]*MirroringOptions{},
+				Groups:   map[string]*MirroringOptions{},
 			},
 			expectedErr: "\n  - no projects or groups defined in the mapping\n",
 		},
 		{
 			name: "InvalidProjectMapping",
 			mapping: &MirrorMapping{
-				Projects: map[string]*ProjectMirroringOptions{
+				Projects: map[string]*MirroringOptions{
 					"": {
 						DestinationPath: "",
 					},
 				},
-				Groups: map[string]*GroupMirroringOptions{},
+				Groups: map[string]*MirroringOptions{},
 			},
 			expectedErr: "\n  - invalid (empty) string in project mapping: \n  - invalid project destination path (must be in a namespace): \n",
 		},
 		{
 			name: "InvalidGroupMapping",
 			mapping: &MirrorMapping{
-				Projects: map[string]*ProjectMirroringOptions{},
-				Groups: map[string]*GroupMirroringOptions{
+				Projects: map[string]*MirroringOptions{},
+				Groups: map[string]*MirroringOptions{
 					"": {
 						DestinationPath: "",
 					},

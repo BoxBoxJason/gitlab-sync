@@ -1,0 +1,54 @@
+name: lint-test
+
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  golangci-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go mod tidy
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.0
+        continue-on-error: true
+
+
+  gosec:
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.7'
+      - run: go mod tidy
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: ./...
+        continue-on-error: true
+
+
+  gotestsum:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.7'
+      - run: go mod tidy
+      - name: go-test
+        run: |
+          go test -v ./...

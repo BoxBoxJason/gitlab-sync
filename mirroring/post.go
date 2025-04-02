@@ -143,15 +143,16 @@ func createProjects(sourceGitlab *GitlabInstance, destinationGitlab *GitlabInsta
 	return utils.MergeErrors(errorChan, 2)
 }
 
-func (g *GitlabInstance) createProjectFromSource(sourceProject *gitlab.Project, copyOptions *utils.ProjectMirroringOptions) (*gitlab.Project, error) {
+func (g *GitlabInstance) createProjectFromSource(sourceProject *gitlab.Project, copyOptions *utils.MirroringOptions) (*gitlab.Project, error) {
 	projectCreationArgs := &gitlab.CreateProjectOptions{
 		Name:                &sourceProject.Name,
 		Path:                &sourceProject.Path,
 		DefaultBranch:       &sourceProject.DefaultBranch,
 		Description:         &sourceProject.Description,
-		MirrorTriggerBuilds: gitlab.Ptr(true),
+		MirrorTriggerBuilds: gitlab.Ptr(copyOptions.MirrorTriggerBuilds),
 		Mirror:              gitlab.Ptr(true),
 		Topics:              &sourceProject.Topics,
+		Visibility:          gitlab.Ptr(gitlab.VisibilityValue(copyOptions.Visibility)),
 	}
 
 	utils.LogVerbosef("Retrieving project namespace ID for %s", copyOptions.DestinationPath)
@@ -173,7 +174,7 @@ func (g *GitlabInstance) createProjectFromSource(sourceProject *gitlab.Project, 
 	return destinationProject, nil
 }
 
-func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOptions *utils.GroupMirroringOptions) (*gitlab.Group, error) {
+func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOptions *utils.MirroringOptions) (*gitlab.Group, error) {
 	groupCreationArgs := &gitlab.CreateGroupOptions{
 		Name:          &sourceGroup.Name,
 		Path:          &sourceGroup.Path,

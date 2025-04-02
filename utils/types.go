@@ -13,6 +13,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 // ParserArgs defines the command line arguments
@@ -42,21 +44,12 @@ type ParserArgs struct {
 // - destination_url: the URL of the destination GitLab instance
 // - ci_cd_catalog: whether to add the project to the CI/CD catalog
 // - issues: whether to mirror the issues
-type ProjectMirroringOptions struct {
-	DestinationPath string `json:"destination_path"`
-	CI_CD_Catalog   bool   `json:"ci_cd_catalog"`
-	Issues          bool   `json:"issues"`
-}
-
-// GroupMirrorOptions defines how the group should be mirrored
-// to the destination GitLab instance
-// - destination_url: the URL of the destination GitLab instance
-// - ci_cd_catalog: whether to add the group to the CI/CD catalog
-// - issues: whether to mirror the issues
-type GroupMirroringOptions struct {
-	DestinationPath string `json:"destination_path"`
-	CI_CD_Catalog   bool   `json:"ci_cd_catalog"`
-	Issues          bool   `json:"issues"`
+type MirroringOptions struct {
+	DestinationPath     string `json:"destination_path"`
+	CI_CD_Catalog       bool   `json:"ci_cd_catalog"`
+	Issues              bool   `json:"issues"`
+	MirrorTriggerBuilds bool   `json:"mirror_trigger_builds"`
+	Visibility          string `json:"visibility"`
 }
 
 // MirrorMapping defines the mapping of projects and groups
@@ -65,19 +58,19 @@ type GroupMirroringOptions struct {
 // - projects: a map of project names to their mirroring options
 // - groups: a map of group names to their mirroring options
 type MirrorMapping struct {
-	Projects   map[string]*ProjectMirroringOptions `json:"projects"`
-	Groups     map[string]*GroupMirroringOptions   `json:"groups"`
+	Projects   map[string]*MirroringOptions `json:"projects"`
+	Groups     map[string]*MirroringOptions `json:"groups"`
 	muProjects sync.Mutex
 	muGroups   sync.Mutex
 }
 
-func (m *MirrorMapping) AddProject(project string, options *ProjectMirroringOptions) {
+func (m *MirrorMapping) AddProject(project string, options *MirroringOptions) {
 	m.muProjects.Lock()
 	defer m.muProjects.Unlock()
 	m.Projects[project] = options
 }
 
-func (m *MirrorMapping) AddGroup(group string, options *GroupMirroringOptions) {
+func (m *MirrorMapping) AddGroup(group string, options *MirroringOptions) {
 	m.muGroups.Lock()
 	defer m.muGroups.Unlock()
 	m.Groups[group] = options
@@ -88,8 +81,8 @@ func (m *MirrorMapping) AddGroup(group string, options *GroupMirroringOptions) {
 // It returns the mapping and an error if any
 func OpenMirrorMapping(path string) (*MirrorMapping, error) {
 	mapping := &MirrorMapping{
-		Projects: make(map[string]*ProjectMirroringOptions),
-		Groups:   make(map[string]*GroupMirroringOptions),
+		Projects: make(map[string]*MirroringOptions),
+		Groups:   make(map[string]*MirroringOptions),
 	}
 
 	// Read the file
@@ -115,7 +108,7 @@ func OpenMirrorMapping(path string) (*MirrorMapping, error) {
 }
 
 func (m *MirrorMapping) check() error {
-	errChan := make(chan error, 3*(len(m.Projects)+len(m.Groups)+1))
+	errChan := make(chan error, 4*(len(m.Projects)+len(m.Groups))+1)
 	// Check if the mapping is valid
 	if len(m.Projects) == 0 && len(m.Groups) == 0 {
 		errChan <- errors.New("no projects or groups defined in the mapping")
@@ -134,6 +127,11 @@ func (m *MirrorMapping) check() error {
 		} else if strings.Count(options.DestinationPath, "/") < 1 {
 			errChan <- fmt.Errorf("invalid project destination path (must be in a namespace): %s", options.DestinationPath)
 		}
+		visibilityString := strings.TrimSpace(string(options.Visibility))
+		if visibilityString != "" && !checkVisibility(visibilityString) {
+			errChan <- fmt.Errorf("invalid project visibility: %s", string(options.Visibility))
+			options.Visibility = string(gitlab.PublicVisibility)
+		}
 	}
 
 	// Check if the groups are valid
@@ -147,9 +145,29 @@ func (m *MirrorMapping) check() error {
 		if strings.HasPrefix(options.DestinationPath, "/") || strings.HasSuffix(options.DestinationPath, "/") {
 			errChan <- fmt.Errorf("invalid destination path (must not start or end with /): %s", options.DestinationPath)
 		}
+		visibilityString := strings.TrimSpace(string(options.Visibility))
+		if visibilityString != "" && !checkVisibility(visibilityString) {
+			errChan <- fmt.Errorf("invalid group visibility: %s", string(options.Visibility))
+			options.Visibility = string(gitlab.PublicVisibility)
+		}
 	}
 	close(errChan)
 	return MergeErrors(errChan, 2)
+}
+
+func checkVisibility(visibility string) bool {
+	var valid bool
+	switch visibility {
+	case string(gitlab.PublicVisibility):
+		valid = true
+	case string(gitlab.InternalVisibility):
+		valid = true
+	case string(gitlab.PrivateVisibility):
+		valid = true
+	default:
+		valid = false
+	}
+	return valid
 }
 
 // GraphQLClient is a client for sending GraphQL requests to GitLab

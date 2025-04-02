@@ -72,3 +72,43 @@ gitlab-sync \
   --destination-token <destination_gitlab_token> \
   --mirror-mapping /path/to/mirror.json
 ```
+
+## JSON Mapping File
+
+The JSON mapping file is used to define the projects and groups to be synchronized between the two GitLab instances. You also define the copy options for each project / group.
+
+Allowed options are:
+| Option | Description |
+|--------|-------------|
+| `destination_path` | The path to the project / group on the destination GitLab instance. |
+| `ci_cd_catalog` | Whether to add the project to the CI/CD catalog. |
+| `issues` | Whether to copy issues from the source project to the destination project. |
+| `visibility` | The visibility level of the project on the destination GitLab instance. Can be `public`, `internal`, or `private`. |
+| `mirror_trigger_builds` | Whether to trigger builds on the destination project when a push is made to the source project. |
+
+Be aware that the destination path must be unique for each project / group. If you try to synchronize a project / group with the same destination path as an existing project / group, the synchronization will fail.
+
+Also, the destination namespace must exist on the destination GitLab instance. If the namespace does not exist, the synchronization will fail.
+
+```json
+{
+  "projects": {
+    "existingGroup1/project1" : {
+      "destination_path": "existingGroup64/project1",
+      "ci_cd_catalog": true,
+      "issues": false,
+      "visibility": "public",
+      "mirror_trigger_builds": false
+    }
+  },
+  "groups": {
+    "existingGroup152" : {
+      "destination_path": "existingGroup64/existingGroup152",
+      "ci_cd_catalog": true,
+      "issues": false,
+      "visibility": "public",
+      "mirror_trigger_builds": false
+    }
+  }
+}
+```

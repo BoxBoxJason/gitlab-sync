@@ -38,12 +38,23 @@ func (g *GitlabInstance) addProjectToCICDCatalog(project *gitlab.Project) error 
 }
 
 func (g *GitlabInstance) copyProjectAvatar(destinationGitlabInstance *GitlabInstance, destinationProject *gitlab.Project, sourceProject *gitlab.Project) error {
+	utils.LogVerbosef("Checking if project avatar is already set for %s", destinationProject.PathWithNamespace)
+
+	// Check if the destination project already has an avatar
+	if destinationProject.AvatarURL != "" {
+		utils.LogVerbosef("Project %s already has an avatar set, skipping.", destinationProject.PathWithNamespace)
+		return nil
+	}
+
 	utils.LogVerbosef("Copying project avatar for %s", destinationProject.PathWithNamespace)
+
+	// Download the source project avatar
 	sourceProjectAvatar, _, err := g.Gitlab.Projects.DownloadAvatar(sourceProject.ID)
 	if err != nil {
 		return fmt.Errorf("failed to download avatar for project %s: %s", sourceProject.PathWithNamespace, err)
 	}
 
+	// Upload the avatar to the destination project
 	filename := fmt.Sprintf("avatar-%d.png", time.Now().Unix())
 	_, _, err = destinationGitlabInstance.Gitlab.Projects.UploadAvatar(destinationProject.ID, sourceProjectAvatar, filename)
 	if err != nil {
@@ -54,12 +65,23 @@ func (g *GitlabInstance) copyProjectAvatar(destinationGitlabInstance *GitlabInst
 }
 
 func (g *GitlabInstance) copyGroupAvatar(destinationGitlabInstance *GitlabInstance, destinationGroup *gitlab.Group, sourceGroup *gitlab.Group) error {
+	utils.LogVerbosef("Checking if group avatar is already set for %s", destinationGroup.FullPath)
+
+	// Check if the destination group already has an avatar
+	if destinationGroup.AvatarURL != "" {
+		utils.LogVerbosef("Group %s already has an avatar set, skipping.", destinationGroup.FullPath)
+		return nil
+	}
+
 	utils.LogVerbosef("Copying group avatar for %s", destinationGroup.FullPath)
+
+	// Download the source group avatar
 	sourceGroupAvatar, _, err := g.Gitlab.Groups.DownloadAvatar(sourceGroup.ID)
 	if err != nil {
 		return fmt.Errorf("failed to download avatar for group %s: %s", sourceGroup.FullPath, err)
 	}
 
+	// Upload the avatar to the destination group
 	filename := fmt.Sprintf("avatar-%d.png", time.Now().Unix())
 	_, _, err = destinationGitlabInstance.Gitlab.Groups.UploadAvatar(destinationGroup.ID, sourceGroupAvatar, filename)
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
@@ -36,7 +37,9 @@ type ParserArgs struct {
 	Verbose                bool
 	NoPrompt               bool
 	DryRun                 bool
-	Version                bool
+	Timeout                time.Duration
+	Retry                  int
+	Concurrency            int
 }
 
 // ProjectMirrorOptions defines how the project should be mirrored

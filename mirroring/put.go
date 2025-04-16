@@ -97,45 +97,61 @@ func (g *GitlabInstance) updateProjectFromSource(sourceGitlab *GitlabInstance, s
 	if copyOptions.CI_CD_Catalog {
 		maxErrors++
 	}
+	if copyOptions.MirrorReleases {
+		maxErrors++
+	}
 	wg.Add(maxErrors)
 	errorChan := make(chan error, maxErrors)
 
 	go func() {
 		defer wg.Done()
-		utils.LogVerbosef("enabling project %s mirror pull", destinationProject.PathWithNamespace)
+		// Manage concurrency for enabling project mirror pull
+		utils.ConcurrencyManager.Acquire()
+		defer utils.ConcurrencyManager.Release()
+		utils.LogVerbosef("Enabling project %s mirror pull", destinationProject.PathWithNamespace)
 		err := g.enableProjectMirrorPull(sourceProject, destinationProject, copyOptions)
 		if err != nil {
 			errorChan <- fmt.Errorf("Failed to enable project mirror pull for %s: %s", destinationProject.PathWithNamespace, err)
 		}
 	}()
+
 	go func() {
 		defer wg.Done()
-		utils.LogVerbosef("copying project %s avatar", destinationProject.PathWithNamespace)
+		// Manage concurrency for copying project avatar
+		utils.ConcurrencyManager.Acquire()
+		defer utils.ConcurrencyManager.Release()
+		utils.LogVerbosef("Copying project %s avatar", destinationProject.PathWithNamespace)
 		err := sourceGitlab.copyProjectAvatar(g, destinationProject, sourceProject)
 		if err != nil {
 			errorChan <- fmt.Errorf("Failed to copy project avatar for %s: %s", destinationProject.PathWithNamespace, err)
 		}
 	}()
+
 	if copyOptions.CI_CD_Catalog {
 		go func() {
 			defer wg.Done()
-			utils.LogVerbosef("adding project %s to CI/CD catalog", destinationProject.PathWithNamespace)
+			// Manage concurrency for adding project to CI/CD catalog
+			utils.ConcurrencyManager.Acquire()
+			defer utils.ConcurrencyManager.Release()
+			utils.LogVerbosef("Adding project %s to CI/CD catalog", destinationProject.PathWithNamespace)
 			err := g.addProjectToCICDCatalog(destinationProject)
 			if err != nil {
 				errorChan <- fmt.Errorf("Failed to add project %s to CI/CD catalog: %s", destinationProject.PathWithNamespace, err)
 			}
 		}()
 	}
+
 	if copyOptions.MirrorReleases {
 		go func() {
 			defer wg.Done()
-			utils.LogVerbosef("copying project %s releases", destinationProject.PathWithNamespace)
+			utils.LogVerbosef("Copying project %s releases", destinationProject.PathWithNamespace)
 			err := g.mirrorReleases(sourceProject, destinationProject)
 			if err != nil {
 				errorChan <- fmt.Errorf("Failed to copy project %s releases: %s", destinationProject.PathWithNamespace, err)
 			}
 		}()
 	}
+
 	wg.Wait()
 	close(errorChan)
 	return utils.MergeErrors(errorChan, 4)

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gitlab-sync/mirroring"
 	"gitlab-sync/utils"
@@ -20,15 +21,36 @@ var (
 func main() {
 	var args utils.ParserArgs
 	var mirrorMappingPath string
+	var timeout int
 
 	var rootCmd = &cobra.Command{
-		Use:   "gitlab-sync",
-		Short: "Copy and enable mirroring of gitlab projects and groups",
-		Long:  "Fully customizable gitlab repositories and groups mirroring between two (or one) gitlab instances.",
+		Use:     "gitlab-sync",
+		Version: version,
+		Short:   "Copy and enable mirroring of gitlab projects and groups",
+		Long:    "Fully customizable gitlab repositories and groups mirroring between two (or one) gitlab instances.",
 		Run: func(cmd *cobra.Command, cmdArgs []string) {
-			if args.Version {
-				fmt.Printf("gitlab-sync version: %s\n", version)
-				return
+			// Set the concurrency limit
+			if args.Concurrency == -1 {
+				args.Concurrency = 10000
+			} else if args.Concurrency == 0 {
+				log.Fatal("concurrency limit must be -1 (no limit) or strictly greater than 0")
+			}
+			utils.ConcurrencyManager.SetLimit(args.Concurrency)
+
+			// Obtain the retry count
+			if args.Retry == -1 {
+				args.Retry = 10000
+			} else if args.Retry == 0 {
+				log.Fatal("retry count must be -1 (no limit) or strictly greater than 0")
+			}
+
+			// Set the timeout for GitLab API requests
+			if timeout == -1 {
+				args.Timeout = time.Duration(10000 * time.Second)
+			} else if timeout == 0 {
+				log.Fatal("timeout must be -1 (no limit) or strictly greater than 0")
+			} else {
+				args.Timeout = time.Duration(timeout) * time.Second
 			}
 
 			utils.SetVerbose(args.Verbose)
@@ -65,7 +87,6 @@ func main() {
 		},
 	}
 
-	rootCmd.Flags().BoolVarP(&args.Version, "version", "V", false, "Show version")
 	rootCmd.Flags().StringVar(&args.SourceGitlabURL, "source-url", os.Getenv("SOURCE_GITLAB_URL"), "Source GitLab URL")
 	rootCmd.Flags().StringVar(&args.SourceGitlabToken, "source-token", os.Getenv("SOURCE_GITLAB_TOKEN"), "Source GitLab Token")
 	rootCmd.Flags().StringVar(&args.DestinationGitlabURL, "destination-url", os.Getenv("DESTINATION_GITLAB_URL"), "Destination GitLab URL")
@@ -74,6 +95,9 @@ func main() {
 	rootCmd.Flags().BoolVarP(&args.NoPrompt, "no-prompt", "n", strings.TrimSpace(os.Getenv("NO_PROMPT")) != "", "Disable prompting for missing values")
 	rootCmd.Flags().StringVar(&mirrorMappingPath, "mirror-mapping", os.Getenv("MIRROR_MAPPING"), "Path to the mirror mapping file")
 	rootCmd.Flags().BoolVar(&args.DryRun, "dry-run", false, "Perform a dry run without making any changes")
+	rootCmd.Flags().IntVarP(&timeout, "timeout", "t", 30, "Timeout in seconds for GitLab API requests")
+	rootCmd.Flags().IntVarP(&args.Concurrency, "concurrency", "c", 10, "Max number of concurrent requests")
+	rootCmd.Flags().IntVarP(&args.Retry, "retry", "r", 3, "Number of retries for failed requests")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

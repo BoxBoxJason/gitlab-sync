@@ -10,14 +10,14 @@ import (
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
-func (g *GitlabInstance) enableProjectMirrorPull(sourceProject *gitlab.Project, destinationProject *gitlab.Project) error {
+func (g *GitlabInstance) enableProjectMirrorPull(sourceProject *gitlab.Project, destinationProject *gitlab.Project, mirrorOptions *utils.MirroringOptions) error {
 	utils.LogVerbosef("Enabling pull mirror for project %s", destinationProject.PathWithNamespace)
 	_, _, err := g.Gitlab.Projects.ConfigureProjectPullMirror(destinationProject.ID, &gitlab.ConfigureProjectPullMirrorOptions{
 		URL:                              &sourceProject.HTTPURLToRepo,
 		OnlyMirrorProtectedBranches:      gitlab.Ptr(true),
 		Enabled:                          gitlab.Ptr(true),
 		MirrorOverwritesDivergedBranches: gitlab.Ptr(true),
-		MirrorTriggerBuilds:              gitlab.Ptr(true),
+		MirrorTriggerBuilds:              gitlab.Ptr(mirrorOptions.MirrorTriggerBuilds),
 	})
 	return err
 }
@@ -81,7 +81,7 @@ func (g *GitlabInstance) updateProjectFromSource(sourceGitlab *GitlabInstance, s
 	go func() {
 		defer wg.Done()
 		utils.LogVerbosef("enabling project %s mirror pull", destinationProject.PathWithNamespace)
-		err := g.enableProjectMirrorPull(sourceProject, destinationProject)
+		err := g.enableProjectMirrorPull(sourceProject, destinationProject, copyOptions)
 		if err != nil {
 			errorChan <- fmt.Errorf("Failed to enable project mirror pull for %s: %s", destinationProject.PathWithNamespace, err)
 		}

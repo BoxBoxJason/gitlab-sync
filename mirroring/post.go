@@ -197,3 +197,50 @@ func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOp
 
 	return destinationGroup, err
 }
+
+func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinationProject *gitlab.Project) error {
+	utils.LogVerbosef("Starting releases mirroring for project %s", destinationProject.HTTPURLToRepo)
+
+	// Fetch existing releases from the destination project
+	existingReleases, _, err := g.Gitlab.Releases.ListReleases(destinationProject.ID, &gitlab.ListReleasesOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to fetch existing releases for destination project %s: %s", destinationProject.PathWithNamespace, err)
+	}
+
+	// Create a map of existing release tags for quick lookup
+	existingReleaseTags := make(map[string]bool)
+	for _, release := range existingReleases {
+		existingReleaseTags[release.TagName] = true
+	}
+
+	// Fetch releases from the source project
+	sourceReleases, _, err := g.Gitlab.Releases.ListReleases(sourceProject.ID, &gitlab.ListReleasesOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to fetch releases for source project %s: %s", sourceProject.PathWithNamespace, err)
+	}
+
+	// Iterate over each source release
+	for _, release := range sourceReleases {
+		// Check if the release already exists in the destination project
+		if existingReleaseTags[release.TagName] {
+			utils.LogVerbosef("Release %s already exists in destination project %s, skipping.", release.TagName, destinationProject.PathWithNamespace)
+			continue
+		}
+
+		utils.LogVerbosef("Mirroring release %s to project %s", release.TagName, destinationProject.PathWithNamespace)
+
+		// Create the release in the destination project
+		_, _, err := g.Gitlab.Releases.CreateRelease(destinationProject.ID, &gitlab.CreateReleaseOptions{
+			Name:        gitlab.Ptr(release.Name),
+			TagName:     gitlab.Ptr(release.TagName),
+			Description: gitlab.Ptr(release.Description),
+			ReleasedAt:  release.ReleasedAt,
+		})
+		if err != nil {
+			utils.LogVerbosef("Failed to create release %s in project %s: %s", release.TagName, destinationProject.PathWithNamespace, err)
+		}
+	}
+
+	utils.LogVerbosef("Releases mirroring completed for project %s", destinationProject.HTTPURLToRepo)
+	return nil
+}

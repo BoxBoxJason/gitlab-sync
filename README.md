@@ -85,6 +85,7 @@ Allowed options are:
 | `issues` | Whether to copy issues from the source project to the destination project. |
 | `visibility` | The visibility level of the project on the destination GitLab instance. Can be `public`, `internal`, or `private`. |
 | `mirror_trigger_builds` | Whether to trigger builds on the destination project when a push is made to the source project. |
+| `mirror_releases` | Whether to mirror releases from the source project to the destination project. |
 
 Be aware that the destination path must be unique for each project / group. If you try to synchronize a project / group with the same destination path as an existing project / group, the synchronization will fail.
 
@@ -98,7 +99,8 @@ Also, the destination namespace must exist on the destination GitLab instance. I
       "ci_cd_catalog": true,
       "issues": false,
       "visibility": "public",
-      "mirror_trigger_builds": false
+      "mirror_trigger_builds": false,
+      "mirror_releases": false
     }
   },
   "groups": {
@@ -107,7 +109,8 @@ Also, the destination namespace must exist on the destination GitLab instance. I
       "ci_cd_catalog": true,
       "issues": false,
       "visibility": "public",
-      "mirror_trigger_builds": false
+      "mirror_trigger_builds": false,
+      "mirror_releases": false
     }
   }
 }

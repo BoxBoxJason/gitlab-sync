@@ -53,7 +53,7 @@ If mandatory arguments are not provided, the program will prompt for them.
 | Argument | Environment Variable equivalent | Mandatory | Description |
 |----------|-------------------------------|-----------|-------------|
 | `--help` or `-h` | N/A | No | Show help message and exit |
-| `--version` or `-V` | N/A | No | Show version information and exit |
+| `--version` | N/A | No | Show version information and exit |
 | `--verbose` or `-v` | N/A | No | Enable verbose output |
 | `--dry-run` | N/A | No | Perform a dry run without making any changes |
 | `--source-url` | `SOURCE_GITLAB_URL` | Yes | URL of the source GitLab instance |
@@ -61,6 +61,9 @@ If mandatory arguments are not provided, the program will prompt for them.
 | `--destination-url` | `DESTINATION_GITLAB_URL` | Yes | URL of the destination GitLab instance |
 | `--destination-token` | `DESTINATION_GITLAB_TOKEN` | Yes | Access token for the destination GitLab instance |
 | `--mirror-mapping` | `MIRROR_MAPPING` | Yes | Path to a JSON file containing the mirror mapping |
+| `--concurrency` or `-C` | N/A | No | Max number of concurrent requests to the GitLab API (default: 10) |
+| `--timeout` or `-t` | N/A | No | Timeout for GitLab API requests in seconds (default: 30) |
+| `--retry` or `-r` | N/A | No | Number of retries for failed GitLab API requests (does not apply to GraphQL requests) (default: 3) |
 
 ## Example
 

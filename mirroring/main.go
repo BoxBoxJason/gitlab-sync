@@ -10,12 +10,12 @@ import (
 )
 
 func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
-	sourceGitlabInstance, err := newGitlabInstance(gitlabMirrorArgs.SourceGitlabURL, gitlabMirrorArgs.SourceGitlabToken)
+	sourceGitlabInstance, err := newGitlabInstance(gitlabMirrorArgs.SourceGitlabURL, gitlabMirrorArgs.SourceGitlabToken, gitlabMirrorArgs.Timeout, gitlabMirrorArgs.Retry)
 	if err != nil {
 		return err
 	}
 
-	destinationGitlabInstance, err := newGitlabInstance(gitlabMirrorArgs.DestinationGitlabURL, gitlabMirrorArgs.DestinationGitlabToken)
+	destinationGitlabInstance, err := newGitlabInstance(gitlabMirrorArgs.DestinationGitlabURL, gitlabMirrorArgs.DestinationGitlabToken, gitlabMirrorArgs.Timeout, gitlabMirrorArgs.Retry)
 	if err != nil {
 		return err
 	}

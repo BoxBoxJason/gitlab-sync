@@ -50,6 +50,7 @@ type MirroringOptions struct {
 	Issues              bool   `json:"issues"`
 	MirrorTriggerBuilds bool   `json:"mirror_trigger_builds"`
 	Visibility          string `json:"visibility"`
+	MirrorReleases      bool   `json:"mirror_releases"`
 }
 
 // MirrorMapping defines the mapping of projects and groups

@@ -104,6 +104,16 @@ func (g *GitlabInstance) updateProjectFromSource(sourceGitlab *GitlabInstance, s
 			}
 		}()
 	}
+	if copyOptions.MirrorReleases {
+		go func() {
+			defer wg.Done()
+			utils.LogVerbosef("copying project %s releases", destinationProject.PathWithNamespace)
+			err := g.mirrorReleases(sourceProject, destinationProject)
+			if err != nil {
+				errorChan <- fmt.Errorf("Failed to copy project %s releases: %s", destinationProject.PathWithNamespace, err)
+			}
+		}()
+	}
 	wg.Wait()
 	close(errorChan)
 	return utils.MergeErrors(errorChan, 4)

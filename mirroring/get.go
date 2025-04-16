@@ -73,6 +73,7 @@ func (g *GitlabInstance) fetchProjects(projectFilters *map[string]bool, groupFil
 								Issues:              groupCreationOptions.Issues,
 								MirrorTriggerBuilds: groupCreationOptions.MirrorTriggerBuilds,
 								Visibility:          groupCreationOptions.Visibility,
+								MirrorReleases:      groupCreationOptions.MirrorReleases,
 							})
 						}
 						break
@@ -151,6 +152,7 @@ func (g *GitlabInstance) fetchGroups(groupFilters *map[string]bool, mirrorMappin
 								Issues:              groupCreationOptions.Issues,
 								MirrorTriggerBuilds: groupCreationOptions.MirrorTriggerBuilds,
 								Visibility:          groupCreationOptions.Visibility,
+								MirrorReleases:      groupCreationOptions.MirrorReleases,
 							})
 						}
 						break

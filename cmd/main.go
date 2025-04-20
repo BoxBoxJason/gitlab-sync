@@ -2,16 +2,17 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"gitlab-sync/mirroring"
-	"gitlab-sync/utils"
+	"gitlab-sync/internal/mirroring"
+	"gitlab-sync/internal/utils"
 
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 var (
@@ -29,33 +30,26 @@ func main() {
 		Short:   "Copy and enable mirroring of gitlab projects and groups",
 		Long:    "Fully customizable gitlab repositories and groups mirroring between two (or one) gitlab instances.",
 		Run: func(cmd *cobra.Command, cmdArgs []string) {
-			// Set the concurrency limit
-			if args.Concurrency == -1 {
-				args.Concurrency = 10000
-			} else if args.Concurrency == 0 {
-				log.Fatal("concurrency limit must be -1 (no limit) or strictly greater than 0")
-			}
-			utils.ConcurrencyManager.SetLimit(args.Concurrency)
+			// Set up the logger
+			setupZapLogger(args.Verbose)
+			zap.L().Debug("Verbose mode enabled")
+			zap.L().Debug("Parsing command line arguments")
 
 			// Obtain the retry count
 			if args.Retry == -1 {
 				args.Retry = 10000
 			} else if args.Retry == 0 {
-				log.Fatal("retry count must be -1 (no limit) or strictly greater than 0")
+				zap.L().Fatal("retry count must be -1 (no limit) or strictly greater than 0")
 			}
 
 			// Set the timeout for GitLab API requests
 			if timeout == -1 {
 				args.Timeout = time.Duration(10000 * time.Second)
 			} else if timeout == 0 {
-				log.Fatal("timeout must be -1 (no limit) or strictly greater than 0")
+				zap.L().Fatal("timeout must be -1 (no limit) or strictly greater than 0")
 			} else {
 				args.Timeout = time.Duration(timeout) * time.Second
 			}
-
-			utils.SetVerbose(args.Verbose)
-			utils.LogVerbose("Verbose mode enabled")
-			utils.LogVerbose("Parsing command line arguments")
 
 			// Check if the source GitLab URL is provided
 			args.SourceGitlabURL = promptForMandatoryInput(args.SourceGitlabURL, "Input Source GitLab URL (MANDATORY)", "Source GitLab URL is mandatory", "Source GitLab URL", args.NoPrompt, false)
@@ -68,22 +62,21 @@ func main() {
 
 			// Check if the Mirror Mapping file path is provided
 			mirrorMappingPath = promptForMandatoryInput(mirrorMappingPath, "Input Mirror Mapping file path (MANDATORY)", "Mirror Mapping file path is mandatory", "Mirror Mapping file path set", args.NoPrompt, false)
-			utils.LogVerbose("Mirror Mapping file resolved path: " + filepath.Clean(mirrorMappingPath))
+			zap.L().Debug("Mirror Mapping file resolved path: " + filepath.Clean(mirrorMappingPath))
 
-			utils.LogVerbose("Parsing mirror mapping file")
+			zap.L().Debug("Parsing mirror mapping file")
 			mapping, err := utils.OpenMirrorMapping(mirrorMappingPath)
 			if err != nil {
-				log.Fatalf("Error opening mirror mapping file: %s", err)
+				zap.L().Sugar().Fatalf("Error opening mirror mapping file: %s", err)
 			}
-			utils.LogVerbose("Mirror mapping file parsed successfully")
+			zap.L().Debug("Mirror mapping file parsed successfully")
 			args.MirrorMapping = mapping
 
 			err = mirroring.MirrorGitlabs(&args)
 			if err != nil {
-				fmt.Println("Error during mirroring process:")
-				fmt.Println(err)
+				zap.L().Error("Error during mirroring process: " + err.Error())
 			}
-			log.Println("Mirroring completed")
+			zap.L().Info("Mirroring completed")
 		},
 	}
 
@@ -96,11 +89,10 @@ func main() {
 	rootCmd.Flags().StringVar(&mirrorMappingPath, "mirror-mapping", os.Getenv("MIRROR_MAPPING"), "Path to the mirror mapping file")
 	rootCmd.Flags().BoolVar(&args.DryRun, "dry-run", false, "Perform a dry run without making any changes")
 	rootCmd.Flags().IntVarP(&timeout, "timeout", "t", 30, "Timeout in seconds for GitLab API requests")
-	rootCmd.Flags().IntVarP(&args.Concurrency, "concurrency", "c", 10, "Max number of concurrent requests")
 	rootCmd.Flags().IntVarP(&args.Retry, "retry", "r", 3, "Number of retries for failed requests")
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
+		zap.L().Error(err.Error())
 		os.Exit(1)
 	}
 }
@@ -118,16 +110,37 @@ func promptForMandatoryInput(defaultValue string, prompt string, errorMsg string
 		if !promptsDisabled {
 			input = strings.TrimSpace(promptForInput(prompt))
 			if input == "" {
-				log.Fatal(errorMsg)
+				zap.L().Fatal(errorMsg)
 			}
 			if !hideOutput {
-				utils.LogVerbose(loggerMsg + ": " + input)
+				zap.L().Debug(loggerMsg + ": " + input)
 			} else {
-				utils.LogVerbose(loggerMsg)
+				zap.L().Debug(loggerMsg)
 			}
 		} else {
-			log.Fatalf("Prompting is disabled, %s", errorMsg)
+			zap.L().Sugar().Fatal("Prompting is disabled, %s", errorMsg)
 		}
 	}
 	return input
+}
+
+func setupZapLogger(verbose bool) {
+	// Set up the logger configuration
+	config := zap.NewProductionConfig()
+	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	config.EncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+	if verbose {
+		config.Level.SetLevel(zapcore.DebugLevel)
+	} else {
+		config.Level.SetLevel(zapcore.InfoLevel)
+	}
+
+	// Create the logger
+	logger, err := config.Build()
+	if err != nil {
+		zap.L().Fatal("Failed to create logger: " + err.Error())
+	}
+
+	// Set the global logger
+	zap.ReplaceGlobals(logger)
 }

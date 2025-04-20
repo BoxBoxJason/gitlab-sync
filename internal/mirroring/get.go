@@ -2,14 +2,14 @@ package mirroring
 
 import (
 	"fmt"
-	"log"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"gitlab-sync/utils"
+	"gitlab-sync/internal/utils"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
+	"go.uber.org/zap"
 )
 
 func (g *GitlabInstance) fetchProjects(projectFilters *map[string]bool, groupFilters *map[string]bool, mirrorMapping *utils.MirrorMapping, isSource bool) error {
@@ -17,30 +17,23 @@ func (g *GitlabInstance) fetchProjects(projectFilters *map[string]bool, groupFil
 	if !isSource {
 		sourceString = "destination"
 	}
-	utils.LogVerbosef("Fetching all projects from %s GitLab instance", sourceString)
+	zap.L().Sugar().Debugf("Fetching all projects from %s GitLab instance", sourceString)
 	projects, _, err := g.Gitlab.Projects.ListProjects(nil)
 	if err != nil {
 		return err
 	}
 
-	utils.LogVerbosef("Processing %d projects from %s GitLab instance", len(projects), sourceString)
+	zap.L().Sugar().Debugf("Processing %d projects from %s GitLab instance", len(projects), sourceString)
 
 	// Create a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup
 
-	// Create a channel to limit the number of concurrent goroutines
-	concurrencyLimit := 10
-	sem := make(chan struct{}, concurrencyLimit)
-
 	for _, project := range projects {
 		wg.Add(1)
 		// Acquire a token from the semaphore
-		sem <- struct{}{}
 
 		go func(project *gitlab.Project) {
 			defer wg.Done()
-			// Release the token back to the semaphore
-			defer func() { <-sem }()
 
 			// Check if the project matches the filters:
 			//   - either is in the projects map
@@ -57,13 +50,13 @@ func (g *GitlabInstance) fetchProjects(projectFilters *map[string]bool, groupFil
 							// Retrieve the corresponding group creation options from the mirror mapping
 							groupCreationOptions, ok := mirrorMapping.Groups[group]
 							if !ok {
-								log.Fatalf("Group %s not found in mirror mapping (internal error, please review script)", group)
+								zap.L().Sugar().Errorf("Group %s not found in mirror mapping (internal error, please review script)", group)
 							}
 
 							// Calculate the relative path between the project and the group
 							relativePath, err := filepath.Rel(group, project.PathWithNamespace)
 							if err != nil {
-								log.Fatalf("Failed to calculate relative path for project %s: %s", project.PathWithNamespace, err)
+								zap.L().Sugar().Errorf("Failed to calculate relative path for project %s: %s", project.PathWithNamespace, err)
 							}
 
 							// Add the project to the mirror mapping
@@ -85,7 +78,7 @@ func (g *GitlabInstance) fetchProjects(projectFilters *map[string]bool, groupFil
 
 	wg.Wait()
 
-	utils.LogVerbosef("Found %d projects to mirror in the %s GitLab instance", len(g.Projects), sourceString)
+	zap.L().Sugar().Debugf("Found %d projects to mirror in the %s GitLab instance", len(g.Projects), sourceString)
 
 	return nil
 }
@@ -95,30 +88,22 @@ func (g *GitlabInstance) fetchGroups(groupFilters *map[string]bool, mirrorMappin
 	if !isSource {
 		sourceString = "destination"
 	}
-	utils.LogVerbosef("Fetching all groups from %s GitLab instance", sourceString)
+	zap.L().Sugar().Debugf("Fetching all groups from %s GitLab instance", sourceString)
 	groups, _, err := g.Gitlab.Groups.ListGroups(nil)
 	if err != nil {
 		return err
 	}
 
-	utils.LogVerbosef("Processing %d groups from %s GitLab instance", len(groups), sourceString)
+	zap.L().Sugar().Debugf("Processing %d groups from %s GitLab instance", len(groups), sourceString)
 
 	// Create a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup
 
-	// Create a channel to limit the number of concurrent goroutines
-	concurrencyLimit := 10
-	sem := make(chan struct{}, concurrencyLimit)
-
 	for _, group := range groups {
 		wg.Add(1)
-		// Acquire a token from the semaphore
-		sem <- struct{}{}
 
 		go func(group *gitlab.Group) {
 			defer wg.Done()
-			// Release the token back to the semaphore
-			defer func() { <-sem }()
 
 			// Check if the group matches the filters:
 			//   - either is in the groups map
@@ -136,13 +121,13 @@ func (g *GitlabInstance) fetchGroups(groupFilters *map[string]bool, mirrorMappin
 							// Retrieve the corresponding group creation options from the mirror mapping
 							groupCreationOptions, ok := mirrorMapping.Groups[groupPath]
 							if !ok {
-								log.Fatalf("Group %s not found in mirror mapping (internal error, please review script)", groupPath)
+								zap.L().Sugar().Fatalf("Group %s not found in mirror mapping (internal error, please review script)", groupPath)
 							}
 
 							// Calculate the relative path between the group and the groupPath
 							relativePath, err := filepath.Rel(groupPath, group.FullPath)
 							if err != nil {
-								log.Fatalf("Failed to calculate relative path for group %s: %s", group.FullPath, err)
+								zap.L().Sugar().Fatalf("Failed to calculate relative path for group %s: %s", group.FullPath, err)
 							}
 
 							// Add the group to the mirror mapping
@@ -164,7 +149,7 @@ func (g *GitlabInstance) fetchGroups(groupFilters *map[string]bool, mirrorMappin
 
 	wg.Wait()
 
-	utils.LogVerbosef("Found %d matching groups in %s GitLab instance", len(g.Groups), sourceString)
+	zap.L().Sugar().Debugf("Found %d matching groups in %s GitLab instance", len(g.Groups), sourceString)
 
 	return nil
 }

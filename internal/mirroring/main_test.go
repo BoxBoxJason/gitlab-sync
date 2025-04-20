@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"gitlab-sync/utils"
+	"gitlab-sync/internal/utils"
 )
 
 func TestProcessFilters(t *testing.T) {

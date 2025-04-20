@@ -2,11 +2,12 @@ package mirroring
 
 import (
 	"fmt"
-	"log"
 	"path/filepath"
 	"sync"
 
-	"gitlab-sync/utils"
+	"gitlab-sync/internal/utils"
+
+	"go.uber.org/zap"
 )
 
 func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
@@ -43,14 +44,14 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
 
 	// In case of dry run, simply print the groups and projects that would be created or updated
 	if gitlabMirrorArgs.DryRun {
-		log.Println("Dry run mode enabled, will not create groups or projects")
-		fmt.Println("Groups that will be created (or updated if they already exist):")
+		zap.L().Info("Dry run mode enabled, will not create groups or projects")
+		zap.L().Info("Groups that will be created (or updated if they already exist):")
 		for sourceGroupPath, copyOptions := range gitlabMirrorArgs.MirrorMapping.Groups {
 			if sourceGitlabInstance.Groups[sourceGroupPath] != nil {
 				fmt.Printf("  - %s (source gitlab) -> %s (destination gitlab)\n", sourceGroupPath, copyOptions.DestinationPath)
 			}
 		}
-		fmt.Println("Projects that will be created (or updated if they already exist):")
+		zap.L().Info("Projects that will be created (or updated if they already exist):")
 		for sourceProjectPath, copyOptions := range gitlabMirrorArgs.MirrorMapping.Projects {
 			if sourceGitlabInstance.Projects[sourceProjectPath] != nil {
 				fmt.Printf("  - %s (source gitlab) -> %s (destination gitlab)\n", sourceProjectPath, copyOptions.DestinationPath)

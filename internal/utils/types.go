@@ -16,6 +16,7 @@ import (
 	"time"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
+	"go.uber.org/zap"
 )
 
 // ParserArgs defines the command line arguments
@@ -39,7 +40,6 @@ type ParserArgs struct {
 	DryRun                 bool
 	Timeout                time.Duration
 	Retry                  int
-	Concurrency            int
 }
 
 // ProjectMirrorOptions defines how the project should be mirrored
@@ -205,7 +205,7 @@ func (g *GraphQLClient) SendRequest(request *GraphQLRequest, method string) (str
 	if err != nil {
 		return "", err
 	}
-	LogVerbosef("Sending GraphQL request to %s with body: %s", g.URL, string(requestBody))
+	zap.L().Sugar().Debugf("Sending GraphQL request to %s with body: %s", g.URL, string(requestBody))
 	req, err := http.NewRequestWithContext(context.Background(), method, g.URL, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return "", err

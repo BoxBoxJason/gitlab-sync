@@ -5,13 +5,14 @@ import (
 	"sync"
 	"time"
 
-	"gitlab-sync/utils"
+	"gitlab-sync/internal/utils"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
+	"go.uber.org/zap"
 )
 
 func (g *GitlabInstance) enableProjectMirrorPull(sourceProject *gitlab.Project, destinationProject *gitlab.Project, mirrorOptions *utils.MirroringOptions) error {
-	utils.LogVerbosef("Enabling pull mirror for project %s", destinationProject.PathWithNamespace)
+	zap.L().Sugar().Debugf("Enabling pull mirror for project %s", destinationProject.PathWithNamespace)
 	_, _, err := g.Gitlab.Projects.ConfigureProjectPullMirror(destinationProject.ID, &gitlab.ConfigureProjectPullMirrorOptions{
 		URL:                              &sourceProject.HTTPURLToRepo,
 		OnlyMirrorProtectedBranches:      gitlab.Ptr(true),
@@ -23,7 +24,7 @@ func (g *GitlabInstance) enableProjectMirrorPull(sourceProject *gitlab.Project, 
 }
 
 func (g *GitlabInstance) addProjectToCICDCatalog(project *gitlab.Project) error {
-	utils.LogVerbosef("Adding project %s to CI/CD catalog", project.PathWithNamespace)
+	zap.L().Sugar().Debugf("Adding project %s to CI/CD catalog", project.PathWithNamespace)
 	mutation := `
     mutation {
         catalogResourcesCreate(input: { projectPath: "%s" }) {
@@ -38,15 +39,15 @@ func (g *GitlabInstance) addProjectToCICDCatalog(project *gitlab.Project) error 
 }
 
 func (g *GitlabInstance) copyProjectAvatar(destinationGitlabInstance *GitlabInstance, destinationProject *gitlab.Project, sourceProject *gitlab.Project) error {
-	utils.LogVerbosef("Checking if project avatar is already set for %s", destinationProject.PathWithNamespace)
+	zap.L().Sugar().Debugf("Checking if project avatar is already set for %s", destinationProject.PathWithNamespace)
 
 	// Check if the destination project already has an avatar
 	if destinationProject.AvatarURL != "" {
-		utils.LogVerbosef("Project %s already has an avatar set, skipping.", destinationProject.PathWithNamespace)
+		zap.L().Sugar().Debugf("Project %s already has an avatar set, skipping.", destinationProject.PathWithNamespace)
 		return nil
 	}
 
-	utils.LogVerbosef("Copying project avatar for %s", destinationProject.PathWithNamespace)
+	zap.L().Sugar().Debugf("Copying project avatar for %s", destinationProject.PathWithNamespace)
 
 	// Download the source project avatar
 	sourceProjectAvatar, _, err := g.Gitlab.Projects.DownloadAvatar(sourceProject.ID)
@@ -65,15 +66,15 @@ func (g *GitlabInstance) copyProjectAvatar(destinationGitlabInstance *GitlabInst
 }
 
 func (g *GitlabInstance) copyGroupAvatar(destinationGitlabInstance *GitlabInstance, destinationGroup *gitlab.Group, sourceGroup *gitlab.Group) error {
-	utils.LogVerbosef("Checking if group avatar is already set for %s", destinationGroup.FullPath)
+	zap.L().Sugar().Debugf("Checking if group avatar is already set for %s", destinationGroup.FullPath)
 
 	// Check if the destination group already has an avatar
 	if destinationGroup.AvatarURL != "" {
-		utils.LogVerbosef("Group %s already has an avatar set, skipping.", destinationGroup.FullPath)
+		zap.L().Sugar().Debugf("Group %s already has an avatar set, skipping.", destinationGroup.FullPath)
 		return nil
 	}
 
-	utils.LogVerbosef("Copying group avatar for %s", destinationGroup.FullPath)
+	zap.L().Sugar().Debugf("Copying group avatar for %s", destinationGroup.FullPath)
 
 	// Download the source group avatar
 	sourceGroupAvatar, _, err := g.Gitlab.Groups.DownloadAvatar(sourceGroup.ID)
@@ -105,10 +106,8 @@ func (g *GitlabInstance) updateProjectFromSource(sourceGitlab *GitlabInstance, s
 
 	go func() {
 		defer wg.Done()
-		// Manage concurrency for enabling project mirror pull
-		utils.ConcurrencyManager.Acquire()
-		defer utils.ConcurrencyManager.Release()
-		utils.LogVerbosef("Enabling project %s mirror pull", destinationProject.PathWithNamespace)
+
+		zap.L().Sugar().Debugf("Enabling project %s mirror pull", destinationProject.PathWithNamespace)
 		err := g.enableProjectMirrorPull(sourceProject, destinationProject, copyOptions)
 		if err != nil {
 			errorChan <- fmt.Errorf("Failed to enable project mirror pull for %s: %s", destinationProject.PathWithNamespace, err)
@@ -117,10 +116,7 @@ func (g *GitlabInstance) updateProjectFromSource(sourceGitlab *GitlabInstance, s
 
 	go func() {
 		defer wg.Done()
-		// Manage concurrency for copying project avatar
-		utils.ConcurrencyManager.Acquire()
-		defer utils.ConcurrencyManager.Release()
-		utils.LogVerbosef("Copying project %s avatar", destinationProject.PathWithNamespace)
+		zap.L().Sugar().Debugf("Copying project %s avatar", destinationProject.PathWithNamespace)
 		err := sourceGitlab.copyProjectAvatar(g, destinationProject, sourceProject)
 		if err != nil {
 			errorChan <- fmt.Errorf("Failed to copy project avatar for %s: %s", destinationProject.PathWithNamespace, err)
@@ -130,10 +126,7 @@ func (g *GitlabInstance) updateProjectFromSource(sourceGitlab *GitlabInstance, s
 	if copyOptions.CI_CD_Catalog {
 		go func() {
 			defer wg.Done()
-			// Manage concurrency for adding project to CI/CD catalog
-			utils.ConcurrencyManager.Acquire()
-			defer utils.ConcurrencyManager.Release()
-			utils.LogVerbosef("Adding project %s to CI/CD catalog", destinationProject.PathWithNamespace)
+			zap.L().Sugar().Debugf("Adding project %s to CI/CD catalog", destinationProject.PathWithNamespace)
 			err := g.addProjectToCICDCatalog(destinationProject)
 			if err != nil {
 				errorChan <- fmt.Errorf("Failed to add project %s to CI/CD catalog: %s", destinationProject.PathWithNamespace, err)
@@ -144,7 +137,7 @@ func (g *GitlabInstance) updateProjectFromSource(sourceGitlab *GitlabInstance, s
 	if copyOptions.MirrorReleases {
 		go func() {
 			defer wg.Done()
-			utils.LogVerbosef("Copying project %s releases", destinationProject.PathWithNamespace)
+			zap.L().Sugar().Debugf("Copying project %s releases", destinationProject.PathWithNamespace)
 			err := g.mirrorReleases(sourceProject, destinationProject)
 			if err != nil {
 				errorChan <- fmt.Errorf("Failed to copy project %s releases: %s", destinationProject.PathWithNamespace, err)

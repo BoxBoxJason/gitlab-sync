@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"gitlab-sync/utils"
+	"gitlab-sync/internal/utils"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )

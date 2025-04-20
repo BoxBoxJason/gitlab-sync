@@ -1,18 +1,19 @@
 package mirroring
 
 import (
+	"errors"
 	"fmt"
-	"log"
 	"sort"
 	"sync"
 
-	"gitlab-sync/utils"
+	"gitlab-sync/internal/utils"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
+	"go.uber.org/zap"
 )
 
 func createGroups(sourceGitlab *GitlabInstance, destinationGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping) error {
-	utils.LogVerbose("Creating groups in destination GitLab")
+	zap.L().Debug("Creating groups in destination GitLab")
 	// Reverse the mirror mapping to get the source group path for each destination group
 	reversedMirrorMap := make(map[string]string, len(mirrorMapping.Groups))
 	// Extract the keys (group paths) and sort them
@@ -29,17 +30,17 @@ func createGroups(sourceGitlab *GitlabInstance, destinationGitlab *GitlabInstanc
 	for _, destinationGroupPath := range destinationGroupPaths {
 		// Retrieve the corresponding source group path
 		sourceGroupPath := reversedMirrorMap[destinationGroupPath]
-		utils.LogVerbosef("Mirroring group from source %s to destination %s", sourceGroupPath, destinationGroupPath)
+		zap.L().Sugar().Debugf("Mirroring group from source %s to destination %s", sourceGroupPath, destinationGroupPath)
 		sourceGroup := sourceGitlab.Groups[sourceGroupPath]
 		if sourceGroup == nil {
-			errorChan <- fmt.Errorf("Group %s not found in destination GitLab instance (internal error, please review script)", sourceGroupPath)
+			errorChan <- fmt.Errorf("group %s not found in destination GitLab instance (internal error, please review script)", sourceGroupPath)
 			continue
 		}
 
 		// Retrieve the corresponding group creation options from the mirror mapping
 		groupCreationOptions, ok := mirrorMapping.Groups[sourceGroupPath]
 		if !ok {
-			errorChan <- fmt.Errorf("Source Group %s not found in mirror mapping (internal error, please review script)", sourceGroupPath)
+			errorChan <- fmt.Errorf("source group %s not found in mirror mapping (internal error, please review script)", sourceGroupPath)
 			continue
 		}
 
@@ -47,17 +48,17 @@ func createGroups(sourceGitlab *GitlabInstance, destinationGitlab *GitlabInstanc
 		destinationGroup := destinationGitlab.getGroup(destinationGroupPath)
 		var err error
 		if destinationGroup != nil {
-			utils.LogVerbosef("Group %s already exists, skipping creation", destinationGroupPath)
+			zap.L().Sugar().Debugf("Group %s already exists, skipping creation", destinationGroupPath)
 		} else {
-			utils.LogVerbosef("Creating group %s in destination GitLab instance", destinationGroupPath)
+			zap.L().Sugar().Debugf("Creating group %s in destination GitLab instance", destinationGroupPath)
 			destinationGroup, err = destinationGitlab.createGroupFromSource(sourceGroup, groupCreationOptions)
 			if err != nil {
-				errorChan <- fmt.Errorf("Failed to create group %s in destination GitLab instance: %s", destinationGroupPath, err)
+				errorChan <- fmt.Errorf("failed to create group %s in destination GitLab instance: %s", destinationGroupPath, err)
 				continue
 			} else {
 				err = sourceGitlab.copyGroupAvatar(destinationGitlab, destinationGroup, sourceGroup)
 				if err != nil {
-					errorChan <- fmt.Errorf("Failed to copy group avatar for %s: %s", destinationGroupPath, err)
+					errorChan <- fmt.Errorf("failed to copy group avatar for %s: %s", destinationGroupPath, err)
 				}
 			}
 		}
@@ -68,7 +69,7 @@ func createGroups(sourceGitlab *GitlabInstance, destinationGitlab *GitlabInstanc
 }
 
 func createProjects(sourceGitlab *GitlabInstance, destinationGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping) error {
-	utils.LogVerbose("Creating projects in destination GitLab instance")
+	zap.L().Debug("Creating projects in destination GitLab instance")
 
 	// Reverse the mirror mapping to get the source project path for each destination project
 	reversedMirrorMap := make(map[string]string, len(mirrorMapping.Projects))
@@ -83,10 +84,10 @@ func createProjects(sourceGitlab *GitlabInstance, destinationGitlab *GitlabInsta
 	errorChan := make(chan error, len(reversedMirrorMap))
 
 	for destinationProjectPath, sourceProjectPath := range reversedMirrorMap {
-		utils.LogVerbosef("Mirroring project from source %s to destination %s", sourceProjectPath, destinationProjectPath)
+		zap.L().Sugar().Debugf("Mirroring project from source %s to destination %s", sourceProjectPath, destinationProjectPath)
 		sourceProject := sourceGitlab.Projects[sourceProjectPath]
 		if sourceProject == nil {
-			errorChan <- fmt.Errorf("Project %s not found in source GitLab instance (internal error, please review script)", sourceProjectPath)
+			errorChan <- fmt.Errorf("project %s not found in source GitLab instance (internal error, please review script)", sourceProjectPath)
 			continue
 		}
 		wg.Add(1)
@@ -97,7 +98,7 @@ func createProjects(sourceGitlab *GitlabInstance, destinationGitlab *GitlabInsta
 			// Retrieve the corresponding project creation options from the mirror mapping
 			projectCreationOptions, ok := mirrorMapping.Projects[sourcePath]
 			if !ok {
-				errorChan <- fmt.Errorf("Project %s not found in mirror mapping (internal error, please review script)", sourcePath)
+				errorChan <- fmt.Errorf("project %s not found in mirror mapping (internal error, please review script)", sourcePath)
 				return
 			}
 
@@ -105,27 +106,27 @@ func createProjects(sourceGitlab *GitlabInstance, destinationGitlab *GitlabInsta
 			destinationProject := destinationGitlab.getProject(destinationPath)
 			var err error
 			if destinationProject != nil {
-				utils.LogVerbosef("Project %s already exists, skipping creation", destinationPath)
+				zap.L().Sugar().Debugf("project %s already exists, skipping creation", destinationPath)
 			} else {
 				sourceProject := sourceGitlab.Projects[sourcePath]
 				if sourceProject == nil {
-					errorChan <- fmt.Errorf("Project %s not found in source GitLab instance (internal error, please review script)", sourcePath)
+					errorChan <- fmt.Errorf("project %s not found in source GitLab instance (internal error, please review script)", sourcePath)
 					return
 				}
 				destinationProject, err = destinationGitlab.createProjectFromSource(sourceProject, projectCreationOptions)
 				if err != nil {
-					errorChan <- fmt.Errorf("Failed to create project %s in destination GitLab instance: %s", destinationPath, err)
+					errorChan <- fmt.Errorf("failed to create project %s in destination GitLab instance: %s", destinationPath, err)
 					return
 				}
 			}
 
 			err = destinationGitlab.updateProjectFromSource(sourceGitlab, sourceProject, destinationProject, projectCreationOptions)
 			if err != nil {
-				errorChan <- fmt.Errorf("Failed to update project %s in destination GitLab instance: %s", destinationPath, err)
+				errorChan <- fmt.Errorf("failed to update project %s in destination GitLab instance: %s", destinationPath, err)
 				return
 			}
 
-			log.Printf("Completed mirroring project to %s", destinationPath)
+			zap.L().Info("Completed mirroring project to " + destinationPath)
 		}(sourceProjectPath, destinationProjectPath)
 	}
 
@@ -136,57 +137,35 @@ func createProjects(sourceGitlab *GitlabInstance, destinationGitlab *GitlabInsta
 }
 
 func (g *GitlabInstance) createProjectFromSource(sourceProject *gitlab.Project, copyOptions *utils.MirroringOptions) (*gitlab.Project, error) {
-	// Create a wait group and error channel for error handling
-	var wg sync.WaitGroup
-	errorChan := make(chan error, 1)
-
 	// Define the API call logic
-	apiFunc := func() error {
-		projectCreationArgs := &gitlab.CreateProjectOptions{
-			Name:                &sourceProject.Name,
-			Path:                &sourceProject.Path,
-			DefaultBranch:       &sourceProject.DefaultBranch,
-			Description:         &sourceProject.Description,
-			MirrorTriggerBuilds: &copyOptions.MirrorTriggerBuilds,
-			Mirror:              gitlab.Ptr(true),
-			Topics:              &sourceProject.Topics,
-			Visibility:          gitlab.Ptr(gitlab.VisibilityValue(copyOptions.Visibility)),
-		}
-
-		utils.LogVerbosef("Retrieving project namespace ID for %s", copyOptions.DestinationPath)
-		parentNamespaceId, err := g.getParentNamespaceID(copyOptions.DestinationPath)
-		if err != nil {
-			return err
-		} else if parentNamespaceId >= 0 {
-			projectCreationArgs.NamespaceID = &parentNamespaceId
-		}
-
-		utils.LogVerbosef("Creating project %s in destination GitLab instance", copyOptions.DestinationPath)
-		destinationProject, _, err := g.Gitlab.Projects.CreateProject(projectCreationArgs)
-		if err != nil {
-			return err
-		}
-		utils.LogVerbosef("Project %s created successfully", destinationProject.PathWithNamespace)
-		g.addProject(copyOptions.DestinationPath, destinationProject)
-
-		return nil
+	projectCreationArgs := &gitlab.CreateProjectOptions{
+		Name:                &sourceProject.Name,
+		Path:                &sourceProject.Path,
+		DefaultBranch:       &sourceProject.DefaultBranch,
+		Description:         &sourceProject.Description,
+		MirrorTriggerBuilds: &copyOptions.MirrorTriggerBuilds,
+		Mirror:              gitlab.Ptr(true),
+		Topics:              &sourceProject.Topics,
+		Visibility:          gitlab.Ptr(gitlab.VisibilityValue(copyOptions.Visibility)),
 	}
 
-	// Increment the wait group counter and execute the API call
-	wg.Add(1)
-	go utils.ExecuteWithConcurrency(apiFunc, &wg, errorChan)
-
-	// Wait for the API call to complete
-	wg.Wait()
-	close(errorChan)
-
-	// Check for errors
-	select {
-	case err := <-errorChan:
+	zap.L().Sugar().Debugf("Retrieving project namespace ID for %s", copyOptions.DestinationPath)
+	parentNamespaceId, err := g.getParentNamespaceID(copyOptions.DestinationPath)
+	if err != nil {
 		return nil, err
-	default:
-		return nil, nil
+	} else if parentNamespaceId >= 0 {
+		projectCreationArgs.NamespaceID = &parentNamespaceId
 	}
+
+	zap.L().Sugar().Debugf("Creating project %s in destination GitLab instance", copyOptions.DestinationPath)
+	destinationProject, _, err := g.Gitlab.Projects.CreateProject(projectCreationArgs)
+	if err != nil {
+		return nil, err
+	}
+	zap.L().Sugar().Debugf("Project %s created successfully", destinationProject.PathWithNamespace)
+	g.addProject(copyOptions.DestinationPath, destinationProject)
+
+	return destinationProject, nil
 }
 
 func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOptions *utils.MirroringOptions) (*gitlab.Group, error) {
@@ -214,8 +193,7 @@ func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOp
 }
 
 func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinationProject *gitlab.Project) error {
-	utils.LogVerbosef("Starting releases mirroring for project %s", destinationProject.HTTPURLToRepo)
-
+	zap.L().Sugar().Debugf("Starting releases mirroring for project %s", destinationProject.HTTPURLToRepo)
 	// Fetch existing releases from the destination project
 	existingReleases, _, err := g.Gitlab.Releases.ListReleases(destinationProject.ID, &gitlab.ListReleasesOptions{})
 	if err != nil {
@@ -242,7 +220,7 @@ func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinati
 	for _, release := range sourceReleases {
 		// Check if the release already exists in the destination project
 		if existingReleaseTags[release.TagName] {
-			utils.LogVerbosef("Release %s already exists in destination project %s, skipping.", release.TagName, destinationProject.PathWithNamespace)
+			zap.L().Sugar().Debugf("Release %s already exists in destination project %s, skipping.", release.TagName, destinationProject.PathWithNamespace)
 			continue
 		}
 
@@ -251,8 +229,9 @@ func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinati
 
 		// Define the API call logic for creating a release
 		releaseToMirror := release // Capture the current release in the loop
-		go utils.ExecuteWithConcurrency(func() error {
-			utils.LogVerbosef("Mirroring release %s to project %s", releaseToMirror.TagName, destinationProject.PathWithNamespace)
+		go func() {
+			defer wg.Done()
+			zap.L().Sugar().Debugf("Mirroring release %s to project %s", releaseToMirror.TagName, destinationProject.PathWithNamespace)
 
 			// Create the release in the destination project
 			_, _, err := g.Gitlab.Releases.CreateRelease(destinationProject.ID, &gitlab.CreateReleaseOptions{
@@ -262,12 +241,11 @@ func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinati
 				ReleasedAt:  releaseToMirror.ReleasedAt,
 			})
 			if err != nil {
-				utils.LogVerbosef("Failed to create release %s in project %s: %s", releaseToMirror.TagName, destinationProject.PathWithNamespace, err)
-				return fmt.Errorf("Failed to create release %s in project %s: %s", releaseToMirror.TagName, destinationProject.PathWithNamespace, err)
+				errMsg := fmt.Sprintf("Failed to create release %s in project %s: %s", releaseToMirror.TagName, destinationProject.PathWithNamespace, err)
+				zap.L().Debug(errMsg)
+				errorChan <- errors.New(errMsg)
 			}
-
-			return nil
-		}, &wg, errorChan)
+		}()
 	}
 
 	// Wait for all goroutines to finish
@@ -288,6 +266,6 @@ func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinati
 		return combinedError
 	}
 
-	utils.LogVerbosef("Releases mirroring completed for project %s", destinationProject.HTTPURLToRepo)
+	zap.L().Sugar().Debugf("Releases mirroring completed for project %s", destinationProject.HTTPURLToRepo)
 	return nil
 }

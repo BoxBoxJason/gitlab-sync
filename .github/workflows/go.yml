@@ -13,9 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24.2'
+          go-version: "1.24.2"
       - run: go mod tidy
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
@@ -23,16 +25,17 @@ jobs:
           version: v2.0
         continue-on-error: true
 
-
   gosec:
     runs-on: ubuntu-latest
     env:
       GO111MODULE: on
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24.2'
+          go-version: "1.24.2"
       - run: go mod tidy
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
@@ -40,14 +43,13 @@ jobs:
           args: ./...
         continue-on-error: true
 
-
   gotestsum:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.24.2'
+          go-version: "1.24.2"
       - run: go mod tidy
       - name: go-test
         run: |

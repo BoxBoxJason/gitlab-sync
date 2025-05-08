@@ -11,8 +11,10 @@ import (
 	"go.uber.org/zap"
 )
 
+// enableProjectMirrorPull enables the pull mirror for a project in the destination GitLab instance.
+// It sets the source project URL, enables mirroring, and configures other options like triggering builds and overwriting diverged branches.
 func (g *GitlabInstance) enableProjectMirrorPull(sourceProject *gitlab.Project, destinationProject *gitlab.Project, mirrorOptions *utils.MirroringOptions) error {
-	zap.L().Sugar().Debugf("Enabling pull mirror for project %s", destinationProject.PathWithNamespace)
+	zap.L().Debug("Enabling project mirror pull", zap.String("sourceProject", sourceProject.HTTPURLToRepo), zap.String("destinationProject", destinationProject.HTTPURLToRepo))
 	_, _, err := g.Gitlab.Projects.ConfigureProjectPullMirror(destinationProject.ID, &gitlab.ConfigureProjectPullMirrorOptions{
 		URL:                              &sourceProject.HTTPURLToRepo,
 		OnlyMirrorProtectedBranches:      gitlab.Ptr(true),
@@ -23,8 +25,12 @@ func (g *GitlabInstance) enableProjectMirrorPull(sourceProject *gitlab.Project, 
 	return err
 }
 
+// addProjectToCICDCatalog adds a project to the CI/CD catalog in the destination GitLab instance.
+// It uses a GraphQL mutation to create the catalog resource for the project.
+//
+// NOTE: This function needs to be changed as soon as the gitlab SDK supports the GraphQL API.
 func (g *GitlabInstance) addProjectToCICDCatalog(project *gitlab.Project) error {
-	zap.L().Sugar().Debugf("Adding project %s to CI/CD catalog", project.PathWithNamespace)
+	zap.L().Debug("Adding project to CI/CD catalog", zap.String("project", project.HTTPURLToRepo))
 	mutation := `
     mutation {
         catalogResourcesCreate(input: { projectPath: "%s" }) {
@@ -38,61 +44,75 @@ func (g *GitlabInstance) addProjectToCICDCatalog(project *gitlab.Project) error 
 	return err
 }
 
-func (g *GitlabInstance) copyProjectAvatar(destinationGitlabInstance *GitlabInstance, destinationProject *gitlab.Project, sourceProject *gitlab.Project) error {
-	zap.L().Sugar().Debugf("Checking if project avatar is already set for %s", destinationProject.PathWithNamespace)
+// copyProjectAvatar copies the avatar from the source project to the destination project.
+// It first checks if the destination project already has an avatar set. If not, it downloads the avatar from the source project
+// and uploads it to the destination project.
+// The avatar is saved with a unique filename based on the current timestamp.
+// The function returns an error if any step fails, including downloading or uploading the avatar.
+func (sourceGitlabInstance *GitlabInstance) copyProjectAvatar(destinationGitlabInstance *GitlabInstance, destinationProject *gitlab.Project, sourceProject *gitlab.Project) error {
+	zap.L().Debug("Checking if project avatar is already set", zap.String("project", destinationProject.HTTPURLToRepo))
 
 	// Check if the destination project already has an avatar
 	if destinationProject.AvatarURL != "" {
-		zap.L().Sugar().Debugf("Project %s already has an avatar set, skipping.", destinationProject.PathWithNamespace)
+		zap.L().Debug("Project already has an avatar set, skipping.", zap.String("project", destinationProject.HTTPURLToRepo), zap.String("path", destinationProject.AvatarURL))
 		return nil
 	}
 
-	zap.L().Sugar().Debugf("Copying project avatar for %s", destinationProject.PathWithNamespace)
+	zap.L().Debug("Copying project avatar", zap.String("source", sourceProject.HTTPURLToRepo), zap.String("destination", destinationProject.HTTPURLToRepo))
 
 	// Download the source project avatar
-	sourceProjectAvatar, _, err := g.Gitlab.Projects.DownloadAvatar(sourceProject.ID)
+	sourceProjectAvatar, _, err := sourceGitlabInstance.Gitlab.Projects.DownloadAvatar(sourceProject.ID)
 	if err != nil {
-		return fmt.Errorf("failed to download avatar for project %s: %s", sourceProject.PathWithNamespace, err)
+		return fmt.Errorf("failed to download avatar for project %s: %s", sourceProject.HTTPURLToRepo, err)
 	}
 
 	// Upload the avatar to the destination project
 	filename := fmt.Sprintf("avatar-%d.png", time.Now().Unix())
 	_, _, err = destinationGitlabInstance.Gitlab.Projects.UploadAvatar(destinationProject.ID, sourceProjectAvatar, filename)
 	if err != nil {
-		return fmt.Errorf("failed to upload avatar for project %s: %s", destinationProject.PathWithNamespace, err)
+		return fmt.Errorf("failed to upload avatar for project %s: %s", destinationProject.HTTPURLToRepo, err)
 	}
 
 	return nil
 }
 
-func (g *GitlabInstance) copyGroupAvatar(destinationGitlabInstance *GitlabInstance, destinationGroup *gitlab.Group, sourceGroup *gitlab.Group) error {
-	zap.L().Sugar().Debugf("Checking if group avatar is already set for %s", destinationGroup.FullPath)
+// copyGroupAvatar copies the avatar from the source group to the destination group.
+// It first checks if the destination group already has an avatar set. If not, it downloads the avatar from the source group
+// and uploads it to the destination group.
+// The avatar is saved with a unique filename based on the current timestamp.
+// The function returns an error if any step fails, including downloading or uploading the avatar.
+func (sourceGitlabInstance *GitlabInstance) copyGroupAvatar(destinationGitlabInstance *GitlabInstance, destinationGroup *gitlab.Group, sourceGroup *gitlab.Group) error {
+	zap.L().Debug("Checking if group avatar is already set", zap.String("group", destinationGroup.WebURL))
 
 	// Check if the destination group already has an avatar
 	if destinationGroup.AvatarURL != "" {
-		zap.L().Sugar().Debugf("Group %s already has an avatar set, skipping.", destinationGroup.FullPath)
+		zap.L().Debug("Group avatar already set", zap.String("group", destinationGroup.WebURL), zap.String("path", destinationGroup.AvatarURL))
 		return nil
 	}
 
-	zap.L().Sugar().Debugf("Copying group avatar for %s", destinationGroup.FullPath)
+	zap.L().Debug("Copying group avatar", zap.String("source", sourceGroup.WebURL), zap.String("destination", destinationGroup.WebURL))
 
 	// Download the source group avatar
-	sourceGroupAvatar, _, err := g.Gitlab.Groups.DownloadAvatar(sourceGroup.ID)
+	sourceGroupAvatar, _, err := sourceGitlabInstance.Gitlab.Groups.DownloadAvatar(sourceGroup.ID)
 	if err != nil {
-		return fmt.Errorf("failed to download avatar for group %s: %s", sourceGroup.FullPath, err)
+		return fmt.Errorf("failed to download avatar for group %s: %s", sourceGroup.WebURL, err)
 	}
 
 	// Upload the avatar to the destination group
 	filename := fmt.Sprintf("avatar-%d.png", time.Now().Unix())
 	_, _, err = destinationGitlabInstance.Gitlab.Groups.UploadAvatar(destinationGroup.ID, sourceGroupAvatar, filename)
 	if err != nil {
-		return fmt.Errorf("failed to upload avatar for group %s: %s", destinationGroup.FullPath, err)
+		return fmt.Errorf("failed to upload avatar for group %s: %s", destinationGroup.WebURL, err)
 	}
 
 	return nil
 }
 
-func (g *GitlabInstance) updateProjectFromSource(sourceGitlab *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) error {
+// updateProjectFromSource updates the destination project with settings from the source project.
+// It enables the project mirror pull, copies the project avatar, and optionally adds the project to the CI/CD catalog.
+// It also mirrors releases if the option is set.
+// The function uses goroutines to perform these tasks concurrently and waits for all of them to finish.
+func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceGitlabInstance *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) error {
 	wg := sync.WaitGroup{}
 	maxErrors := 2
 	if copyOptions.CI_CD_Catalog {
@@ -107,29 +127,28 @@ func (g *GitlabInstance) updateProjectFromSource(sourceGitlab *GitlabInstance, s
 	go func() {
 		defer wg.Done()
 
-		zap.L().Sugar().Debugf("Enabling project %s mirror pull", destinationProject.PathWithNamespace)
-		err := g.enableProjectMirrorPull(sourceProject, destinationProject, copyOptions)
+		zap.L().Debug("Enabling project mirror pull", zap.String("source", sourceProject.HTTPURLToRepo), zap.String("destination", destinationProject.HTTPURLToRepo))
+		err := destinationGitlabInstance.enableProjectMirrorPull(sourceProject, destinationProject, copyOptions)
 		if err != nil {
-			errorChan <- fmt.Errorf("Failed to enable project mirror pull for %s: %s", destinationProject.PathWithNamespace, err)
+			errorChan <- fmt.Errorf("failed to enable project mirror pull for %s: %s", destinationProject.HTTPURLToRepo, err)
 		}
 	}()
 
 	go func() {
 		defer wg.Done()
-		zap.L().Sugar().Debugf("Copying project %s avatar", destinationProject.PathWithNamespace)
-		err := sourceGitlab.copyProjectAvatar(g, destinationProject, sourceProject)
+		zap.L().Debug("Copying project avatar", zap.String("source", sourceProject.HTTPURLToRepo), zap.String("destination", destinationProject.HTTPURLToRepo))
+		err := sourceGitlabInstance.copyProjectAvatar(destinationGitlabInstance, destinationProject, sourceProject)
 		if err != nil {
-			errorChan <- fmt.Errorf("Failed to copy project avatar for %s: %s", destinationProject.PathWithNamespace, err)
+			errorChan <- fmt.Errorf("failed to copy project avatar for %s: %s", destinationProject.HTTPURLToRepo, err)
 		}
 	}()
 
 	if copyOptions.CI_CD_Catalog {
 		go func() {
 			defer wg.Done()
-			zap.L().Sugar().Debugf("Adding project %s to CI/CD catalog", destinationProject.PathWithNamespace)
-			err := g.addProjectToCICDCatalog(destinationProject)
+			err := destinationGitlabInstance.addProjectToCICDCatalog(destinationProject)
 			if err != nil {
-				errorChan <- fmt.Errorf("Failed to add project %s to CI/CD catalog: %s", destinationProject.PathWithNamespace, err)
+				errorChan <- fmt.Errorf("failed to add project %s to CI/CD catalog: %s", destinationProject.HTTPURLToRepo, err)
 			}
 		}()
 	}
@@ -137,10 +156,9 @@ func (g *GitlabInstance) updateProjectFromSource(sourceGitlab *GitlabInstance, s
 	if copyOptions.MirrorReleases {
 		go func() {
 			defer wg.Done()
-			zap.L().Sugar().Debugf("Copying project %s releases", destinationProject.PathWithNamespace)
-			err := g.mirrorReleases(sourceProject, destinationProject)
+			err := destinationGitlabInstance.mirrorReleases(sourceProject, destinationProject)
 			if err != nil {
-				errorChan <- fmt.Errorf("Failed to copy project %s releases: %s", destinationProject.PathWithNamespace, err)
+				errorChan <- fmt.Errorf("failed to copy project %s releases: %s", destinationProject.HTTPURLToRepo, err)
 			}
 		}()
 	}

@@ -36,18 +36,20 @@ func main() {
 			zap.L().Debug("Parsing command line arguments")
 
 			// Obtain the retry count
-			if args.Retry == -1 {
+			switch args.Retry {
+			case -1:
 				args.Retry = 10000
-			} else if args.Retry == 0 {
+			case 0:
 				zap.L().Fatal("retry count must be -1 (no limit) or strictly greater than 0")
 			}
 
 			// Set the timeout for GitLab API requests
-			if timeout == -1 {
+			switch timeout {
+			case -1:
 				args.Timeout = time.Duration(10000 * time.Second)
-			} else if timeout == 0 {
+			case 0:
 				zap.L().Fatal("timeout must be -1 (no limit) or strictly greater than 0")
-			} else {
+			default:
 				args.Timeout = time.Duration(timeout) * time.Second
 			}
 
@@ -67,7 +69,7 @@ func main() {
 			zap.L().Debug("Parsing mirror mapping file")
 			mapping, err := utils.OpenMirrorMapping(mirrorMappingPath)
 			if err != nil {
-				zap.L().Sugar().Fatalf("Error opening mirror mapping file: %s", err)
+				zap.L().Fatal("Error opening mirror mapping file", zap.Error(err))
 			}
 			zap.L().Debug("Mirror mapping file parsed successfully")
 			args.MirrorMapping = mapping
@@ -97,18 +99,27 @@ func main() {
 	}
 }
 
+// promptForInput prompts the user for input and returns the trimmed response.
+// It handles errors and prints a message if the input is empty.
+// If the input is empty, it will return an empty string.
 func promptForInput(prompt string) string {
 	var input string
 	fmt.Printf("%s: ", prompt)
-	fmt.Scanln(&input)
-	return input
+	_, err := fmt.Scanln(&input)
+	if err != nil {
+		zap.L().Fatal("Error reading input", zap.Error(err))
+	}
+	return strings.TrimSpace(input)
 }
 
+// promptForMandatoryInput prompts the user for mandatory input and returns the trimmed response.
+// If the input is empty, it will log a fatal error message and exit the program.
+// It also logs the input value if hideOutput is false.
 func promptForMandatoryInput(defaultValue string, prompt string, errorMsg string, loggerMsg string, promptsDisabled bool, hideOutput bool) string {
 	input := strings.TrimSpace(defaultValue)
 	if input == "" {
 		if !promptsDisabled {
-			input = strings.TrimSpace(promptForInput(prompt))
+			input = promptForInput(prompt)
 			if input == "" {
 				zap.L().Fatal(errorMsg)
 			}
@@ -118,12 +129,15 @@ func promptForMandatoryInput(defaultValue string, prompt string, errorMsg string
 				zap.L().Debug(loggerMsg)
 			}
 		} else {
-			zap.L().Sugar().Fatal("Prompting is disabled, %s", errorMsg)
+			zap.L().Fatal("Prompting is disabled")
 		}
 	}
 	return input
 }
 
+// setupZapLogger sets up the Zap logger with the specified verbosity level.
+// It configures the logger to use ISO8601 time format and capitalizes the log levels.
+// The logger is set to production mode by default, but can be configured for debug mode if verbose is true.
 func setupZapLogger(verbose bool) {
 	// Set up the logger configuration
 	config := zap.NewProductionConfig()

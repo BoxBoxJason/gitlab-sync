@@ -1,11 +1,61 @@
 package utils
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"reflect"
 	"testing"
+)
+
+const (
+	FAKE_VALID_PROJECT = "namespace/project"
+	FAKE_VALID_GROUP   = "group1"
+)
+
+var (
+	FAKE_VALID_MAPPPING = &MirrorMapping{
+		Projects: map[string]*MirroringOptions{
+			FAKE_VALID_PROJECT: {
+				DestinationPath:     FAKE_VALID_PROJECT,
+				CI_CD_Catalog:       true,
+				Issues:              true,
+				MirrorTriggerBuilds: false,
+				Visibility:          "private",
+			},
+		},
+		Groups: map[string]*MirroringOptions{
+			FAKE_VALID_GROUP: {
+				DestinationPath:     FAKE_VALID_GROUP,
+				CI_CD_Catalog:       true,
+				Issues:              true,
+				MirrorTriggerBuilds: false,
+				Visibility:          "private",
+			},
+		},
+	}
+
+	FAKE_VALID_MAPPING_RAW = fmt.Sprintf(`{
+		"projects": {
+			"%s": {
+				"destination_path": "%s",
+				"ci_cd_catalog": true,
+				"issues": true,
+				"mirror_trigger_builds": false,
+				"visibility": "private"
+			}
+		},
+		"groups": {
+			"%s": {
+				"destination_path": "%s",
+				"ci_cd_catalog": true,
+				"issues": true,
+				"mirror_trigger_builds": false,
+				"visibility": "private"
+			}
+		}
+	}`, FAKE_VALID_PROJECT, FAKE_VALID_PROJECT, FAKE_VALID_GROUP, FAKE_VALID_GROUP)
 )
 
 // testMirroringOptions is a helper function to create a MirroringOptions instance for testing
@@ -55,59 +105,9 @@ func TestAddGroup(t *testing.T) {
 
 // TestOpenMirrorMapping tests opening and parsing a JSON file into a MirrorMapping
 func TestOpenMirrorMapping(t *testing.T) {
-	expectedMapping := &MirrorMapping{
-		Projects: map[string]*MirroringOptions{
-			"project1": {
-				DestinationPath:     "http://example.com/project",
-				CI_CD_Catalog:       true,
-				Issues:              true,
-				MirrorTriggerBuilds: false,
-				Visibility:          "private",
-			},
-		},
-		Groups: map[string]*MirroringOptions{
-			"group1": {
-				DestinationPath:     "http://example.com/group",
-				CI_CD_Catalog:       true,
-				Issues:              true,
-				MirrorTriggerBuilds: false,
-				Visibility:          "private",
-			},
-		},
-	}
 
-	fileContent := `{
-		"projects": {
-			"project1": {
-				"destination_path": "http://example.com/project",
-				"ci_cd_catalog": true,
-				"issues": true,
-				"mirror_trigger_builds": false,
-				"visibility": "private"
-			}
-		},
-		"groups": {
-			"group1": {
-				"destination_path": "http://example.com/group",
-				"ci_cd_catalog": true,
-				"issues": true,
-				"mirror_trigger_builds": false,
-				"visibility": "private"
-			}
-		}
-	}`
-
-	file, err := os.CreateTemp("", "mirror_mapping_test.json")
-	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
+	file := createTempTestFile(FAKE_VALID_MAPPING_RAW, t)
 	defer os.Remove(file.Name())
-
-	if _, err := file.Write([]byte(fileContent)); err != nil {
-		t.Fatalf("failed to write to temp file: %v", err)
-	}
-
-	file.Close()
 
 	mapping, err := OpenMirrorMapping(file.Name())
 	if err != nil {
@@ -115,11 +115,11 @@ func TestOpenMirrorMapping(t *testing.T) {
 	}
 
 	// Check if projects and groups are equal
-	if len(mapping.Projects) != len(expectedMapping.Projects) || len(mapping.Groups) != len(expectedMapping.Groups) {
-		t.Fatalf("expected mapping to have %d projects and %d groups, got %d projects and %d groups", len(expectedMapping.Projects), len(expectedMapping.Groups), len(mapping.Projects), len(mapping.Groups))
+	if len(mapping.Projects) != len(FAKE_VALID_MAPPPING.Projects) || len(mapping.Groups) != len(FAKE_VALID_MAPPPING.Groups) {
+		t.Fatalf("expected mapping to have %d projects and %d groups, got %d projects and %d groups", len(FAKE_VALID_MAPPPING.Projects), len(FAKE_VALID_MAPPPING.Groups), len(mapping.Projects), len(mapping.Groups))
 	}
 	for k, v := range mapping.Projects {
-		if expected, ok := expectedMapping.Projects[k]; ok {
+		if expected, ok := FAKE_VALID_MAPPPING.Projects[k]; ok {
 			if !reflect.DeepEqual(v, expected) {
 				t.Errorf("expected project %s options %v, got %v", k, expected, v)
 			}
@@ -128,7 +128,7 @@ func TestOpenMirrorMapping(t *testing.T) {
 		}
 	}
 	for k, v := range mapping.Groups {
-		if expected, ok := expectedMapping.Groups[k]; ok {
+		if expected, ok := FAKE_VALID_MAPPPING.Groups[k]; ok {
 			if !reflect.DeepEqual(v, expected) {
 				t.Errorf("expected group %s options %v, got %v", k, expected, v)
 			}
@@ -136,6 +136,23 @@ func TestOpenMirrorMapping(t *testing.T) {
 			t.Errorf("unexpected group %s in mapping", k)
 		}
 	}
+}
+
+func createTempTestFile(fileContent string, t *testing.T) *os.File {
+	file, err := os.CreateTemp("", "testfile")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+
+	if _, err := file.Write([]byte(fileContent)); err != nil {
+		t.Fatalf("failed to write to temp file: %v", err)
+	}
+
+	err = file.Close()
+	if err != nil {
+		t.Fatalf("failed to close temp file: %v", err)
+	}
+	return file
 }
 
 // TestCheck tests the check method of MirrorMapping
@@ -149,15 +166,15 @@ func TestCheck(t *testing.T) {
 			name: "ValidMapping",
 			mapping: &MirrorMapping{
 				Projects: map[string]*MirroringOptions{
-					"project1": {
-						DestinationPath: "http://example.com/project",
+					FAKE_VALID_PROJECT: {
+						DestinationPath: FAKE_VALID_PROJECT,
 						CI_CD_Catalog:   true,
 						Issues:          true,
 					},
 				},
 				Groups: map[string]*MirroringOptions{
-					"group1": {
-						DestinationPath: "http://example.com/group",
+					FAKE_VALID_GROUP: {
+						DestinationPath: FAKE_VALID_GROUP,
 						CI_CD_Catalog:   true,
 						Issues:          true,
 					},
@@ -183,7 +200,7 @@ func TestCheck(t *testing.T) {
 				},
 				Groups: map[string]*MirroringOptions{},
 			},
-			expectedErr: "\n  - invalid (empty) string in project mapping: \n  - invalid project destination path (must be in a namespace): \n",
+			expectedErr: "\n  - invalid (empty) string in project mapping\n",
 		},
 		{
 			name: "InvalidGroupMapping",
@@ -195,7 +212,7 @@ func TestCheck(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: "\n  - invalid (empty) string in group mapping: \n",
+			expectedErr: "\n  - invalid (empty) string in group mapping\n",
 		},
 	}
 
@@ -223,7 +240,10 @@ func TestSendRequest(t *testing.T) {
 
 	server := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"data": "response"}`))
+		_, err := w.Write([]byte(`{"data": "response"}`))
+		if err != nil {
+			t.Fatalf("failed to write response: %v", err)
+		}
 	})
 	testServer := httptest.NewServer(server)
 	defer testServer.Close()

@@ -1,7 +1,6 @@
 package mirroring
 
 import (
-	"net/http"
 	"sync"
 	"time"
 
@@ -19,18 +18,11 @@ type GitlabInstance struct {
 	GraphQLClient *utils.GraphQLClient
 }
 
+// newGitlabInstance creates a new GitlabInstance with the provided parameters
+// and initializes the GitLab client with a custom HTTP client.
 func newGitlabInstance(gitlabURL string, gitlabToken string, timeout time.Duration, maxRetries int) (*GitlabInstance, error) {
-	// Create a custom HTTP client with a timeout
-	httpClient := &http.Client{
-		Timeout: timeout,
-		Transport: &retryTransport{
-			Base:       http.DefaultTransport,
-			MaxRetries: maxRetries,
-		},
-	}
-
 	// Initialize the GitLab client with the custom HTTP client
-	gitlabClient, err := gitlab.NewClient(gitlabToken, gitlab.WithBaseURL(gitlabURL), gitlab.WithHTTPClient(httpClient))
+	gitlabClient, err := gitlab.NewClient(gitlabToken, gitlab.WithBaseURL(gitlabURL))
 	if err != nil {
 		return nil, err
 	}
@@ -45,56 +37,40 @@ func newGitlabInstance(gitlabURL string, gitlabToken string, timeout time.Durati
 	return gitlabInstance, nil
 }
 
-// Add a project to the GitLabInstance
+// addProject adds a project to the GitLabInstance
+// with the given projectPath and project object.
+// It uses a mutex to ensure thread-safe access to the Projects map.
 func (g *GitlabInstance) addProject(projectPath string, project *gitlab.Project) {
 	g.muProjects.Lock()
 	defer g.muProjects.Unlock()
 	g.Projects[projectPath] = project
 }
 
-// Get a project from the GitLabInstance
+// getProject retrieves a project from the GitLabInstance
+// using the given projectPath.
+// It uses a read lock to ensure thread-safe access to the Projects map.
+// If the project is not found, it returns nil.
 func (g *GitlabInstance) getProject(projectPath string) *gitlab.Project {
 	g.muProjects.RLock()
 	defer g.muProjects.RUnlock()
 	return g.Projects[projectPath]
 }
 
-// Add a group to the GitLabInstance
+// addGroup adds a group to the GitLabInstance
+// with the given groupPath and group object.
+// It uses a mutex to ensure thread-safe access to the Groups map.
 func (g *GitlabInstance) addGroup(groupPath string, group *gitlab.Group) {
 	g.muGroups.Lock()
 	defer g.muGroups.Unlock()
 	g.Groups[groupPath] = group
 }
 
-// Get a group from the GitLabInstance
+// getGroup retrieves a group from the GitLabInstance
+// using the given groupPath.
+// It uses a read lock to ensure thread-safe access to the Groups map.
+// If the group is not found, it returns nil.
 func (g *GitlabInstance) getGroup(groupPath string) *gitlab.Group {
 	g.muGroups.RLock()
 	defer g.muGroups.RUnlock()
 	return g.Groups[groupPath]
-}
-
-// retryTransport wraps the default HTTP transport to add automatic retries
-type retryTransport struct {
-	Base       http.RoundTripper
-	MaxRetries int
-}
-
-// RoundTrip implements the RoundTripper interface for retryTransport
-func (rt *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	var resp *http.Response
-	var err error
-
-	// Retry the request up to MaxRetries times
-	for i := 0; i <= rt.MaxRetries; i++ {
-		resp, err = rt.Base.RoundTrip(req)
-		if err == nil && resp.StatusCode < http.StatusInternalServerError {
-			// If the request succeeded or returned a non-server-error status, return the response
-			return resp, nil
-		}
-
-		// Retry only on specific server errors or network issues
-		time.Sleep(time.Duration(i) * time.Second) // Exponential backoff
-	}
-
-	return resp, err
 }

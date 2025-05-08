@@ -57,3 +57,5 @@ Desktop.ini
 mirroring.json
 go.sum
 sonar-project.properties
+unit-tests.xml
+coverage.out

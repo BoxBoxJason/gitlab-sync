@@ -11,12 +11,17 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
-	"go.uber.org/zap"
+)
+
+const (
+	PROJECT = "project"
+	GROUP   = "group"
 )
 
 // ParserArgs defines the command line arguments
@@ -29,6 +34,8 @@ import (
 // - no_prompt: whether to disable prompts
 // - dry_run: whether to perform a dry run
 // - version: whether to show the version
+// - timeout: the timeout for the GitLab API requests
+// - retry: the number of retries for the GitLab API requests
 type ParserArgs struct {
 	SourceGitlabURL        string
 	SourceGitlabToken      string
@@ -64,8 +71,8 @@ type MirroringOptions struct {
 type MirrorMapping struct {
 	Projects   map[string]*MirroringOptions `json:"projects"`
 	Groups     map[string]*MirroringOptions `json:"groups"`
-	muProjects sync.Mutex
-	muGroups   sync.Mutex
+	muProjects sync.RWMutex
+	muGroups   sync.RWMutex
 }
 
 func (m *MirrorMapping) AddProject(project string, options *MirroringOptions) {
@@ -78,6 +85,20 @@ func (m *MirrorMapping) AddGroup(group string, options *MirroringOptions) {
 	m.muGroups.Lock()
 	defer m.muGroups.Unlock()
 	m.Groups[group] = options
+}
+
+func (m *MirrorMapping) GetProject(project string) (*MirroringOptions, bool) {
+	m.muProjects.RLock()
+	defer m.muProjects.RUnlock()
+	options, ok := m.Projects[project]
+	return options, ok
+}
+
+func (m *MirrorMapping) GetGroup(group string) (*MirroringOptions, bool) {
+	m.muGroups.RLock()
+	defer m.muGroups.RUnlock()
+	options, ok := m.Groups[group]
+	return options, ok
 }
 
 // OpenMirrorMapping opens the JSON file that contains the mapping
@@ -111,6 +132,9 @@ func OpenMirrorMapping(path string) (*MirrorMapping, error) {
 	return mapping, nil
 }
 
+// check checks if the mapping is valid
+// It checks if the projects and groups are valid
+// It returns an error if any of the projects or groups are invalid
 func (m *MirrorMapping) check() error {
 	errChan := make(chan error, 4*(len(m.Projects)+len(m.Groups))+1)
 	// Check if the mapping is valid
@@ -119,44 +143,68 @@ func (m *MirrorMapping) check() error {
 	}
 
 	// Check if the projects are valid
+	m.checkProjects(errChan)
+
+	// Check if the groups are valid
+	m.checkGroups(errChan)
+
+	close(errChan)
+	return MergeErrors(errChan, 2)
+}
+
+// checkProjects checks if the projects are valid
+// It checks if the project names and destination paths are valid
+// It returns an error if any of the projects are invalid
+func (m *MirrorMapping) checkProjects(errChan chan error) {
 	for project, options := range m.Projects {
-		if project == "" || options.DestinationPath == "" {
-			errChan <- fmt.Errorf("invalid (empty) string in project mapping: %s", project)
-		}
-		if strings.HasPrefix(project, "/") || strings.HasSuffix(project, "/") {
-			errChan <- fmt.Errorf("invalid project mapping (must not start or end with /): %s", project)
-		}
-		if strings.HasPrefix(options.DestinationPath, "/") || strings.HasSuffix(options.DestinationPath, "/") {
-			errChan <- fmt.Errorf("invalid destination path (must not start or end with /): %s", options.DestinationPath)
-		} else if strings.Count(options.DestinationPath, "/") < 1 {
-			errChan <- fmt.Errorf("invalid project destination path (must be in a namespace): %s", options.DestinationPath)
-		}
+		// Check the source / destination paths
+		checkCopyPaths(project, options.DestinationPath, PROJECT, errChan)
+
+		// Check the visibility
 		visibilityString := strings.TrimSpace(string(options.Visibility))
 		if visibilityString != "" && !checkVisibility(visibilityString) {
 			errChan <- fmt.Errorf("invalid project visibility: %s", string(options.Visibility))
 			options.Visibility = string(gitlab.PublicVisibility)
 		}
 	}
+}
 
-	// Check if the groups are valid
+func checkCopyPaths(sourcePath string, destinationPath string, pathType string, errChan chan error) {
+	// Ensure the source project path and destination path are not empty
+	if sourcePath == "" || destinationPath == "" {
+		errChan <- errors.New("invalid (empty) string in " + pathType + " mapping")
+	} else {
+		// Ensure the source project path and destination path do not start or end with a slash
+		if strings.HasPrefix(sourcePath, "/") || strings.HasSuffix(sourcePath, "/") {
+			errChan <- errors.New("invalid " + pathType + " mapping (must not start or end with /): " + sourcePath)
+		}
+		// Ensure the destination path does not start or end with a slash
+		if strings.HasPrefix(destinationPath, "/") || strings.HasSuffix(destinationPath, "/") {
+			errChan <- errors.New("invalid destination path (must not start or end with /): " + destinationPath)
+		}
+		if pathType == PROJECT {
+			if strings.Count(destinationPath, "/") < 1 {
+				errChan <- errors.New("invalid project destination path (must be in a namespace): " + destinationPath)
+			}
+		}
+	}
+	if filepath.Base(sourcePath) != filepath.Base(destinationPath) {
+		errChan <- fmt.Errorf("source and destination paths must have the same base name (ending): %s != %s", sourcePath, destinationPath)
+	}
+}
+
+func (m *MirrorMapping) checkGroups(errChan chan error) {
 	for group, options := range m.Groups {
-		if group == "" || options.DestinationPath == "" {
-			errChan <- fmt.Errorf("invalid (empty) string in group mapping: %s", group)
-		}
-		if strings.HasPrefix(group, "/") || strings.HasSuffix(group, "/") {
-			errChan <- fmt.Errorf("invalid group mapping (must not start or end with /): %s", group)
-		}
-		if strings.HasPrefix(options.DestinationPath, "/") || strings.HasSuffix(options.DestinationPath, "/") {
-			errChan <- fmt.Errorf("invalid destination path (must not start or end with /): %s", options.DestinationPath)
-		}
+		// Check the source / destination paths
+		checkCopyPaths(group, options.DestinationPath, GROUP, errChan)
+
+		// Check the visibility
 		visibilityString := strings.TrimSpace(string(options.Visibility))
 		if visibilityString != "" && !checkVisibility(visibilityString) {
 			errChan <- fmt.Errorf("invalid group visibility: %s", string(options.Visibility))
 			options.Visibility = string(gitlab.PublicVisibility)
 		}
 	}
-	close(errChan)
-	return MergeErrors(errChan, 2)
 }
 
 func checkVisibility(visibility string) bool {
@@ -205,7 +253,6 @@ func (g *GraphQLClient) SendRequest(request *GraphQLRequest, method string) (str
 	if err != nil {
 		return "", err
 	}
-	zap.L().Sugar().Debugf("Sending GraphQL request to %s with body: %s", g.URL, string(requestBody))
 	req, err := http.NewRequestWithContext(context.Background(), method, g.URL, bytes.NewBuffer(requestBody))
 	if err != nil {
 		return "", err

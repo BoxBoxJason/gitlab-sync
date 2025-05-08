@@ -20,6 +20,7 @@ You can run the CLI using Docker. It is available on GitHub Container Registry.
 
 1. Pull the Docker image: `docker pull ghcr.io/boxboxjason/gitlab-sync:latest`
 2. Run the Docker container with the required command line arguments / env variables (don't forget to mount the JSON file):
+
 ```bash
 docker run --rm \
   -e SOURCE_GITLAB_URL=<source_gitlab_url> \
@@ -61,7 +62,6 @@ If mandatory arguments are not provided, the program will prompt for them.
 | `--destination-url` | `DESTINATION_GITLAB_URL` | Yes | URL of the destination GitLab instance |
 | `--destination-token` | `DESTINATION_GITLAB_TOKEN` | Yes | Access token for the destination GitLab instance |
 | `--mirror-mapping` | `MIRROR_MAPPING` | Yes | Path to a JSON file containing the mirror mapping |
-| `--concurrency` or `-C` | N/A | No | Max number of concurrent requests to the GitLab API (default: 10) |
 | `--timeout` or `-t` | N/A | No | Timeout for GitLab API requests in seconds (default: 30) |
 | `--retry` or `-r` | N/A | No | Number of retries for failed GitLab API requests (does not apply to GraphQL requests) (default: 3) |
 
@@ -81,6 +81,7 @@ gitlab-sync \
 The JSON mapping file is used to define the projects and groups to be synchronized between the two GitLab instances. You also define the copy options for each project / group.
 
 Allowed options are:
+
 | Option | Description |
 |--------|-------------|
 | `destination_path` | The path to the project / group on the destination GitLab instance. |

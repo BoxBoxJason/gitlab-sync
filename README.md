@@ -59,8 +59,10 @@ If mandatory arguments are not provided, the program will prompt for them.
 | `--dry-run` | N/A | No | Perform a dry run without making any changes |
 | `--source-url` | `SOURCE_GITLAB_URL` | Yes | URL of the source GitLab instance |
 | `--source-token` | `SOURCE_GITLAB_TOKEN` | No | Access token for the source GitLab instance |
+| `--source-big` | `SOURCE_GITLAB_BIG` | No | Specify if the source GitLab instance is a big instance (default: false) |
 | `--destination-url` | `DESTINATION_GITLAB_URL` | Yes | URL of the destination GitLab instance |
 | `--destination-token` | `DESTINATION_GITLAB_TOKEN` | Yes | Access token for the destination GitLab instance |
+| `--destination-big` | `DESTINATION_GITLAB_BIG` | No | Specify if the destination GitLab instance is a big instance (default: false) |
 | `--mirror-mapping` | `MIRROR_MAPPING` | Yes | Path to a JSON file containing the mirror mapping |
 | `--timeout` or `-t` | N/A | No | Timeout for GitLab API requests in seconds (default: 30) |
 | `--retry` or `-r` | N/A | No | Number of retries for failed GitLab API requests (does not apply to GraphQL requests) (default: 3) |

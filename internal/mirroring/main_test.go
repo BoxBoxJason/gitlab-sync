@@ -11,10 +11,10 @@ func TestProcessFilters(t *testing.T) {
 	tests := []struct {
 		name                              string
 		mirrorMapping                     *utils.MirrorMapping
-		expectedSourceProjectFilters      map[string]bool
-		expectedSourceGroupFilters        map[string]bool
-		expectedDestinationProjectFilters map[string]bool
-		expectedDestinationGroupFilters   map[string]bool
+		expectedSourceProjectFilters      map[string]struct{}
+		expectedSourceGroupFilters        map[string]struct{}
+		expectedDestinationProjectFilters map[string]struct{}
+		expectedDestinationGroupFilters   map[string]struct{}
 	}{
 		{
 			name: "EmptyMirrorMapping",
@@ -22,10 +22,10 @@ func TestProcessFilters(t *testing.T) {
 				Projects: make(map[string]*utils.MirroringOptions),
 				Groups:   make(map[string]*utils.MirroringOptions),
 			},
-			expectedSourceProjectFilters:      map[string]bool{},
-			expectedSourceGroupFilters:        map[string]bool{},
-			expectedDestinationProjectFilters: map[string]bool{},
-			expectedDestinationGroupFilters:   map[string]bool{},
+			expectedSourceProjectFilters:      map[string]struct{}{},
+			expectedSourceGroupFilters:        map[string]struct{}{},
+			expectedDestinationProjectFilters: map[string]struct{}{},
+			expectedDestinationGroupFilters:   map[string]struct{}{},
 		},
 		{
 			name: "SingleProjectAndGroup",
@@ -45,17 +45,17 @@ func TestProcessFilters(t *testing.T) {
 					},
 				},
 			},
-			expectedSourceProjectFilters: map[string]bool{
-				"sourceProject": true,
+			expectedSourceProjectFilters: map[string]struct{}{
+				"sourceProject": {},
 			},
-			expectedSourceGroupFilters: map[string]bool{
-				"sourceGroup": true,
+			expectedSourceGroupFilters: map[string]struct{}{
+				"sourceGroup": {},
 			},
-			expectedDestinationProjectFilters: map[string]bool{
-				"destinationGroupPath/destinationProjectPath": true,
+			expectedDestinationProjectFilters: map[string]struct{}{
+				"destinationGroupPath/destinationProjectPath": {},
 			},
-			expectedDestinationGroupFilters: map[string]bool{
-				"destinationGroupPath": true,
+			expectedDestinationGroupFilters: map[string]struct{}{
+				"destinationGroupPath": {},
 			},
 		},
 		{
@@ -86,23 +86,23 @@ func TestProcessFilters(t *testing.T) {
 					},
 				},
 			},
-			expectedSourceProjectFilters: map[string]bool{
-				"sourceProject1": true,
-				"sourceProject2": true,
+			expectedSourceProjectFilters: map[string]struct{}{
+				"sourceProject1": {},
+				"sourceProject2": {},
 			},
-			expectedSourceGroupFilters: map[string]bool{
-				"sourceGroup1": true,
-				"sourceGroup2": true,
+			expectedSourceGroupFilters: map[string]struct{}{
+				"sourceGroup1": {},
+				"sourceGroup2": {},
 			},
-			expectedDestinationProjectFilters: map[string]bool{
-				"destinationGroupPath1/destinationProjectPath1": true,
-				"destinationGroupPath2/destinationProjectPath2": true,
+			expectedDestinationProjectFilters: map[string]struct{}{
+				"destinationGroupPath1/destinationProjectPath1": {},
+				"destinationGroupPath2/destinationProjectPath2": {},
 			},
-			expectedDestinationGroupFilters: map[string]bool{
-				"destinationGroupPath1": true,
-				"destinationGroupPath2": true,
-				"destinationGroupPath3": true,
-				"destinationGroupPath4": true,
+			expectedDestinationGroupFilters: map[string]struct{}{
+				"destinationGroupPath1": {},
+				"destinationGroupPath2": {},
+				"destinationGroupPath3": {},
+				"destinationGroupPath4": {},
 			},
 		},
 	}

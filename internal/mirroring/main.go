@@ -16,23 +16,33 @@ import (
 // It then processes the filters for groups and projects, and finally creates the groups and projects in the destination GitLab instance.
 // If the dry run flag is set, it will only print the groups and projects that would be created or updated.
 func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
+	sourceGitlabSize := INSTANCE_SIZE_SMALL
+	if gitlabMirrorArgs.SourceGitlabIsBig {
+		sourceGitlabSize = INSTANCE_SIZE_BIG
+	}
 	sourceGitlabInstance, err := newGitlabInstance(&GitlabInstanceOpts{
-		GitlabURL:   gitlabMirrorArgs.SourceGitlabURL,
-		GitlabToken: gitlabMirrorArgs.SourceGitlabToken,
-		Role:        ROLE_SOURCE,
-		Timeout:     gitlabMirrorArgs.Timeout,
-		MaxRetries:  gitlabMirrorArgs.Retry,
+		GitlabURL:    gitlabMirrorArgs.SourceGitlabURL,
+		GitlabToken:  gitlabMirrorArgs.SourceGitlabToken,
+		Role:         ROLE_SOURCE,
+		Timeout:      gitlabMirrorArgs.Timeout,
+		MaxRetries:   gitlabMirrorArgs.Retry,
+		InstanceSize: sourceGitlabSize,
 	})
 	if err != nil {
 		return err
 	}
 
+	destinationGitlabSize := INSTANCE_SIZE_SMALL
+	if gitlabMirrorArgs.DestinationGitlabIsBig {
+		destinationGitlabSize = INSTANCE_SIZE_BIG
+	}
 	destinationGitlabInstance, err := newGitlabInstance(&GitlabInstanceOpts{
-		GitlabURL:   gitlabMirrorArgs.DestinationGitlabURL,
-		GitlabToken: gitlabMirrorArgs.DestinationGitlabToken,
-		Role:        ROLE_DESTINATION,
-		Timeout:     gitlabMirrorArgs.Timeout,
-		MaxRetries:  gitlabMirrorArgs.Retry,
+		GitlabURL:    gitlabMirrorArgs.DestinationGitlabURL,
+		GitlabToken:  gitlabMirrorArgs.DestinationGitlabToken,
+		Role:         ROLE_DESTINATION,
+		Timeout:      gitlabMirrorArgs.Timeout,
+		MaxRetries:   gitlabMirrorArgs.Retry,
+		InstanceSize: destinationGitlabSize,
 	})
 	if err != nil {
 		return err
@@ -46,13 +56,13 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
 
 	go func() {
 		defer wg.Done()
-		if err := fetchAll(sourceGitlabInstance, sourceProjectFilters, sourceGroupFilters, gitlabMirrorArgs.MirrorMapping, true); err != nil {
+		if err := fetchAll(sourceGitlabInstance, sourceProjectFilters, sourceGroupFilters, gitlabMirrorArgs.MirrorMapping); err != nil {
 			errCh <- err
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		if err := fetchAll(destinationGitlabInstance, destinationProjectFilters, destinationGroupFilters, gitlabMirrorArgs.MirrorMapping, false); err != nil {
+		if err := fetchAll(destinationGitlabInstance, destinationProjectFilters, destinationGroupFilters, gitlabMirrorArgs.MirrorMapping); err != nil {
 			errCh <- err
 		}
 	}()
@@ -80,11 +90,11 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
 
 // processFilters processes the filters for groups and projects.
 // It returns four maps: sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, and destinationGroupFilters.
-func processFilters(filters *utils.MirrorMapping) (map[string]bool, map[string]bool, map[string]bool, map[string]bool) {
-	sourceProjectFilters := make(map[string]bool)
-	sourceGroupFilters := make(map[string]bool)
-	destinationProjectFilters := make(map[string]bool)
-	destinationGroupFilters := make(map[string]bool)
+func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[string]struct{}, map[string]struct{}, map[string]struct{}) {
+	sourceProjectFilters := make(map[string]struct{})
+	sourceGroupFilters := make(map[string]struct{})
+	destinationProjectFilters := make(map[string]struct{})
+	destinationGroupFilters := make(map[string]struct{})
 
 	// Initialize concurrency control
 	var mu sync.Mutex
@@ -95,9 +105,9 @@ func processFilters(filters *utils.MirrorMapping) (map[string]bool, map[string]b
 	go func() {
 		defer wg.Done()
 		for group, copyOptions := range filters.Groups {
-			sourceGroupFilters[group] = true
+			sourceGroupFilters[group] = struct{}{}
 			mu.Lock()
-			destinationGroupFilters[copyOptions.DestinationPath] = true
+			destinationGroupFilters[copyOptions.DestinationPath] = struct{}{}
 			mu.Unlock()
 		}
 	}()
@@ -106,12 +116,12 @@ func processFilters(filters *utils.MirrorMapping) (map[string]bool, map[string]b
 	go func() {
 		defer wg.Done()
 		for project, copyOptions := range filters.Projects {
-			sourceProjectFilters[project] = true
-			destinationProjectFilters[copyOptions.DestinationPath] = true
+			sourceProjectFilters[project] = struct{}{}
+			destinationProjectFilters[copyOptions.DestinationPath] = struct{}{}
 			destinationGroupPath := filepath.Dir(copyOptions.DestinationPath)
 			if destinationGroupPath != "" && destinationGroupPath != "." && destinationGroupPath != "/" {
 				mu.Lock()
-				destinationGroupFilters[destinationGroupPath] = true
+				destinationGroupFilters[destinationGroupPath] = struct{}{}
 				mu.Unlock()
 			}
 

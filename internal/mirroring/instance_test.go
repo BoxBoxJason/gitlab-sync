@@ -6,17 +6,29 @@ import (
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
+var (
+	TEST_PROJECT = &gitlab.Project{
+		Name:              "Test Project",
+		PathWithNamespace: "test/project",
+	}
+
+	TEST_GROUP = &gitlab.Group{
+		Name:     "Test Group",
+		FullPath: "test/group",
+	}
+)
+
 func TestNewGitlabInstance(t *testing.T) {
 	gitlabURL := "https://gitlab.example.com"
 	gitlabToken := "test-token"
 
 	instance, err := newGitlabInstance(&GitlabInstanceOpts{
-		GitlabURL:   gitlabURL,
-		GitlabToken: gitlabToken,
-		Role:        ROLE_SOURCE,
-		Timeout:     10,
-		MaxRetries:  3,
-		BigInstance: false,
+		GitlabURL:    gitlabURL,
+		GitlabToken:  gitlabToken,
+		Role:         ROLE_SOURCE,
+		Timeout:      10,
+		MaxRetries:   3,
+		InstanceSize: INSTANCE_SIZE_SMALL,
 	})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -44,15 +56,12 @@ func TestAddProject(t *testing.T) {
 		Projects: make(map[string]*gitlab.Project),
 	}
 
-	projectPath := "test/project"
-	project := &gitlab.Project{Name: "Test Project"}
+	instance.addProject(TEST_PROJECT)
 
-	instance.addProject(projectPath, project)
-
-	if got, exists := instance.Projects[projectPath]; !exists {
-		t.Fatalf("expected project %s to be added", projectPath)
-	} else if got != project {
-		t.Errorf("expected project %v, got %v", project, got)
+	if got, exists := instance.Projects[TEST_PROJECT.PathWithNamespace]; !exists {
+		t.Fatalf("expected project %s to be added", TEST_PROJECT.PathWithNamespace)
+	} else if got != TEST_PROJECT {
+		t.Errorf("expected project %v, got %v", TEST_PROJECT, got)
 	}
 }
 
@@ -61,13 +70,11 @@ func TestGetProject(t *testing.T) {
 		Projects: make(map[string]*gitlab.Project),
 	}
 
-	projectPath := "test/project"
-	project := &gitlab.Project{Name: "Test Project"}
-	instance.Projects[projectPath] = project
+	instance.Projects[TEST_PROJECT.PathWithNamespace] = TEST_PROJECT
 
-	got := instance.getProject(projectPath)
-	if got != project {
-		t.Errorf("expected project %v, got %v", project, got)
+	got := instance.getProject(TEST_PROJECT.PathWithNamespace)
+	if got != TEST_PROJECT {
+		t.Errorf("expected project %v, got %v", TEST_PROJECT, got)
 	}
 
 	nonExistentPath := "non/existent"
@@ -81,15 +88,12 @@ func TestAddGroup(t *testing.T) {
 		Groups: make(map[string]*gitlab.Group),
 	}
 
-	groupPath := "test/group"
-	group := &gitlab.Group{Name: "Test Group"}
+	instance.addGroup(TEST_GROUP)
 
-	instance.addGroup(groupPath, group)
-
-	if got, exists := instance.Groups[groupPath]; !exists {
-		t.Fatalf("expected group %s to be added", groupPath)
-	} else if got != group {
-		t.Errorf("expected group %v, got %v", group, got)
+	if got, exists := instance.Groups[TEST_GROUP.FullPath]; !exists {
+		t.Fatalf("expected group %s to be added", TEST_GROUP.FullPath)
+	} else if got != TEST_GROUP {
+		t.Errorf("expected group %v, got %v", TEST_GROUP, got)
 	}
 }
 
@@ -98,13 +102,11 @@ func TestGetGroup(t *testing.T) {
 		Groups: make(map[string]*gitlab.Group),
 	}
 
-	groupPath := "test/group"
-	group := &gitlab.Group{Name: "Test Group"}
-	instance.Groups[groupPath] = group
+	instance.Groups[TEST_GROUP.FullPath] = TEST_GROUP
 
-	got := instance.getGroup(groupPath)
-	if got != group {
-		t.Errorf("expected group %v, got %v", group, got)
+	got := instance.getGroup(TEST_GROUP.FullPath)
+	if got != TEST_GROUP {
+		t.Errorf("expected group %v, got %v", TEST_GROUP, got)
 	}
 
 	nonExistentPath := "non/existent"

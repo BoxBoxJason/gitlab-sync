@@ -33,9 +33,9 @@ type GitlabInstance struct {
 	// Role is the role of the GitLab instance, it can be either "source" or "destination"
 	// It is used to determine the behavior of the mirroring process
 	Role string
-	// BigInstance indicates whether the GitLab instance is a large instance
+	// InstanceSize is the size of the GitLab instance, it can be either "small" or "big"
 	// It is used to determine the behavior of the fetching process
-	BigInstance bool
+	InstanceSize string
 }
 
 type GitlabInstanceOpts struct {
@@ -49,8 +49,9 @@ type GitlabInstanceOpts struct {
 	Timeout time.Duration
 	// MaxRetries is the maximum number of retries for GitLab API requests
 	MaxRetries int
-	// BigInstance indicates whether the GitLab instance is a large instance
-	BigInstance bool
+	// InstanceSize is the size of the GitLab instance, it can be either "small" or "big"
+	// It is used to determine the behavior of the fetching process
+	InstanceSize string
 }
 
 // newGitlabInstance creates a new GitlabInstance with the provided parameters
@@ -78,6 +79,7 @@ func newGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 		Groups:        make(map[string]*gitlab.Group),
 		GraphQLClient: utils.NewGitlabGraphQLClient(initArgs.GitlabToken, initArgs.GitlabURL),
 		Role:          initArgs.Role,
+		InstanceSize:  initArgs.InstanceSize,
 	}
 
 	return gitlabInstance, nil
@@ -86,10 +88,10 @@ func newGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 // addProject adds a project to the GitLabInstance
 // with the given projectPath and project object.
 // It uses a mutex to ensure thread-safe access to the Projects map.
-func (g *GitlabInstance) addProject(projectPath string, project *gitlab.Project) {
+func (g *GitlabInstance) addProject(project *gitlab.Project) {
 	g.muProjects.Lock()
 	defer g.muProjects.Unlock()
-	g.Projects[projectPath] = project
+	g.Projects[project.PathWithNamespace] = project
 }
 
 // getProject retrieves a project from the GitLabInstance
@@ -105,10 +107,10 @@ func (g *GitlabInstance) getProject(projectPath string) *gitlab.Project {
 // addGroup adds a group to the GitLabInstance
 // with the given groupPath and group object.
 // It uses a mutex to ensure thread-safe access to the Groups map.
-func (g *GitlabInstance) addGroup(groupPath string, group *gitlab.Group) {
+func (g *GitlabInstance) addGroup(group *gitlab.Group) {
 	g.muGroups.Lock()
 	defer g.muGroups.Unlock()
-	g.Groups[groupPath] = group
+	g.Groups[group.FullPath] = group
 }
 
 // getGroup retrieves a group from the GitLabInstance
@@ -119,4 +121,14 @@ func (g *GitlabInstance) getGroup(groupPath string) *gitlab.Group {
 	g.muGroups.RLock()
 	defer g.muGroups.RUnlock()
 	return g.Groups[groupPath]
+}
+
+// isBig checks if the GitLab instance is of size "big".
+// It returns true if the InstanceSize is "big", otherwise false.
+func (g *GitlabInstance) isBig() bool {
+	return g.InstanceSize == INSTANCE_SIZE_BIG
+}
+
+func (g *GitlabInstance) isSource() bool {
+	return g.Role == ROLE_SOURCE
 }

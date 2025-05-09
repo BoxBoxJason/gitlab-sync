@@ -39,8 +39,10 @@ const (
 type ParserArgs struct {
 	SourceGitlabURL        string
 	SourceGitlabToken      string
+	SourceGitlabIsBig      bool
 	DestinationGitlabURL   string
 	DestinationGitlabToken string
+	DestinationGitlabIsBig bool
 	MirrorMapping          *MirrorMapping
 	Verbose                bool
 	NoPrompt               bool

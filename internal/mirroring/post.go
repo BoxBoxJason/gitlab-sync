@@ -172,7 +172,7 @@ func (g *GitlabInstance) createProjectFromSource(sourceProject *gitlab.Project, 
 	destinationProject, _, err := g.Gitlab.Projects.CreateProject(projectCreationArgs)
 	if err == nil {
 		zap.L().Debug("Project created", zap.String("project", destinationProject.HTTPURLToRepo))
-		g.addProject(copyOptions.DestinationPath, destinationProject)
+		g.addProject(destinationProject)
 	}
 
 	return destinationProject, nil
@@ -206,7 +206,7 @@ func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOp
 	destinationGroup, _, err := g.Gitlab.Groups.CreateGroup(groupCreationArgs)
 	if err == nil {
 		zap.L().Debug("Group created", zap.String("group", destinationGroup.WebURL))
-		g.addGroup(copyOptions.DestinationPath, destinationGroup)
+		g.addGroup(destinationGroup)
 	}
 
 	return destinationGroup, err

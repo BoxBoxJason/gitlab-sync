@@ -16,19 +16,6 @@ RUN go mod tidy && \
 
 FROM scratch
 
-ARG BUILD_DATE="1970-01-01T00:00:00Z" \
-    VERSION="dev" \
-    REVISION="dev"
-
-LABEL org.opencontainers.image.title="gitlab-sync" \
-    org.opencontainers.image.description="synchronize GitLab projects and groups between two GitLab instances" \
-    org.opencontainers.image.source="${SOURCE}" \
-    org.opencontainers.image.url="ghcr.io/boxboxjason/gitlab-sync" \
-    org.opencontainers.image.created="${BUILD_DATE}" \
-    org.opencontainers.image.revision="${REVISION}" \
-    org.opencontainers.image.version="${VERSION}" \
-    org.opencontainers.image.vendor="boxboxjason"
-
 COPY --from=build /app/bin/gitlab-sync /usr/local/bin/gitlab-sync
 
 ENTRYPOINT [ "/usr/local/bin/gitlab-sync" ]

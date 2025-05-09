@@ -16,12 +16,24 @@ import (
 // It then processes the filters for groups and projects, and finally creates the groups and projects in the destination GitLab instance.
 // If the dry run flag is set, it will only print the groups and projects that would be created or updated.
 func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
-	sourceGitlabInstance, err := newGitlabInstance(gitlabMirrorArgs.SourceGitlabURL, gitlabMirrorArgs.SourceGitlabToken, gitlabMirrorArgs.Timeout, gitlabMirrorArgs.Retry)
+	sourceGitlabInstance, err := newGitlabInstance(&GitlabInstanceOpts{
+		GitlabURL:   gitlabMirrorArgs.SourceGitlabURL,
+		GitlabToken: gitlabMirrorArgs.SourceGitlabToken,
+		Role:        ROLE_SOURCE,
+		Timeout:     gitlabMirrorArgs.Timeout,
+		MaxRetries:  gitlabMirrorArgs.Retry,
+	})
 	if err != nil {
 		return err
 	}
 
-	destinationGitlabInstance, err := newGitlabInstance(gitlabMirrorArgs.DestinationGitlabURL, gitlabMirrorArgs.DestinationGitlabToken, gitlabMirrorArgs.Timeout, gitlabMirrorArgs.Retry)
+	destinationGitlabInstance, err := newGitlabInstance(&GitlabInstanceOpts{
+		GitlabURL:   gitlabMirrorArgs.DestinationGitlabURL,
+		GitlabToken: gitlabMirrorArgs.DestinationGitlabToken,
+		Role:        ROLE_DESTINATION,
+		Timeout:     gitlabMirrorArgs.Timeout,
+		MaxRetries:  gitlabMirrorArgs.Retry,
+	})
 	if err != nil {
 		return err
 	}

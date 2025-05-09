@@ -10,7 +10,14 @@ func TestNewGitlabInstance(t *testing.T) {
 	gitlabURL := "https://gitlab.example.com"
 	gitlabToken := "test-token"
 
-	instance, err := newGitlabInstance(gitlabURL, gitlabToken, 10, 3)
+	instance, err := newGitlabInstance(&GitlabInstanceOpts{
+		GitlabURL:   gitlabURL,
+		GitlabToken: gitlabToken,
+		Role:        ROLE_SOURCE,
+		Timeout:     10,
+		MaxRetries:  3,
+		BigInstance: false,
+	})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}

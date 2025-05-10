@@ -15,7 +15,7 @@ import (
 // It retrieves the source group path for each destination group and creates the group in the destination instance.
 // The function also handles the copying of group avatars from the source to the destination instance.
 func (destinationGitlab *GitlabInstance) createGroups(sourceGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping) error {
-	zap.L().Debug("Creating groups in GitLab Instance", zap.String("role", "destination"))
+	zap.L().Debug("Creating groups in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION))
 
 	// Reverse the mirror mapping to get the source group path for each destination group
 	reversedMirrorMap, destinationGroupPaths := sourceGitlab.reverseGroupMirrorMap(mirrorMapping)
@@ -38,7 +38,7 @@ func (destinationGitlab *GitlabInstance) createGroups(sourceGitlab *GitlabInstan
 func (destinationGitlab *GitlabInstance) createGroup(destinationGroupPath string, sourceGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping, reversedMirrorMap *map[string]string) (*gitlab.Group, error) {
 	// Retrieve the corresponding source group path
 	sourceGroupPath := (*reversedMirrorMap)[destinationGroupPath]
-	zap.L().Debug("Mirroring group", zap.String("source", sourceGroupPath), zap.String("destination", destinationGroupPath))
+	zap.L().Debug("Mirroring group", zap.String(ROLE_SOURCE, sourceGroupPath), zap.String(ROLE_DESTINATION, destinationGroupPath))
 
 	sourceGroup := sourceGitlab.Groups[sourceGroupPath]
 	if sourceGroup == nil {
@@ -55,7 +55,7 @@ func (destinationGitlab *GitlabInstance) createGroup(destinationGroupPath string
 	destinationGroup := destinationGitlab.getGroup(destinationGroupPath)
 	var err error
 	if destinationGroup == nil {
-		zap.L().Debug("Group not found, creating new group in GitLab Instance", zap.String("group", destinationGroupPath), zap.String("role", "destination"))
+		zap.L().Debug("Group not found, creating new group in GitLab Instance", zap.String("group", destinationGroupPath), zap.String(ROLE, ROLE_DESTINATION))
 		destinationGroup, err = destinationGitlab.createGroupFromSource(sourceGroup, groupCreationOptions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create group %s in destination GitLab instance: %s", destinationGroupPath, err)
@@ -74,7 +74,7 @@ func (destinationGitlab *GitlabInstance) createGroup(destinationGroupPath string
 // createProjects creates GitLab projects in the destination GitLab instance based on the mirror mapping.
 // It retrieves the source project path for each destination project and creates the project in the destination instance.
 func (destinationGitlab *GitlabInstance) createProjects(sourceGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping) error {
-	zap.L().Debug("Creating projects in GitLab Instance", zap.String("role", "destination"))
+	zap.L().Debug("Creating projects in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION))
 
 	// Create a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup
@@ -83,7 +83,7 @@ func (destinationGitlab *GitlabInstance) createProjects(sourceGitlab *GitlabInst
 	errorChan := make(chan error, len(mirrorMapping.Projects))
 
 	for sourceProjectPath, destinationProjectOptions := range mirrorMapping.Projects {
-		zap.L().Debug("Mirroring project", zap.String("source", sourceProjectPath), zap.String("destination", destinationProjectOptions.DestinationPath))
+		zap.L().Debug("Mirroring project", zap.String(ROLE_SOURCE, sourceProjectPath), zap.String(ROLE_DESTINATION, destinationProjectOptions.DestinationPath))
 		// Retrieve the corresponding source project path
 		sourceProject := sourceGitlab.Projects[sourceProjectPath]
 		if sourceProject == nil {
@@ -136,7 +136,7 @@ func (destinationGitlab *GitlabInstance) createProject(sourceProjectPath string,
 		return destinationProject, fmt.Errorf("failed to update project %s in destination GitLab instance: %s", destinationProjectPath, err)
 	}
 
-	zap.L().Info("Completed project mirroring", zap.String("source", sourceProjectPath), zap.String("destination", destinationProjectPath))
+	zap.L().Info("Completed project mirroring", zap.String(ROLE_SOURCE, sourceProjectPath), zap.String(ROLE_DESTINATION, destinationProjectPath))
 	return destinationProject, nil
 }
 
@@ -156,7 +156,7 @@ func (g *GitlabInstance) createProjectFromSource(sourceProject *gitlab.Project, 
 		Visibility:          gitlab.Ptr(gitlab.VisibilityValue(copyOptions.Visibility)),
 	}
 
-	zap.L().Debug("Retrieving project namespace ID", zap.String("destination", copyOptions.DestinationPath))
+	zap.L().Debug("Retrieving project namespace ID", zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
 
 	// Get the parent namespace ID for the project
 	// This is used to set the namespace ID for the project
@@ -168,7 +168,7 @@ func (g *GitlabInstance) createProjectFromSource(sourceProject *gitlab.Project, 
 	}
 
 	// Create the project in the destination GitLab instance
-	zap.L().Debug("Creating project in GitLab Instance", zap.String("role", "destination"), zap.String("destination", copyOptions.DestinationPath))
+	zap.L().Debug("Creating project in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION), zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
 	destinationProject, _, err := g.Gitlab.Projects.CreateProject(projectCreationArgs)
 	if err == nil {
 		zap.L().Debug("Project created", zap.String("project", destinationProject.HTTPURLToRepo))
@@ -193,7 +193,7 @@ func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOp
 
 	// Retrieve the parent namespace ID for the group
 	// This is used to set the parent ID for the group
-	zap.L().Debug("Retrieving group namespace ID", zap.String("role", "destination"), zap.String("destination", copyOptions.DestinationPath))
+	zap.L().Debug("Retrieving group namespace ID", zap.String(ROLE, ROLE_DESTINATION), zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
 	parentGroupID, err := g.getParentNamespaceID(copyOptions.DestinationPath)
 	if err != nil {
 		return nil, err
@@ -202,7 +202,7 @@ func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOp
 	}
 
 	// Create the group in the destination GitLab instance
-	zap.L().Debug("Creating group in GitLab Instance", zap.String("role", "destination"), zap.String("destination", copyOptions.DestinationPath))
+	zap.L().Debug("Creating group in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION), zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
 	destinationGroup, _, err := g.Gitlab.Groups.CreateGroup(groupCreationArgs)
 	if err == nil {
 		zap.L().Debug("Group created", zap.String("group", destinationGroup.WebURL))
@@ -217,7 +217,7 @@ func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOp
 // The function handles the API calls concurrently using goroutines and a wait group.
 // It returns an error if any of the API calls fail.
 func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinationProject *gitlab.Project) error {
-	zap.L().Debug("Starting releases mirroring", zap.String("source", sourceProject.HTTPURLToRepo), zap.String("destination", destinationProject.HTTPURLToRepo))
+	zap.L().Debug("Starting releases mirroring", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 	// Fetch existing releases from the destination project
 	existingReleases, _, err := g.Gitlab.Releases.ListReleases(destinationProject.ID, &gitlab.ListReleasesOptions{})
 	if err != nil {
@@ -246,7 +246,7 @@ func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinati
 	for _, release := range sourceReleases {
 		// Check if the release already exists in the destination project
 		if _, exists := existingReleaseTags[release.TagName]; exists {
-			zap.L().Debug("Release already exists", zap.String("release", release.TagName), zap.String("destination", destinationProject.HTTPURLToRepo))
+			zap.L().Debug("Release already exists", zap.String("release", release.TagName), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 			continue
 		}
 
@@ -256,7 +256,7 @@ func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinati
 		// Define the API call logic for creating a release
 		go func(releaseToMirror *gitlab.Release) {
 			defer wg.Done()
-			zap.L().Debug("Creating release in destination project", zap.String("release", releaseToMirror.TagName), zap.String("destination", destinationProject.HTTPURLToRepo))
+			zap.L().Debug("Creating release in destination project", zap.String("release", releaseToMirror.TagName), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 
 			// Create the release in the destination project
 			_, _, err := g.Gitlab.Releases.CreateRelease(destinationProject.ID, &gitlab.CreateReleaseOptions{
@@ -275,7 +275,7 @@ func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinati
 	wg.Wait()
 	close(errorChan)
 
-	zap.L().Info("Releases mirroring completed", zap.String("source", sourceProject.HTTPURLToRepo), zap.String("destination", destinationProject.HTTPURLToRepo))
+	zap.L().Info("Releases mirroring completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 	return utils.MergeErrors(errorChan, 2)
 }
 

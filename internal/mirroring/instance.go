@@ -8,7 +8,6 @@ import (
 
 	"github.com/hashicorp/go-retryablehttp"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
-	"go.uber.org/zap"
 )
 
 type GitlabInstance struct {
@@ -45,8 +44,6 @@ type GitlabInstanceOpts struct {
 	GitlabToken string
 	// Role is the role of the GitLab instance, it can be either "source" or "destination"
 	Role string
-	// Timeout is the timeout for GitLab API requests
-	Timeout time.Duration
 	// MaxRetries is the maximum number of retries for GitLab API requests
 	MaxRetries int
 	// InstanceSize is the size of the GitLab instance, it can be either "small" or "big"
@@ -57,18 +54,8 @@ type GitlabInstanceOpts struct {
 // newGitlabInstance creates a new GitlabInstance with the provided parameters
 // and initializes the GitLab client with a custom HTTP client.
 func newGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
-	// Create a custom HTTP client with the specified timeout and max retries
-	retryClient := retryablehttp.NewClient()
-	retryClient.HTTPClient.Timeout = initArgs.Timeout
-	retryClient.RetryMax = initArgs.MaxRetries
-	retryClient.CheckRetry = retryablehttp.DefaultRetryPolicy
-	retryClient.RetryWaitMin = 1 * time.Second
-	retryClient.RetryWaitMax = 5 * time.Second
-	retryClient.Backoff = retryablehttp.DefaultBackoff
-	retryClient.Logger = zap.L()
-
 	// Initialize the GitLab client with the custom HTTP client
-	gitlabClient, err := gitlab.NewClient(initArgs.GitlabToken, gitlab.WithBaseURL(initArgs.GitlabURL), gitlab.WithHTTPClient(retryClient.StandardClient()))
+	gitlabClient, err := gitlab.NewClient(initArgs.GitlabToken, gitlab.WithBaseURL(initArgs.GitlabURL), gitlab.WithCustomRetryMax(initArgs.MaxRetries), gitlab.WithCustomRetryWaitMinMax(1*time.Second, 5*time.Second), gitlab.WithCustomBackoff(retryablehttp.DefaultBackoff))
 	if err != nil {
 		return nil, err
 	}

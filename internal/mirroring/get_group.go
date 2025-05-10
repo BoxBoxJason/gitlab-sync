@@ -119,7 +119,7 @@ func (g *GitlabInstance) processGroupsSmallInstance(allGroups []*gitlab.Group, g
 		go func(group *gitlab.Group) {
 			defer wg.Done()
 
-			groupPath, matches := g.checkPathMatchesFilters(group.FullPath, nil, groupFilters)
+			groupPath, matches := checkPathMatchesFilters(group.FullPath, nil, groupFilters)
 			if matches {
 				g.storeGroup(group, groupPath, mirrorMapping)
 			}
@@ -141,6 +141,23 @@ func (g *GitlabInstance) fetchAndProcessGroupsLargeInstance(groupFilters *map[st
 	var wg sync.WaitGroup
 	wg.Add(len(*groupFilters))
 
+	var (
+		errs  []error
+		errMu sync.Mutex
+	)
+
+	// Start an error collector goroutine.
+	go func() {
+		// This goroutine will run until errChan is closed.
+		for err := range errChan {
+			if err != nil {
+				errMu.Lock()
+				errs = append(errs, err)
+				errMu.Unlock()
+			}
+		}
+	}()
+
 	for groupPath := range *groupFilters {
 		go g.fetchAndProcessGroupRecursive(groupPath, groupPath, mirrorMapping, errChan, &wg)
 	}
@@ -148,7 +165,7 @@ func (g *GitlabInstance) fetchAndProcessGroupsLargeInstance(groupFilters *map[st
 	// Wait for all goroutines to finish
 	wg.Wait()
 	close(errChan)
-	return utils.MergeErrors(errChan, 2)
+	return utils.MergeErrors(errs, 2)
 }
 
 // fetchAndProcessGroupRecursive fetches a group and its projects recursively
@@ -166,7 +183,7 @@ func (g *GitlabInstance) fetchAndProcessGroupRecursive(gid any, fetchOriginPath 
 	case int, string:
 		group, _, err = g.Gitlab.Groups.GetGroup(gid, &gitlab.GetGroupOptions{WithProjects: gitlab.Ptr(false)})
 		if err != nil {
-			errChan <- err
+			errChan <- fmt.Errorf("failed to retrieve group %s: %v", gid, err)
 		}
 	case *gitlab.Group:
 		group = v
@@ -200,7 +217,7 @@ func (g *GitlabInstance) fetchAndProcessGroupSubgroups(group *gitlab.Group, fetc
 	for {
 		subgroups, resp, err := g.Gitlab.Groups.ListSubGroups(group.ID, fetchOpts)
 		if err != nil {
-			errChan <- err
+			errChan <- fmt.Errorf("failed to retrieve subgroups for group %s: %v", group.FullPath, err)
 			return
 		}
 		for _, subgroup := range subgroups {

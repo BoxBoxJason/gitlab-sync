@@ -24,7 +24,6 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
 		GitlabURL:    gitlabMirrorArgs.SourceGitlabURL,
 		GitlabToken:  gitlabMirrorArgs.SourceGitlabToken,
 		Role:         ROLE_SOURCE,
-		Timeout:      gitlabMirrorArgs.Timeout,
 		MaxRetries:   gitlabMirrorArgs.Retry,
 		InstanceSize: sourceGitlabSize,
 	})
@@ -40,7 +39,6 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
 		GitlabURL:    gitlabMirrorArgs.DestinationGitlabURL,
 		GitlabToken:  gitlabMirrorArgs.DestinationGitlabToken,
 		Role:         ROLE_DESTINATION,
-		Timeout:      gitlabMirrorArgs.Timeout,
 		MaxRetries:   gitlabMirrorArgs.Retry,
 		InstanceSize: destinationGitlabSize,
 	})
@@ -56,13 +54,13 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
 
 	go func() {
 		defer wg.Done()
-		if err := fetchAll(sourceGitlabInstance, sourceProjectFilters, sourceGroupFilters, gitlabMirrorArgs.MirrorMapping); err != nil {
+		if err := sourceGitlabInstance.fetchAll(sourceProjectFilters, sourceGroupFilters, gitlabMirrorArgs.MirrorMapping); err != nil {
 			errCh <- err
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		if err := fetchAll(destinationGitlabInstance, destinationProjectFilters, destinationGroupFilters, gitlabMirrorArgs.MirrorMapping); err != nil {
+		if err := destinationGitlabInstance.fetchAll(destinationProjectFilters, destinationGroupFilters, gitlabMirrorArgs.MirrorMapping); err != nil {
 			errCh <- err
 		}
 	}()

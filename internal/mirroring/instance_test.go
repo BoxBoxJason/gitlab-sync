@@ -6,18 +6,6 @@ import (
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
-var (
-	TEST_PROJECT = &gitlab.Project{
-		Name:              "Test Project",
-		PathWithNamespace: "test/project",
-	}
-
-	TEST_GROUP = &gitlab.Group{
-		Name:     "Test Group",
-		FullPath: "test/group",
-	}
-)
-
 func TestNewGitlabInstance(t *testing.T) {
 	gitlabURL := "https://gitlab.example.com"
 	gitlabToken := "test-token"
@@ -26,7 +14,6 @@ func TestNewGitlabInstance(t *testing.T) {
 		GitlabURL:    gitlabURL,
 		GitlabToken:  gitlabToken,
 		Role:         ROLE_SOURCE,
-		Timeout:      10,
 		MaxRetries:   3,
 		InstanceSize: INSTANCE_SIZE_SMALL,
 	})

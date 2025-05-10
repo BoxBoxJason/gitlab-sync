@@ -12,19 +12,19 @@ import (
 
 // fetchAll retrieves all projects and groups from the GitLab instance
 // that match the filters and stores them in the instance cache.
-func fetchAll(gitlabInstance *GitlabInstance, projectFilters map[string]struct{}, groupFilters map[string]struct{}, mirrorMapping *utils.MirrorMapping) error {
+func (g *GitlabInstance) fetchAll(projectFilters map[string]struct{}, groupFilters map[string]struct{}, mirrorMapping *utils.MirrorMapping) error {
 	wg := sync.WaitGroup{}
 	errCh := make(chan error, 2)
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		if err := gitlabInstance.fetchAndProcessGroups(&groupFilters, mirrorMapping); err != nil {
+		if err := g.fetchAndProcessGroups(&groupFilters, mirrorMapping); err != nil {
 			errCh <- err
 		}
 	}()
 	go func() {
 		defer wg.Done()
-		if err := gitlabInstance.fetchAndProcessProjects(&projectFilters, &groupFilters, mirrorMapping); err != nil {
+		if err := g.fetchAndProcessProjects(&projectFilters, &groupFilters, mirrorMapping); err != nil {
 			errCh <- err
 		}
 	}()
@@ -58,7 +58,7 @@ func (g *GitlabInstance) getParentNamespaceID(projectOrGroupPath string) (int, e
 //   - or path starts with any of the groups in the groups map
 //
 // In the case of a match with a group, it returns the group path
-func (g *GitlabInstance) checkPathMatchesFilters(resourcePath string, projectFilters *map[string]struct{}, groupFilters *map[string]struct{}) (string, bool) {
+func checkPathMatchesFilters(resourcePath string, projectFilters *map[string]struct{}, groupFilters *map[string]struct{}) (string, bool) {
 	zap.L().Debug("Checking if path matches filters", zap.String("path", resourcePath))
 	if projectFilters != nil {
 		if _, ok := (*projectFilters)[resourcePath]; ok {

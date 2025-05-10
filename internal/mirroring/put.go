@@ -58,7 +58,7 @@ func (sourceGitlabInstance *GitlabInstance) copyProjectAvatar(destinationGitlabI
 		return nil
 	}
 
-	zap.L().Debug("Copying project avatar", zap.String("source", sourceProject.HTTPURLToRepo), zap.String("destination", destinationProject.HTTPURLToRepo))
+	zap.L().Debug("Copying project avatar", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 
 	// Download the source project avatar
 	sourceProjectAvatar, _, err := sourceGitlabInstance.Gitlab.Projects.DownloadAvatar(sourceProject.ID)
@@ -90,7 +90,7 @@ func (sourceGitlabInstance *GitlabInstance) copyGroupAvatar(destinationGitlabIns
 		return nil
 	}
 
-	zap.L().Debug("Copying group avatar", zap.String("source", sourceGroup.WebURL), zap.String("destination", destinationGroup.WebURL))
+	zap.L().Debug("Copying group avatar", zap.String(ROLE_SOURCE, sourceGroup.WebURL), zap.String(ROLE_DESTINATION, destinationGroup.WebURL))
 
 	// Download the source group avatar
 	sourceGroupAvatar, _, err := sourceGitlabInstance.Gitlab.Groups.DownloadAvatar(sourceGroup.ID)
@@ -127,7 +127,7 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 	go func() {
 		defer wg.Done()
 
-		zap.L().Debug("Enabling project mirror pull", zap.String("source", sourceProject.HTTPURLToRepo), zap.String("destination", destinationProject.HTTPURLToRepo))
+		zap.L().Debug("Enabling project mirror pull", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 		err := destinationGitlabInstance.enableProjectMirrorPull(sourceProject, destinationProject, copyOptions)
 		if err != nil {
 			errorChan <- fmt.Errorf("failed to enable project mirror pull for %s: %s", destinationProject.HTTPURLToRepo, err)
@@ -136,7 +136,7 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 
 	go func() {
 		defer wg.Done()
-		zap.L().Debug("Copying project avatar", zap.String("source", sourceProject.HTTPURLToRepo), zap.String("destination", destinationProject.HTTPURLToRepo))
+		zap.L().Debug("Copying project avatar", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 		err := sourceGitlabInstance.copyProjectAvatar(destinationGitlabInstance, destinationProject, sourceProject)
 		if err != nil {
 			errorChan <- fmt.Errorf("failed to copy project avatar for %s: %s", destinationProject.HTTPURLToRepo, err)

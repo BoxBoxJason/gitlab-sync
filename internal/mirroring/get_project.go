@@ -1,6 +1,7 @@
 package mirroring
 
 import (
+	"fmt"
 	"path/filepath"
 	"sync"
 
@@ -124,7 +125,7 @@ func (g *GitlabInstance) processProjectsSmallInstance(allProjects []*gitlab.Proj
 		go func(project *gitlab.Project) {
 			defer wg.Done()
 
-			group, matches := g.checkPathMatchesFilters(project.PathWithNamespace, projectFilters, groupFilters)
+			group, matches := checkPathMatchesFilters(project.PathWithNamespace, projectFilters, groupFilters)
 			if matches {
 				g.storeProject(project, group, mirrorMapping)
 			}
@@ -187,7 +188,7 @@ func (g *GitlabInstance) fetchAndProcessGroupProjects(group *gitlab.Group, fetch
 		for {
 			projects, resp, err := g.Gitlab.Groups.ListGroupProjects(group.ID, opt)
 			if err != nil {
-				errChan <- err
+				errChan <- fmt.Errorf("failed to retrieve projects for group %s: %v", group.Name, err)
 			}
 
 			for _, project := range projects {

@@ -190,7 +190,6 @@ func TestFetchAll(t *testing.T) {
 			if _, ok := gitlabInstance.Groups[TEST_GROUP_2.FullPath]; !ok {
 				t.Errorf("expected group %s not found in %s %s instance cache", TEST_GROUP_2.FullPath, gitlabInstance.Role, gitlabInstance.InstanceSize)
 			}
-
 		})
 	}
 

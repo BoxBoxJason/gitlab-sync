@@ -169,7 +169,7 @@ func (g *GitlabInstance) fetchAndProcessGroupsLargeInstance(groupFilters *map[st
 }
 
 // fetchAndProcessGroupRecursive fetches a group and its projects recursively
-// It uses a wait group to ensure that all goroutines finish before returning
+// It uses a wait group to ensure that all goroutines finish befopidpre returning
 // It sends the fetched group to the allGroupsChannel and the projects to the allProjectsChanel
 //
 // gid can be either an int, a string or a *gitlab.Group
@@ -188,7 +188,8 @@ func (g *GitlabInstance) fetchAndProcessGroupRecursive(gid any, fetchOriginPath 
 	case *gitlab.Group:
 		group = v
 	default:
-		errChan <- fmt.Errorf("invalid group ID type %T (%s)", gid, gid)
+		errChan <- fmt.Errorf("invalid group ID type %T (%v)", gid, gid)
+		return
 	}
 	if group != nil {
 		g.storeGroup(group, fetchOriginPath, mirrorMapping)

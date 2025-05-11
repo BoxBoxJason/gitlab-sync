@@ -2,7 +2,6 @@ package mirroring
 
 import (
 	"fmt"
-	"sort"
 	"sync"
 
 	"gitlab-sync/internal/utils"
@@ -216,10 +215,10 @@ func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOp
 // It fetches existing releases from the destination project and creates new releases for those that do not exist.
 // The function handles the API calls concurrently using goroutines and a wait group.
 // It returns an error if any of the API calls fail.
-func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinationProject *gitlab.Project) error {
+func (destinationGitlab *GitlabInstance) mirrorReleases(sourceGitlab *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project) error {
 	zap.L().Debug("Starting releases mirroring", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 	// Fetch existing releases from the destination project
-	existingReleases, _, err := g.Gitlab.Releases.ListReleases(destinationProject.ID, &gitlab.ListReleasesOptions{})
+	existingReleases, _, err := destinationGitlab.Gitlab.Releases.ListReleases(destinationProject.ID, &gitlab.ListReleasesOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to fetch existing releases for destination project %s: %s", destinationProject.HTTPURLToRepo, err)
 	}
@@ -233,7 +232,7 @@ func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinati
 	}
 
 	// Fetch releases from the source project
-	sourceReleases, _, err := g.Gitlab.Releases.ListReleases(sourceProject.ID, &gitlab.ListReleasesOptions{})
+	sourceReleases, _, err := sourceGitlab.Gitlab.Releases.ListReleases(sourceProject.ID, &gitlab.ListReleasesOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to fetch releases for source project %s: %s", sourceProject.HTTPURLToRepo, err)
 	}
@@ -259,7 +258,7 @@ func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinati
 			zap.L().Debug("Creating release in destination project", zap.String("release", releaseToMirror.TagName), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 
 			// Create the release in the destination project
-			_, _, err := g.Gitlab.Releases.CreateRelease(destinationProject.ID, &gitlab.CreateReleaseOptions{
+			_, _, err := destinationGitlab.Gitlab.Releases.CreateRelease(destinationProject.ID, &gitlab.CreateReleaseOptions{
 				Name:        &releaseToMirror.Name,
 				TagName:     &releaseToMirror.TagName,
 				Description: &releaseToMirror.Description,
@@ -277,24 +276,4 @@ func (g *GitlabInstance) mirrorReleases(sourceProject *gitlab.Project, destinati
 
 	zap.L().Info("Releases mirroring completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 	return utils.MergeErrors(errorChan, 2)
-}
-
-// reverseGroupMirrorMap reverses the mirror mapping to get the source group path for each destination group.
-// It creates a map where the keys are the destination group paths and the values are the source group paths.
-// The function also returns a sorted list of destination group paths.
-func (g *GitlabInstance) reverseGroupMirrorMap(mirrorMapping *utils.MirrorMapping) (map[string]string, []string) {
-	var reversedMirrorMap map[string]string
-	destinationGroupPaths := make([]string, 0, len(g.Groups))
-	if mirrorMapping != nil {
-		// Reverse the mirror mapping to get the source group path for each destination group
-		reversedMirrorMap := make(map[string]string, len(mirrorMapping.Groups))
-		// Extract the keys (group paths) and sort them
-		// This ensures that the parent groups are created before their children
-		for sourceGroupPath, createOptions := range mirrorMapping.Groups {
-			reversedMirrorMap[createOptions.DestinationPath] = sourceGroupPath
-			destinationGroupPaths = append(destinationGroupPaths, createOptions.DestinationPath)
-		}
-		sort.Strings(destinationGroupPaths)
-	}
-	return reversedMirrorMap, destinationGroupPaths
 }

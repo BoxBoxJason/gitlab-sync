@@ -149,14 +149,14 @@ func (g *GitlabInstance) fetchAndProcessProjectsBigInstance(projectFilters *map[
 	// Fetch each project in parallel
 	var wg sync.WaitGroup
 	projectsChan := make(chan *gitlab.Project, len(*projectFilters))
-	errCh := make(chan error)
+	errCh := make(chan error, len(*projectFilters))
 	wg.Add(len(*projectFilters))
 	for project := range *projectFilters {
 		go func(projectPath string) {
 			defer wg.Done()
 			p, _, err := g.Gitlab.Projects.GetProject(projectPath, &gitlab.GetProjectOptions{})
 			if err != nil {
-				errCh <- err
+				errCh <- fmt.Errorf("failed to retrieve project %s: %v", projectPath, err)
 				return
 			}
 			projectsChan <- p

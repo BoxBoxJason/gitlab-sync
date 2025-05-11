@@ -67,8 +67,7 @@ func (sourceGitlabInstance *GitlabInstance) copyProjectAvatar(destinationGitlabI
 	}
 
 	// Upload the avatar to the destination project
-	filename := fmt.Sprintf("avatar-%d.png", time.Now().Unix())
-	_, _, err = destinationGitlabInstance.Gitlab.Projects.UploadAvatar(destinationProject.ID, sourceProjectAvatar, filename)
+	_, _, err = destinationGitlabInstance.Gitlab.Projects.UploadAvatar(destinationProject.ID, sourceProjectAvatar, fmt.Sprintf("avatar-%d.png", time.Now().Unix()))
 	if err != nil {
 		return fmt.Errorf("failed to upload avatar for project %s: %s", destinationProject.HTTPURLToRepo, err)
 	}
@@ -156,7 +155,7 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 	if copyOptions.MirrorReleases {
 		go func() {
 			defer wg.Done()
-			err := destinationGitlabInstance.mirrorReleases(sourceProject, destinationProject)
+			err := destinationGitlabInstance.mirrorReleases(sourceGitlabInstance, sourceProject, destinationProject)
 			if err != nil {
 				errorChan <- fmt.Errorf("failed to copy project %s releases: %s", destinationProject.HTTPURLToRepo, err)
 			}

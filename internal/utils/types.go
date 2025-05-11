@@ -158,7 +158,14 @@ func (m *MirrorMapping) check() error {
 // It checks if the project names and destination paths are valid
 // It returns an error if any of the projects are invalid
 func (m *MirrorMapping) checkProjects(errChan chan error) {
+	duplicateDestinationFinder := make(map[string]struct{}, len(m.Projects))
 	for project, options := range m.Projects {
+		// Check if the destination path is already used
+		if _, ok := duplicateDestinationFinder[options.DestinationPath]; ok {
+			errChan <- fmt.Errorf("duplicate destination path found in project mapping: %s", options.DestinationPath)
+		} else {
+			duplicateDestinationFinder[options.DestinationPath] = struct{}{}
+		}
 		// Check the source / destination paths
 		checkCopyPaths(project, options.DestinationPath, PROJECT, errChan)
 
@@ -196,7 +203,14 @@ func checkCopyPaths(sourcePath string, destinationPath string, pathType string, 
 }
 
 func (m *MirrorMapping) checkGroups(errChan chan error) {
+	duplicateDestinationFinder := make(map[string]struct{}, len(m.Groups))
 	for group, options := range m.Groups {
+		// Check if the destination path is already used
+		if _, ok := duplicateDestinationFinder[options.DestinationPath]; ok {
+			errChan <- fmt.Errorf("duplicate destination path found in group mapping: %s", options.DestinationPath)
+		} else {
+			duplicateDestinationFinder[options.DestinationPath] = struct{}{}
+		}
 		// Check the source / destination paths
 		checkCopyPaths(group, options.DestinationPath, GROUP, errChan)
 

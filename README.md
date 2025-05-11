@@ -64,7 +64,6 @@ If mandatory arguments are not provided, the program will prompt for them.
 | `--destination-token` | `DESTINATION_GITLAB_TOKEN` | Yes | Access token for the destination GitLab instance |
 | `--destination-big` | `DESTINATION_GITLAB_BIG` | No | Specify if the destination GitLab instance is a big instance (default: false) |
 | `--mirror-mapping` | `MIRROR_MAPPING` | Yes | Path to a JSON file containing the mirror mapping |
-| `--timeout` or `-t` | N/A | No | Timeout for GitLab API requests in seconds (default: 30) |
 | `--retry` or `-r` | N/A | No | Number of retries for failed GitLab API requests (does not apply to GraphQL requests) (default: 3) |
 
 ## Example

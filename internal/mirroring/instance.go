@@ -3,8 +3,6 @@ package mirroring
 import (
 	"sync"
 
-	"gitlab-sync/internal/utils"
-
 	"github.com/hashicorp/go-retryablehttp"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
@@ -24,10 +22,6 @@ type GitlabInstance struct {
 	// muGroups is a mutex used to synchronize access to the Groups map
 	// It ensures that only one goroutine can read or write to the Groups map at a time
 	muGroups sync.RWMutex
-	// GraphQLClient is the GraphQL client used to interact with the GitLab GraphQL API
-	// It is used to perform GraphQL queries and mutations
-	// It is initialized with the GitLab token and URL
-	GraphQLClient *utils.GraphQLClient
 	// Role is the role of the GitLab instance, it can be either "source" or "destination"
 	// It is used to determine the behavior of the mirroring process
 	Role string
@@ -60,12 +54,11 @@ func newGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 	}
 
 	gitlabInstance := &GitlabInstance{
-		Gitlab:        gitlabClient,
-		Projects:      make(map[string]*gitlab.Project),
-		Groups:        make(map[string]*gitlab.Group),
-		GraphQLClient: utils.NewGitlabGraphQLClient(initArgs.GitlabToken, initArgs.GitlabURL),
-		Role:          initArgs.Role,
-		InstanceSize:  initArgs.InstanceSize,
+		Gitlab:       gitlabClient,
+		Projects:     make(map[string]*gitlab.Project),
+		Groups:       make(map[string]*gitlab.Group),
+		Role:         initArgs.Role,
+		InstanceSize: initArgs.InstanceSize,
 	}
 
 	return gitlabInstance, nil

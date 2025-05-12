@@ -4,12 +4,9 @@ Utility types definitions
 package utils
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -236,59 +233,4 @@ func checkVisibility(visibility string) bool {
 		valid = false
 	}
 	return valid
-}
-
-// GraphQLClient is a client for sending GraphQL requests to GitLab
-type GraphQLClient struct {
-	token string
-	URL   string
-}
-
-// GraphQLRequest is a struct that represents a GraphQL request
-// It contains the query and the variables
-type GraphQLRequest struct {
-	Query     string `json:"query"`
-	Variables string `json:"variables,omitempty"`
-}
-
-// NewGitlabGraphQLClient creates a new GraphQL client for GitLab
-// It takes the token and the GitLab URL as arguments
-// It returns a pointer to the GraphQLClient struct
-func NewGitlabGraphQLClient(token, gitlabUrl string) *GraphQLClient {
-	return &GraphQLClient{
-		token: token,
-		URL:   strings.TrimSuffix(gitlabUrl, "/") + "/api/graphql",
-	}
-}
-
-// SendRequest sends a GraphQL request to GitLab
-// It takes a GraphQLRequest struct and the HTTP method as arguments
-// It returns the response body as a string and an error if any
-func (g *GraphQLClient) SendRequest(request *GraphQLRequest, method string) (string, error) {
-	requestBody, err := json.Marshal(request)
-	if err != nil {
-		return "", err
-	}
-	req, err := http.NewRequestWithContext(context.Background(), method, g.URL, bytes.NewBuffer(requestBody))
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+g.token)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GraphQL request failed with status: %s", resp.Status)
-	}
-	var responseBody bytes.Buffer
-	if _, err := responseBody.ReadFrom(resp.Body); err != nil {
-		return "", err
-	}
-	return responseBody.String(), nil
 }

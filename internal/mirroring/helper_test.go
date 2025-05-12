@@ -292,6 +292,9 @@ func setupTestServer(t *testing.T, role string, instanceSize string) (*http.Serv
 	setupTestProjects(mux)
 	setupTestGroups(mux)
 
+	// Add test handlers for the GraphQL endpoint.
+	setupTestGraphQL(mux)
+
 	// Catch-all handler for undefined routes
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("Undefined route accessed: %s %s", r.Method, r.URL.Path), http.StatusNotFound)
@@ -366,6 +369,29 @@ func setupTestGroup(mux *http.ServeMux, group *gitlab.Group, stringResponse stri
 		w.Header().Set(HEADER_CONTENT_TYPE, "image/png")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}) // PNG header
+	})
+}
+
+func setupTestGraphQL(mux *http.ServeMux) {
+	// Setup the GraphQL endpoint to return a mock response.
+	mux.HandleFunc("/api/graphql", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+			// Set response status to 200 OK
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, `{
+				"data": {
+					"catalogResourcesCreate": {
+					"errors": []
+					}
+				},
+				"correlationId": "4a5a7b18e94ae6770b3933913989ef40"
+				}`)
+		default:
+			// Set response status to 405 Method Not Allowed
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
 	})
 }
 

@@ -25,25 +25,6 @@ func (g *GitlabInstance) enableProjectMirrorPull(sourceProject *gitlab.Project, 
 	return err
 }
 
-// addProjectToCICDCatalog adds a project to the CI/CD catalog in the destination GitLab instance.
-// It uses a GraphQL mutation to create the catalog resource for the project.
-//
-// NOTE: This function needs to be changed as soon as the gitlab SDK supports the GraphQL API.
-func (g *GitlabInstance) addProjectToCICDCatalog(project *gitlab.Project) error {
-	zap.L().Debug("Adding project to CI/CD catalog", zap.String("project", project.HTTPURLToRepo))
-	mutation := `
-    mutation {
-        catalogResourcesCreate(input: { projectPath: "%s" }) {
-            errors
-        }
-    }`
-	query := fmt.Sprintf(mutation, project.PathWithNamespace)
-	_, err := g.GraphQLClient.SendRequest(&utils.GraphQLRequest{
-		Query: query,
-	}, "POST")
-	return err
-}
-
 // copyProjectAvatar copies the avatar from the source project to the destination project.
 // It first checks if the destination project already has an avatar set. If not, it downloads the avatar from the source project
 // and uploads it to the destination project.

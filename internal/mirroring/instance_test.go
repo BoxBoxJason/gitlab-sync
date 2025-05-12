@@ -32,10 +32,6 @@ func TestNewGitlabInstance(t *testing.T) {
 	if instance.Groups == nil {
 		t.Error("expected Groups map to be initialized")
 	}
-
-	if instance.GraphQLClient == nil {
-		t.Error("expected GraphQLClient to be initialized")
-	}
 }
 
 func TestAddProject(t *testing.T) {

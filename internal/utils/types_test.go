@@ -2,8 +2,6 @@ package utils
 
 import (
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"reflect"
 	"testing"
@@ -226,37 +224,5 @@ func TestCheck(t *testing.T) {
 				t.Errorf("expected error %v, got nil", tt.expectedErr)
 			}
 		})
-	}
-}
-
-// TestSendRequest tests sending a GraphQL request to GitLab
-func TestSendRequest(t *testing.T) {
-	client := NewGitlabGraphQLClient("test-token", "http://example.com")
-
-	request := &GraphQLRequest{
-		Query:     "query { test }",
-		Variables: "",
-	}
-
-	server := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, err := w.Write([]byte(`{"data": "response"}`))
-		if err != nil {
-			t.Fatalf("failed to write response: %v", err)
-		}
-	})
-	testServer := httptest.NewServer(server)
-	defer testServer.Close()
-
-	client.URL = testServer.URL
-
-	response, err := client.SendRequest(request, http.MethodPost)
-	if err != nil {
-		t.Fatalf("SendRequest() error = %v", err)
-	}
-
-	expectedResponse := `{"data": "response"}`
-	if response != expectedResponse {
-		t.Errorf("expected response %v, got %v", expectedResponse, response)
 	}
 }

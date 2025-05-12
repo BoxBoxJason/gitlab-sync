@@ -219,3 +219,13 @@ func TestCreateProjects(t *testing.T) {
 		}
 	})
 }
+
+func TestAddProjectToCICDCatalog(t *testing.T) {
+	_, gitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	t.Run("Add Project to CI/CD Catalog", func(t *testing.T) {
+		err := gitlabInstance.addProjectToCICDCatalog(TEST_PROJECT)
+		if err != nil {
+			t.Errorf("Unexpected error when adding project to CI/CD catalog: %v", err)
+		}
+	})
+}

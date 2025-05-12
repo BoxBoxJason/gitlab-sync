@@ -1,6 +1,7 @@
 package mirroring
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -276,4 +277,27 @@ func (destinationGitlab *GitlabInstance) mirrorReleases(sourceGitlab *GitlabInst
 
 	zap.L().Info("Releases mirroring completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 	return utils.MergeErrors(errorChan, 2)
+}
+
+// addProjectToCICDCatalog adds a project to the CI/CD catalog in the destination GitLab instance.
+// It uses a GraphQL mutation to create the catalog resource for the project.
+func (g *GitlabInstance) addProjectToCICDCatalog(project *gitlab.Project) error {
+	zap.L().Debug("Adding project to CI/CD catalog", zap.String("project", project.HTTPURLToRepo))
+	mutation := `
+    mutation {
+        catalogResourcesCreate(input: { projectPath: "%s" }) {
+            errors
+        }
+    }`
+	query := fmt.Sprintf(mutation, project.PathWithNamespace)
+	var response struct {
+		Data struct {
+			CatalogResourcesCreate struct {
+				Errors []string `json:"errors"`
+			} `json:"catalogResourcesCreate"`
+		} `json:"data"`
+	}
+
+	_, err := g.Gitlab.GraphQL.Do(context.Background(), gitlab.GraphQLQuery{Query: query}, &response)
+	return err
 }

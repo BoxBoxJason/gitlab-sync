@@ -23,6 +23,7 @@ func main() {
 	var args utils.ParserArgs
 	var mirrorMappingPath string
 	var timeout int
+	var logFile string
 
 	var rootCmd = &cobra.Command{
 		Use:     "gitlab-sync",
@@ -31,7 +32,7 @@ func main() {
 		Long:    "Fully customizable gitlab repositories and groups mirroring between two (or one) gitlab instances.",
 		Run: func(cmd *cobra.Command, cmdArgs []string) {
 			// Set up the logger
-			setupZapLogger(args.Verbose)
+			setupZapLogger(args.Verbose, strings.TrimSpace(logFile))
 			zap.L().Debug("Verbose mode enabled")
 			zap.L().Debug("Parsing command line arguments")
 
@@ -90,6 +91,7 @@ func main() {
 	rootCmd.Flags().BoolVar(&args.DryRun, "dry-run", false, "Perform a dry run without making any changes")
 	rootCmd.Flags().IntVarP(&timeout, "timeout", "t", 30, "Timeout in seconds for GitLab API requests")
 	rootCmd.Flags().IntVarP(&args.Retry, "retry", "r", 3, "Number of retries for failed requests")
+	rootCmd.Flags().StringVar(&logFile, "log-file", strings.TrimSpace(os.Getenv("GITLAB_SYNC_LOG_FILE")), "Path to the log file")
 
 	if err := rootCmd.Execute(); err != nil {
 		zap.L().Error(err.Error())
@@ -133,10 +135,11 @@ func promptForMandatoryInput(defaultValue string, prompt string, errorMsg string
 	return input
 }
 
-// setupZapLogger sets up the Zap logger with the specified verbosity level.
+// setupZapLogger sets up the Zap logger with the specified verbosity level and optional file output.
 // It configures the logger to use ISO8601 time format and capitalizes the log levels.
 // The logger is set to production mode by default, but can be configured for debug mode if verbose is true.
-func setupZapLogger(verbose bool) {
+// If filename is not empty, the logger's output is redirected to the specified file.
+func setupZapLogger(verbose bool, filename string) {
 	// Set up the logger configuration
 	config := zap.NewProductionConfig()
 	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
@@ -145,6 +148,15 @@ func setupZapLogger(verbose bool) {
 		config.Level.SetLevel(zapcore.DebugLevel)
 	} else {
 		config.Level.SetLevel(zapcore.InfoLevel)
+	}
+
+	// If a filename is specified, update the output path.
+	if filename != "" {
+		err := os.MkdirAll(filepath.Dir(filename), 0700)
+		if err != nil {
+			zap.L().Fatal("Failed to create log directory: " + err.Error())
+		}
+		config.OutputPaths = []string{filename, "stderr"}
 	}
 
 	// Create the logger

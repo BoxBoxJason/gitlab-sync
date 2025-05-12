@@ -14,37 +14,87 @@ const (
 	RECEIVED_INPUT = "Received input"
 )
 
-// setupZapLogger is assumed to be defined in the same module.
-// If it is in a different package, import that package accordingly.
-
-func TestSetupZapLoggerVerbose(t *testing.T) {
-	// Set up the logger in verbose mode.
-	setupZapLogger(true)
-
-	// The global logger (zap.L()) should allow debug logs.
-	// Check that debug logs are enabled.
-	if !zap.L().Core().Enabled(zap.DebugLevel) {
-		t.Error("Expected debug level to be enabled in verbose mode but it is not")
+func TestSetupZapLogger(t *testing.T) {
+	// Define the test cases in a table-driven approach.
+	tests := []struct {
+		name             string
+		verbose          bool
+		filename         string
+		debugExpected    bool
+		infoExpected     bool
+		shouldCreateFile bool
+	}{
+		{
+			name:             "Verbose without file",
+			verbose:          true,
+			filename:         "",
+			debugExpected:    true,
+			infoExpected:     true,
+			shouldCreateFile: false,
+		},
+		{
+			name:             "Verbose with file",
+			verbose:          true,
+			filename:         "test_verbose.log",
+			debugExpected:    true,
+			infoExpected:     true,
+			shouldCreateFile: true,
+		},
+		{
+			name:             "Non-Verbose without file",
+			verbose:          false,
+			filename:         "",
+			debugExpected:    false,
+			infoExpected:     true,
+			shouldCreateFile: false,
+		},
+		{
+			name:             "Non-Verbose with file",
+			verbose:          false,
+			filename:         "test_nonverbose.log",
+			debugExpected:    false,
+			infoExpected:     true,
+			shouldCreateFile: true,
+		},
 	}
 
-	// Optionally, check that Info level logs are enabled.
-	if !zap.L().Core().Enabled(zap.InfoLevel) {
-		t.Error("Expected info level to be enabled in verbose mode but it is not")
-	}
-}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Call the setup function with appropriate parameters.
+			setupZapLogger(tc.verbose, tc.filename)
 
-func TestSetupZapLoggerNonVerbose(t *testing.T) {
-	// Set up the logger in non-verbose (production) mode.
-	setupZapLogger(false)
+			// Check that the logger's log level for debug is set as expected.
+			if zap.L().Core().Enabled(zap.DebugLevel) != tc.debugExpected {
+				t.Errorf("For verbose=%v, expected DebugLevel enabled to be %v, got %v",
+					tc.verbose, tc.debugExpected, zap.L().Core().Enabled(zap.DebugLevel))
+			}
 
-	// The global logger (zap.L()) should not allow debug logs.
-	if zap.L().Core().Enabled(zap.DebugLevel) {
-		t.Error("Expected debug level to be disabled in non-verbose mode but it is enabled")
-	}
+			// Check that info level is always enabled.
+			if zap.L().Core().Enabled(zap.InfoLevel) != tc.infoExpected {
+				t.Errorf("Expected InfoLevel enabled to be %v, got %v",
+					tc.infoExpected, zap.L().Core().Enabled(zap.InfoLevel))
+			}
 
-	// Info level logs must remain enabled.
-	if !zap.L().Core().Enabled(zap.InfoLevel) {
-		t.Error("Expected info level to be enabled in non-verbose mode but it is not")
+			// If a filename is provided, verify that the file is created.
+			if tc.shouldCreateFile && tc.filename != "" {
+				// Write a log entry to ensure that the logger flushes its output.
+				zap.L().Info("test log entry")
+				// Flush any buffered log entries.
+				if err := zap.L().Sync(); err != nil {
+					// On Windows, Sync may return an error, so we don't fail the test solely on that.
+					t.Logf("Sync error (possibly expected on Windows): %v", err)
+				}
+
+				// Check if the file exists.
+				if _, err := os.Stat(tc.filename); os.IsNotExist(err) {
+					t.Errorf("Expected log file %s to be created, but it does not exist", tc.filename)
+				} else if err != nil {
+					t.Errorf("Error checking log file %s: %v", tc.filename, err)
+				}
+				// Cleanup: remove the test log file.
+				os.Remove(tc.filename)
+			}
+		})
 	}
 }
 

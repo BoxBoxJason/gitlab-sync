@@ -65,6 +65,7 @@ If mandatory arguments are not provided, the program will prompt for them.
 | `--destination-big` | `DESTINATION_GITLAB_BIG` | No | Specify if the destination GitLab instance is a big instance (default: false) |
 | `--mirror-mapping` | `MIRROR_MAPPING` | Yes | Path to a JSON file containing the mirror mapping |
 | `--retry` or `-r` | N/A | No | Number of retries for failed GitLab API requests (default: 3) |
+| `--log-file` |  `GITLAB_SYNC_LOG_FILE` | No | Path to a log file for output logs (default: `none`, only outputs logs to stderr) |
 
 ## Example
 

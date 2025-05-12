@@ -11,11 +11,15 @@ import (
 	"go.uber.org/zap"
 )
 
+// ============================================================ //
+//                 GROUP CREATION FUNCTIONS                     //
+// ============================================================ //
+
 // createGroups creates GitLab groups in the destination GitLab instance based on the mirror mapping.
 // It retrieves the source group path for each destination group and creates the group in the destination instance.
 // The function also handles the copying of group avatars from the source to the destination instance.
 func (destinationGitlab *GitlabInstance) createGroups(sourceGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping) error {
-	zap.L().Debug("Creating groups in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION))
+	zap.L().Info("Creating groups in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION))
 
 	// Reverse the mirror mapping to get the source group path for each destination group
 	reversedMirrorMap, destinationGroupPaths := sourceGitlab.reverseGroupMirrorMap(mirrorMapping)
@@ -71,10 +75,48 @@ func (destinationGitlab *GitlabInstance) createGroup(destinationGroupPath string
 	return destinationGroup, nil
 }
 
+// createGroupFromSource creates a GitLab group in the destination GitLab instance based on the source group.
+// It sets the group name, path, description, visibility, and default branch based on the source group.
+// The function also handles the setting of the parent ID for the group.
+// It returns the created group or an error if the creation fails.
+func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOptions *utils.MirroringOptions) (*gitlab.Group, error) {
+	groupCreationArgs := &gitlab.CreateGroupOptions{
+		Name:          &sourceGroup.Name,
+		Path:          &sourceGroup.Path,
+		Description:   &sourceGroup.Description,
+		Visibility:    &sourceGroup.Visibility,
+		DefaultBranch: &sourceGroup.DefaultBranch,
+	}
+
+	// Retrieve the parent namespace ID for the group
+	// This is used to set the parent ID for the group
+	zap.L().Debug("Retrieving group namespace ID", zap.String(ROLE, ROLE_DESTINATION), zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
+	parentGroupID, err := g.getParentNamespaceID(copyOptions.DestinationPath)
+	if err != nil {
+		return nil, err
+	} else if parentGroupID >= 0 {
+		groupCreationArgs.ParentID = &parentGroupID
+	}
+
+	// Create the group in the destination GitLab instance
+	zap.L().Debug("Creating group in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION), zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
+	destinationGroup, _, err := g.Gitlab.Groups.CreateGroup(groupCreationArgs)
+	if err == nil {
+		zap.L().Info("Group created", zap.String("group", destinationGroup.WebURL))
+		g.addGroup(destinationGroup)
+	}
+
+	return destinationGroup, err
+}
+
+// ============================================================ //
+//                 PROJECT CREATION FUNCTIONS                    //
+// ============================================================ //
+
 // createProjects creates GitLab projects in the destination GitLab instance based on the mirror mapping.
 // It retrieves the source project path for each destination project and creates the project in the destination instance.
 func (destinationGitlab *GitlabInstance) createProjects(sourceGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping) error {
-	zap.L().Debug("Creating projects in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION))
+	zap.L().Info("Creating projects in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION))
 
 	// Create a wait group to wait for all goroutines to finish
 	var wg sync.WaitGroup
@@ -171,46 +213,16 @@ func (g *GitlabInstance) createProjectFromSource(sourceProject *gitlab.Project, 
 	zap.L().Debug("Creating project in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION), zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
 	destinationProject, _, err := g.Gitlab.Projects.CreateProject(projectCreationArgs)
 	if err == nil {
-		zap.L().Debug("Project created", zap.String("project", destinationProject.HTTPURLToRepo))
+		zap.L().Info("Project created", zap.String("project", destinationProject.HTTPURLToRepo))
 		g.addProject(destinationProject)
 	}
 
 	return destinationProject, nil
 }
 
-// createGroupFromSource creates a GitLab group in the destination GitLab instance based on the source group.
-// It sets the group name, path, description, visibility, and default branch based on the source group.
-// The function also handles the setting of the parent ID for the group.
-// It returns the created group or an error if the creation fails.
-func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOptions *utils.MirroringOptions) (*gitlab.Group, error) {
-	groupCreationArgs := &gitlab.CreateGroupOptions{
-		Name:          &sourceGroup.Name,
-		Path:          &sourceGroup.Path,
-		Description:   &sourceGroup.Description,
-		Visibility:    &sourceGroup.Visibility,
-		DefaultBranch: &sourceGroup.DefaultBranch,
-	}
-
-	// Retrieve the parent namespace ID for the group
-	// This is used to set the parent ID for the group
-	zap.L().Debug("Retrieving group namespace ID", zap.String(ROLE, ROLE_DESTINATION), zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
-	parentGroupID, err := g.getParentNamespaceID(copyOptions.DestinationPath)
-	if err != nil {
-		return nil, err
-	} else if parentGroupID >= 0 {
-		groupCreationArgs.ParentID = &parentGroupID
-	}
-
-	// Create the group in the destination GitLab instance
-	zap.L().Debug("Creating group in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION), zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
-	destinationGroup, _, err := g.Gitlab.Groups.CreateGroup(groupCreationArgs)
-	if err == nil {
-		zap.L().Debug("Group created", zap.String("group", destinationGroup.WebURL))
-		g.addGroup(destinationGroup)
-	}
-
-	return destinationGroup, err
-}
+// ============================================================ //
+//               RELEASES CREATION FUNCTIONS                    //
+// ============================================================ //
 
 // mirrorReleases mirrors releases from the source project to the destination project.
 // It fetches existing releases from the destination project and creates new releases for those that do not exist.
@@ -278,6 +290,10 @@ func (destinationGitlab *GitlabInstance) mirrorReleases(sourceGitlab *GitlabInst
 	zap.L().Info("Releases mirroring completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 	return utils.MergeErrors(errorChan, 2)
 }
+
+// ============================================================ //
+//                 CI/CD CATALOG FUNCTIONS                      //
+// ============================================================ //
 
 // addProjectToCICDCatalog adds a project to the CI/CD catalog in the destination GitLab instance.
 // It uses a GraphQL mutation to create the catalog resource for the project.

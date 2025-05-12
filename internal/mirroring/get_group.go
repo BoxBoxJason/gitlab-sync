@@ -15,6 +15,7 @@ import (
 //
 // The function is run in a goroutine for each group, and a wait group is used to wait for all goroutines to finish.
 func (g *GitlabInstance) fetchAndProcessGroups(groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) error {
+	zap.L().Debug("Fetching and processing groups from GitLab instance", zap.String(ROLE, g.Role), zap.Int("groups", len(*groupFilters)))
 	if !g.isBig() {
 		return g.fetchAndProcessGroupsSmallInstance(groupFilters, mirrorMapping)
 	}

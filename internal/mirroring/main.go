@@ -16,6 +16,7 @@ import (
 // It then processes the filters for groups and projects, and finally creates the groups and projects in the destination GitLab instance.
 // If the dry run flag is set, it will only print the groups and projects that would be created or updated.
 func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
+	zap.L().Info("Starting GitLab mirroring process", zap.String(ROLE_SOURCE, gitlabMirrorArgs.SourceGitlabURL), zap.String(ROLE_DESTINATION, gitlabMirrorArgs.DestinationGitlabURL))
 	sourceGitlabSize := INSTANCE_SIZE_SMALL
 	if gitlabMirrorArgs.SourceGitlabIsBig {
 		sourceGitlabSize = INSTANCE_SIZE_BIG
@@ -89,6 +90,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) error {
 // processFilters processes the filters for groups and projects.
 // It returns four maps: sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, and destinationGroupFilters.
 func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[string]struct{}, map[string]struct{}, map[string]struct{}) {
+	zap.L().Info("Checking mirror mapping filters")
 	sourceProjectFilters := make(map[string]struct{})
 	sourceGroupFilters := make(map[string]struct{})
 	destinationProjectFilters := make(map[string]struct{})

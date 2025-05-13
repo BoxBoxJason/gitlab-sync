@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"gitlab-sync/internal/mirroring"
 	"gitlab-sync/internal/utils"
@@ -22,7 +21,6 @@ var (
 func main() {
 	var args utils.ParserArgs
 	var mirrorMappingPath string
-	var timeout int
 	var logFile string
 
 	var rootCmd = &cobra.Command{
@@ -43,12 +41,6 @@ func main() {
 			case 0:
 				zap.L().Fatal("retry count must be -1 (no limit) or strictly greater than 0")
 			}
-
-			// Set the timeout for GitLab API requests
-			if timeout < 0 {
-				timeout = 0
-			}
-			args.Timeout = time.Duration(timeout) * time.Second
 
 			// Check if the source GitLab URL is provided
 			args.SourceGitlabURL = promptForMandatoryInput(args.SourceGitlabURL, "Input Source GitLab URL (MANDATORY)", "Source GitLab URL is mandatory", "Source GitLab URL", args.NoPrompt, false)
@@ -89,7 +81,6 @@ func main() {
 	rootCmd.Flags().BoolVarP(&args.NoPrompt, "no-prompt", "n", strings.TrimSpace(os.Getenv("NO_PROMPT")) != "", "Disable prompting for missing values")
 	rootCmd.Flags().StringVar(&mirrorMappingPath, "mirror-mapping", os.Getenv("MIRROR_MAPPING"), "Path to the mirror mapping file")
 	rootCmd.Flags().BoolVar(&args.DryRun, "dry-run", false, "Perform a dry run without making any changes")
-	rootCmd.Flags().IntVarP(&timeout, "timeout", "t", 30, "Timeout in seconds for GitLab API requests")
 	rootCmd.Flags().IntVarP(&args.Retry, "retry", "r", 3, "Number of retries for failed requests")
 	rootCmd.Flags().StringVar(&logFile, "log-file", strings.TrimSpace(os.Getenv("GITLAB_SYNC_LOG_FILE")), "Path to the log file")
 

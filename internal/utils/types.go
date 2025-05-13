@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
@@ -31,7 +30,6 @@ const (
 // - no_prompt: whether to disable prompts
 // - dry_run: whether to perform a dry run
 // - version: whether to show the version
-// - timeout: the timeout for the GitLab API requests
 // - retry: the number of retries for the GitLab API requests
 type ParserArgs struct {
 	SourceGitlabURL        string
@@ -44,7 +42,6 @@ type ParserArgs struct {
 	Verbose                bool
 	NoPrompt               bool
 	DryRun                 bool
-	Timeout                time.Duration
 	Retry                  int
 }
 

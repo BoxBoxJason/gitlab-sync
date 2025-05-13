@@ -12,10 +12,10 @@ import (
 
 // fetchAll retrieves all projects and groups from the GitLab instance
 // that match the filters and stores them in the instance cache.
-func (g *GitlabInstance) fetchAll(projectFilters map[string]struct{}, groupFilters map[string]struct{}, mirrorMapping *utils.MirrorMapping) error {
-	zap.L().Info("Fetching all projects and groups from GitLab instance", zap.String("role", g.Role), zap.String(INSTANCE_SIZE, g.InstanceSize), zap.Int("projects", len(projectFilters)), zap.Int("groups", len(groupFilters)))
+func (g *GitlabInstance) fetchAll(projectFilters map[string]struct{}, groupFilters map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
+	zap.L().Info("Fetching all projects and groups from GitLab instance", zap.String(ROLE, g.Role), zap.String(INSTANCE_SIZE, g.InstanceSize), zap.Int("projects", len(projectFilters)), zap.Int("groups", len(groupFilters)))
 	wg := sync.WaitGroup{}
-	errCh := make(chan error, 2)
+	errCh := make(chan []error, 2)
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
@@ -32,7 +32,7 @@ func (g *GitlabInstance) fetchAll(projectFilters map[string]struct{}, groupFilte
 	wg.Wait()
 	close(errCh)
 
-	return utils.MergeErrors(errCh, 2)
+	return utils.MergeErrors(errCh)
 }
 
 // getParentNamespaceID retrieves the parent namespace ID for a given project or group path.

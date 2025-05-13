@@ -15,7 +15,7 @@ import (
 // It also updates the mirror mapping with the corresponding group creation options.
 //
 // The function is run in a goroutine for each project, and a wait group is used to wait for all goroutines to finish.
-func (g *GitlabInstance) fetchAndProcessProjects(projectFilters *map[string]struct{}, groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) error {
+func (g *GitlabInstance) fetchAndProcessProjects(projectFilters *map[string]struct{}, groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
 	zap.L().Debug("Fetching and processing projects from GitLab instance", zap.String(ROLE, g.Role), zap.String(INSTANCE_SIZE, g.InstanceSize), zap.Int("projects", len(*projectFilters)), zap.Int("groups", len(*groupFilters)))
 	if !g.isBig() {
 		return g.fetchAndProcessProjectsSmallInstance(projectFilters, groupFilters, mirrorMapping)
@@ -63,11 +63,11 @@ func (g *GitlabInstance) storeProject(project *gitlab.Project, parentGroupPath s
 
 // fetchAndProcessProjectsSmallInstance retrieves all projects from the small GitLab instance
 // and processes them to store in the instance cache.
-func (g *GitlabInstance) fetchAndProcessProjectsSmallInstance(projectFilters *map[string]struct{}, groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) error {
+func (g *GitlabInstance) fetchAndProcessProjectsSmallInstance(projectFilters *map[string]struct{}, groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
 	allProjects, err := g.fetchAllProjectsSmallInstance()
 	if err != nil {
 		if len(allProjects) == 0 {
-			return err
+			return []error{err}
 		} else {
 			zap.L().Warn("Failed to fetch all projects from GitLab instance", zap.String(ROLE, g.Role), zap.Error(err))
 		}
@@ -146,7 +146,7 @@ func (g *GitlabInstance) processProjectsSmallInstance(allProjects []*gitlab.Proj
 //
 // It uses goroutines to fetch each project in parallel and a wait group to wait for all goroutines to finish.
 // It returns an error if any of the goroutines fail.
-func (g *GitlabInstance) fetchAndProcessProjectsBigInstance(projectFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) error {
+func (g *GitlabInstance) fetchAndProcessProjectsBigInstance(projectFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
 	// Fetch each project in parallel
 	var wg sync.WaitGroup
 	projectsChan := make(chan *gitlab.Project, len(*projectFilters))
@@ -170,7 +170,7 @@ func (g *GitlabInstance) fetchAndProcessProjectsBigInstance(projectFilters *map[
 	for project := range projectsChan {
 		g.storeProject(project, project.PathWithNamespace, mirrorMapping)
 	}
-	return utils.MergeErrors(errCh, 2)
+	return utils.MergeErrors(errCh)
 }
 
 // fetchAndProcessGroupProjects retrieves all projects from the group and processes them to store in the instance cache.

@@ -14,10 +14,10 @@ import (
 // It also updates the mirror mapping with the corresponding group creation options.
 //
 // The function is run in a goroutine for each group, and a wait group is used to wait for all goroutines to finish.
-func (g *GitlabInstance) fetchAndProcessGroups(groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) error {
+func (g *GitlabInstance) fetchAndProcessGroups(groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
 	zap.L().Debug("Fetching and processing groups from GitLab instance", zap.String(ROLE, g.Role), zap.Int("groups", len(*groupFilters)))
 	if !g.isBig() {
-		return g.fetchAndProcessGroupsSmallInstance(groupFilters, mirrorMapping)
+		return []error{g.fetchAndProcessGroupsSmallInstance(groupFilters, mirrorMapping)}
 	}
 	return g.fetchAndProcessGroupsLargeInstance(groupFilters, mirrorMapping)
 }
@@ -137,7 +137,7 @@ func (g *GitlabInstance) processGroupsSmallInstance(allGroups []*gitlab.Group, g
 // fetchAndProcessGroupsLargeInstance retrieves all groups that match the filters from the GitLab instance and stores them in the instance cache.
 // It also updates the mirror mapping with the corresponding group creation options.
 // It uses goroutines to fetch groups and their projects concurrently.
-func (g *GitlabInstance) fetchAndProcessGroupsLargeInstance(groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) error {
+func (g *GitlabInstance) fetchAndProcessGroupsLargeInstance(groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
 	errChan := make(chan error)
 	var wg sync.WaitGroup
 	wg.Add(len(*groupFilters))
@@ -166,7 +166,7 @@ func (g *GitlabInstance) fetchAndProcessGroupsLargeInstance(groupFilters *map[st
 	// Wait for all goroutines to finish
 	wg.Wait()
 	close(errChan)
-	return utils.MergeErrors(errs, 2)
+	return utils.MergeErrors(errs)
 }
 
 // fetchAndProcessGroupRecursive fetches a group and its projects recursively

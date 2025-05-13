@@ -18,7 +18,7 @@ import (
 // createGroups creates GitLab groups in the destination GitLab instance based on the mirror mapping.
 // It retrieves the source group path for each destination group and creates the group in the destination instance.
 // The function also handles the copying of group avatars from the source to the destination instance.
-func (destinationGitlab *GitlabInstance) createGroups(sourceGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping) error {
+func (destinationGitlab *GitlabInstance) createGroups(sourceGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping) []error {
 	zap.L().Info("Creating groups in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION))
 
 	// Reverse the mirror mapping to get the source group path for each destination group
@@ -33,7 +33,7 @@ func (destinationGitlab *GitlabInstance) createGroups(sourceGitlab *GitlabInstan
 		}
 	}
 	close(errorChan)
-	return utils.MergeErrors(errorChan, 2)
+	return utils.MergeErrors(errorChan)
 }
 
 // createGroup creates a GitLab group in the destination GitLab instance based on the source group and mirror mapping.
@@ -115,7 +115,7 @@ func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOp
 
 // createProjects creates GitLab projects in the destination GitLab instance based on the mirror mapping.
 // It retrieves the source project path for each destination project and creates the project in the destination instance.
-func (destinationGitlab *GitlabInstance) createProjects(sourceGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping) error {
+func (destinationGitlab *GitlabInstance) createProjects(sourceGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping) []error {
 	zap.L().Info("Creating projects in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION))
 
 	// Create a wait group to wait for all goroutines to finish
@@ -147,20 +147,20 @@ func (destinationGitlab *GitlabInstance) createProjects(sourceGitlab *GitlabInst
 	wg.Wait()
 	close(errorChan)
 
-	return utils.MergeErrors(errorChan, 2)
+	return utils.MergeErrors(errorChan)
 }
 
 // createProject creates a GitLab project in the destination GitLab instance based on the source project and mirror mapping.
 // It checks if the project already exists in the destination instance and creates it if not.
 // The function also handles the copying of project avatars from the source to the destination instance.
-func (destinationGitlab *GitlabInstance) createProject(sourceProjectPath string, projectCreationOptions *utils.MirroringOptions, sourceGitlab *GitlabInstance) (*gitlab.Project, error) {
+func (destinationGitlab *GitlabInstance) createProject(sourceProjectPath string, projectCreationOptions *utils.MirroringOptions, sourceGitlab *GitlabInstance) (*gitlab.Project, []error) {
 	destinationProjectPath := projectCreationOptions.DestinationPath
 	// Check if the project already exists
 	destinationProject := destinationGitlab.getProject(destinationProjectPath)
 	var err error
 	sourceProject := sourceGitlab.Projects[sourceProjectPath]
 	if sourceProject == nil {
-		return nil, fmt.Errorf("project %s not found in source GitLab instance (internal error, please review script)", sourceProjectPath)
+		return nil, []error{fmt.Errorf("project %s not found in source GitLab instance (internal error, please review script)", sourceProjectPath)}
 	}
 
 	// Check if the project already exists in the destination GitLab instance
@@ -168,18 +168,15 @@ func (destinationGitlab *GitlabInstance) createProject(sourceProjectPath string,
 	if destinationProject == nil {
 		destinationProject, err = destinationGitlab.createProjectFromSource(sourceProject, projectCreationOptions)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create project %s in destination GitLab instance: %s", destinationProjectPath, err)
+			return nil, []error{fmt.Errorf("failed to create project %s in destination GitLab instance: %s", destinationProjectPath, err)}
 		}
 	}
 
 	// If the project already exists, update it with the source project details
-	err = destinationGitlab.updateProjectFromSource(sourceGitlab, sourceProject, destinationProject, projectCreationOptions)
-	if err != nil {
-		return destinationProject, fmt.Errorf("failed to update project %s in destination GitLab instance: %s", destinationProjectPath, err)
-	}
+	mergedError := destinationGitlab.updateProjectFromSource(sourceGitlab, sourceProject, destinationProject, projectCreationOptions)
 
 	zap.L().Info("Completed project mirroring", zap.String(ROLE_SOURCE, sourceProjectPath), zap.String(ROLE_DESTINATION, destinationProjectPath))
-	return destinationProject, nil
+	return destinationProject, mergedError
 }
 
 // createProjectFromSource creates a GitLab project in the destination GitLab instance based on the source project.
@@ -228,12 +225,12 @@ func (g *GitlabInstance) createProjectFromSource(sourceProject *gitlab.Project, 
 // It fetches existing releases from the destination project and creates new releases for those that do not exist.
 // The function handles the API calls concurrently using goroutines and a wait group.
 // It returns an error if any of the API calls fail.
-func (destinationGitlab *GitlabInstance) mirrorReleases(sourceGitlab *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project) error {
+func (destinationGitlab *GitlabInstance) mirrorReleases(sourceGitlab *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project) []error {
 	zap.L().Debug("Starting releases mirroring", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 	// Fetch existing releases from the destination project
 	existingReleases, _, err := destinationGitlab.Gitlab.Releases.ListReleases(destinationProject.ID, &gitlab.ListReleasesOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to fetch existing releases for destination project %s: %s", destinationProject.HTTPURLToRepo, err)
+		return []error{fmt.Errorf("failed to fetch existing releases for destination project %s: %s", destinationProject.HTTPURLToRepo, err)}
 	}
 
 	// Create a map of existing release tags for quick lookup
@@ -247,7 +244,7 @@ func (destinationGitlab *GitlabInstance) mirrorReleases(sourceGitlab *GitlabInst
 	// Fetch releases from the source project
 	sourceReleases, _, err := sourceGitlab.Gitlab.Releases.ListReleases(sourceProject.ID, &gitlab.ListReleasesOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to fetch releases for source project %s: %s", sourceProject.HTTPURLToRepo, err)
+		return []error{fmt.Errorf("failed to fetch releases for source project %s: %s", sourceProject.HTTPURLToRepo, err)}
 	}
 
 	// Create a wait group and an error channel for handling API calls concurrently
@@ -288,7 +285,7 @@ func (destinationGitlab *GitlabInstance) mirrorReleases(sourceGitlab *GitlabInst
 	close(errorChan)
 
 	zap.L().Info("Releases mirroring completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
-	return utils.MergeErrors(errorChan, 2)
+	return utils.MergeErrors(errorChan)
 }
 
 // ============================================================ //

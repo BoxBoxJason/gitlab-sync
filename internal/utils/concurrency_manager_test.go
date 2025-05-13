@@ -3,8 +3,8 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"testing"
-	"time"
 )
 
 const (
@@ -15,117 +15,165 @@ const (
 	EXPECT_NIL_GOT_MESSAGE = "Expected nil, Got: %q"
 )
 
+// toStrings converts a []error into a []string for easy comparison
+func toStrings(errs []error) []string {
+	if errs == nil {
+		return nil
+	}
+	out := make([]string, len(errs))
+	for i, e := range errs {
+		out[i] = e.Error()
+	}
+	return out
+}
+
 func TestMergeErrors(t *testing.T) {
+	type args struct {
+		// factory builds the argument to pass into MergeErrors
+		factory func() any
+	}
 	tests := []struct {
-		name          string
-		input         any
-		indent        int
-		expectedError string
+		name    string
+		args    args
+		want    []string
+		wantNil bool // true if we expect a nil slice back
 	}{
 		{
-			name: "Valid channel of errors",
-			input: func() chan error {
-				errChan := make(chan error, 3)
-				errChan <- errors.New(ERROR_1)
-				errChan <- errors.New(ERROR_2)
-				errChan <- nil
-				close(errChan)
-				return errChan
-			}(),
-			indent:        2,
-			expectedError: "\n  - Error 1\n  - Error 2\n",
+			name: "single error",
+			args: args{factory: func() any {
+				return errors.New("an error")
+			}},
+			want:    []string{"an error"},
+			wantNil: false,
 		},
 		{
-			name: "Unbuffered channel of errors (with goroutine)",
-			input: func() chan error {
-				errChan := make(chan error)
-				go func() {
-					defer close(errChan)
-					errChan <- errors.New(ERROR_1)
-					errChan <- errors.New(ERROR_2)
-				}()
-				return errChan
-			}(),
-			indent:        2,
-			expectedError: "\n  - Error 1\n  - Error 2\n",
+			name: "nil error",
+			args: args{factory: func() any {
+				return error(nil)
+			}},
+			want:    nil,
+			wantNil: true,
 		},
 		{
-			name:          "Empty channel of errors",
-			input:         func() chan error { ch := make(chan error); close(ch); return ch }(),
-			indent:        2,
-			expectedError: "",
+			name: "pointer to error",
+			args: args{factory: func() any {
+				e := errors.New("ptr err")
+				return &e
+			}},
+			want:    []string{"ptr err"},
+			wantNil: false,
 		},
 		{
-			name:          "Valid slice of errors",
-			input:         []error{errors.New(ERROR_1), errors.New(ERROR_2)},
-			indent:        4,
-			expectedError: "\n    - Error 1\n    - Error 2\n",
+			name: "pointer to nil error",
+			args: args{factory: func() any {
+				var e error
+				return &e
+			}},
+			want:    nil,
+			wantNil: true,
 		},
 		{
-			name:          "Empty slice of errors",
-			input:         []error{},
-			indent:        4,
-			expectedError: "",
+			name: "slice of errors",
+			args: args{factory: func() any {
+				return []error{nil, fmt.Errorf("a"), nil, fmt.Errorf("b")}
+			}},
+			want:    []string{"a", "b"},
+			wantNil: false,
 		},
 		{
-			name:          "Invalid input type",
-			input:         "invalid type",
-			indent:        2,
-			expectedError: fmt.Sprintf("invalid input type: %T", "invalid type"),
+			name: "empty slice",
+			args: args{factory: func() any {
+				return []error{}
+			}},
+			want:    nil,
+			wantNil: true,
 		},
 		{
-			name:          "Nil slice",
-			input:         ([]error)(nil),
-			indent:        4,
-			expectedError: "",
+			name: "pointer to slice",
+			args: args{factory: func() any {
+				s := []error{errors.New("x"), nil, errors.New("y")}
+				return &s
+			}},
+			want:    []string{"x", "y"},
+			wantNil: false,
 		},
 		{
-			name:          "Single error in slice",
-			input:         []error{errors.New("Single error")},
-			indent:        3,
-			expectedError: "\n   - Single error\n",
+			name: "nil *[]error",
+			args: args{factory: func() any {
+				var s *[]error
+				return s
+			}},
+			want:    nil,
+			wantNil: true,
 		},
 		{
-			name:          "High indentation level",
-			input:         []error{errors.New(ERROR_1), errors.New(ERROR_2)},
-			indent:        10,
-			expectedError: "\n          - Error 1\n          - Error 2\n",
+			name: "chan error",
+			args: args{factory: func() any {
+				ch := make(chan error, 3)
+				ch <- nil
+				ch <- fmt.Errorf("one")
+				ch <- fmt.Errorf("two")
+				close(ch)
+				return ch
+			}},
+			want:    []string{"one", "two"},
+			wantNil: false,
 		},
 		{
-			name:          "Zero indentation level",
-			input:         []error{errors.New(ERROR_1), errors.New(ERROR_2)},
-			indent:        0,
-			expectedError: "\n- Error 1\n- Error 2\n",
+			name: "empty chan error",
+			args: args{factory: func() any {
+				ch := make(chan error, 1)
+				close(ch)
+				return ch
+			}},
+			want:    nil,
+			wantNil: true,
+		},
+		{
+			name: "chan []error",
+			args: args{factory: func() any {
+				ch := make(chan []error, 2)
+				ch <- []error{nil, errors.New("foo")}
+				ch <- []error{errors.New("bar"), nil}
+				close(ch)
+				return ch
+			}},
+			want:    []string{"foo", "bar"},
+			wantNil: false,
+		},
+		{
+			name: "empty chan []error",
+			args: args{factory: func() any {
+				ch := make(chan []error, 1)
+				close(ch)
+				return ch
+			}},
+			want:    nil,
+			wantNil: true,
+		},
+		{
+			name: "invalid type",
+			args: args{factory: func() any {
+				return "bad"
+			}},
+			// we expect one error whose text mentions invalid input
+			want:    []string{"invalid input type in MergeErrors: string"},
+			wantNil: false,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			done := make(chan struct{})
-			var result error
-
-			go func() {
-				defer close(done)
-				result = MergeErrors(tc.input, tc.indent)
-			}()
-
-			select {
-			case <-done:
-				if tc.expectedError == "" {
-					// Expected nil result
-					if result != nil {
-						t.Errorf(EXPECT_NIL_GOT_MESSAGE, result)
-					}
-				} else {
-					// Expected a specific error message
-					if result == nil || result.Error() != tc.expectedError {
-						t.Errorf(EXPECT_GOT_MESSAGE, tc.expectedError, result)
-					}
+			gotErrs := MergeErrors(tc.args.factory())
+			if tc.wantNil {
+				if gotErrs != nil {
+					t.Fatalf("got %v, want nil", gotErrs)
 				}
-			case <-time.After(2 * time.Second):
-				t.Fatalf("Test case '%s' timed out", tc.name)
+				return
+			}
+			got := toStrings(gotErrs)
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
 			}
 		})
 	}

@@ -92,7 +92,7 @@ func (sourceGitlabInstance *GitlabInstance) copyGroupAvatar(destinationGitlabIns
 // It enables the project mirror pull, copies the project avatar, and optionally adds the project to the CI/CD catalog.
 // It also mirrors releases if the option is set.
 // The function uses goroutines to perform these tasks concurrently and waits for all of them to finish.
-func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceGitlabInstance *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) error {
+func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceGitlabInstance *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) []error {
 	wg := sync.WaitGroup{}
 	maxErrors := 2
 	if copyOptions.CI_CD_Catalog {
@@ -145,5 +145,5 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 
 	wg.Wait()
 	close(errorChan)
-	return utils.MergeErrors(errorChan, 4)
+	return utils.MergeErrors(errorChan)
 }

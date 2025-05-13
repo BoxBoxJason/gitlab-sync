@@ -64,16 +64,16 @@ func main() {
 			zap.L().Debug("Mirror Mapping file resolved path: " + filepath.Clean(mirrorMappingPath))
 
 			zap.L().Debug("Parsing mirror mapping file")
-			mapping, err := utils.OpenMirrorMapping(mirrorMappingPath)
-			if err != nil {
-				zap.L().Fatal("Error opening mirror mapping file", zap.Error(err))
+			mapping, mappingErrors := utils.OpenMirrorMapping(mirrorMappingPath)
+			if mappingErrors != nil {
+				zap.L().Fatal("Error opening mirror mapping file", zap.Array("errors", utils.ErrorArray(mappingErrors)))
 			}
 			zap.L().Debug("Mirror mapping file parsed successfully")
 			args.MirrorMapping = mapping
 
-			err = mirroring.MirrorGitlabs(&args)
-			if err != nil {
-				zap.L().Error("Error during mirroring process: " + err.Error())
+			mirroringErrors := mirroring.MirrorGitlabs(&args)
+			if mirroringErrors != nil {
+				zap.L().Error("Error during mirroring process", zap.Array("errors", utils.ErrorArray(mirroringErrors)))
 			}
 			zap.L().Info("Mirroring completed")
 		},

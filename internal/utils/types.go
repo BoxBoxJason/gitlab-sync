@@ -103,7 +103,7 @@ func (m *MirrorMapping) GetGroup(group string) (*MirroringOptions, bool) {
 // OpenMirrorMapping opens the JSON file that contains the mapping
 // and parses it into a MirrorMapping struct
 // It returns the mapping and an error if any
-func OpenMirrorMapping(path string) (*MirrorMapping, error) {
+func OpenMirrorMapping(path string) (*MirrorMapping, []error) {
 	mapping := &MirrorMapping{
 		Projects: make(map[string]*MirroringOptions),
 		Groups:   make(map[string]*MirroringOptions),
@@ -112,29 +112,23 @@ func OpenMirrorMapping(path string) (*MirrorMapping, error) {
 	// Read the file
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, []error{fmt.Errorf("failed to open mirror mapping file: %w", err)}
 	}
 	defer file.Close()
 
 	// Decode the JSON
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(mapping); err != nil {
-		return nil, err
+		return nil, []error{fmt.Errorf("failed to decode mirror mapping file: %w", err)}
 	}
 
-	// Check if the mapping is valid
-	err = mapping.check()
-	if err != nil {
-		return nil, err
-	}
-
-	return mapping, nil
+	return mapping, mapping.check()
 }
 
 // check checks if the mapping is valid
 // It checks if the projects and groups are valid
 // It returns an error if any of the projects or groups are invalid
-func (m *MirrorMapping) check() error {
+func (m *MirrorMapping) check() []error {
 	errChan := make(chan error, 4*(len(m.Projects)+len(m.Groups))+1)
 	// Check if the mapping is valid
 	if len(m.Projects) == 0 && len(m.Groups) == 0 {
@@ -148,7 +142,7 @@ func (m *MirrorMapping) check() error {
 	m.checkGroups(errChan)
 
 	close(errChan)
-	return MergeErrors(errChan, 2)
+	return MergeErrors(errChan)
 }
 
 // checkProjects checks if the projects are valid

@@ -156,9 +156,9 @@ func createTempTestFile(fileContent string, t *testing.T) *os.File {
 // TestCheck tests the check method of MirrorMapping
 func TestCheck(t *testing.T) {
 	tests := []struct {
-		name        string
-		mapping     *MirrorMapping
-		expectedErr string
+		name     string
+		mapping  *MirrorMapping
+		wantMsgs []string
 	}{
 		{
 			name: "ValidMapping",
@@ -178,7 +178,8 @@ func TestCheck(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: "",
+			// no errors expected
+			wantMsgs: nil,
 		},
 		{
 			name: "InvalidMappingNoProjectsOrGroups",
@@ -186,7 +187,9 @@ func TestCheck(t *testing.T) {
 				Projects: map[string]*MirroringOptions{},
 				Groups:   map[string]*MirroringOptions{},
 			},
-			expectedErr: "\n  - no projects or groups defined in the mapping\n",
+			wantMsgs: []string{
+				"no projects or groups defined in the mapping",
+			},
 		},
 		{
 			name: "InvalidProjectMapping",
@@ -198,7 +201,9 @@ func TestCheck(t *testing.T) {
 				},
 				Groups: map[string]*MirroringOptions{},
 			},
-			expectedErr: "\n  - invalid (empty) string in project mapping\n",
+			wantMsgs: []string{
+				"invalid (empty) string in project mapping",
+			},
 		},
 		{
 			name: "InvalidGroupMapping",
@@ -210,18 +215,37 @@ func TestCheck(t *testing.T) {
 					},
 				},
 			},
-			expectedErr: "\n  - invalid (empty) string in group mapping\n",
+			wantMsgs: []string{
+				"invalid (empty) string in group mapping",
+			},
+		},
+		{
+			name: "MultipleErrors",
+			mapping: &MirrorMapping{
+				Projects: map[string]*MirroringOptions{
+					"": {
+						DestinationPath: "",
+					},
+				},
+				Groups: map[string]*MirroringOptions{
+					"": {
+						DestinationPath: "",
+					},
+				},
+			},
+			wantMsgs: []string{
+				"invalid (empty) string in project mapping",
+				"invalid (empty) string in group mapping",
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.mapping.check()
-			if (err != nil) && err.Error() != tt.expectedErr {
-				t.Errorf("expected error %v, got %v", tt.expectedErr, err)
-			}
-			if (err == nil) && tt.expectedErr != "" {
-				t.Errorf("expected error %v, got nil", tt.expectedErr)
+			errs := tt.mapping.check() // now returns []error
+			got := toStrings(errs)
+			if !reflect.DeepEqual(got, tt.wantMsgs) {
+				t.Errorf("check() = %v, want %v", got, tt.wantMsgs)
 			}
 		})
 	}

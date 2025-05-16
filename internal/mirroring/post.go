@@ -226,7 +226,7 @@ func (g *GitlabInstance) createProjectFromSource(sourceProject *gitlab.Project, 
 // The function handles the API calls concurrently using goroutines and a wait group.
 // It returns an error if any of the API calls fail.
 func (destinationGitlab *GitlabInstance) mirrorReleases(sourceGitlab *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project) []error {
-	zap.L().Debug("Starting releases mirroring", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+	zap.L().Info("Starting releases mirroring", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 	// Fetch existing releases from the destination project
 	existingReleases, _, err := destinationGitlab.Gitlab.Releases.ListReleases(destinationProject.ID, &gitlab.ListReleasesOptions{})
 	if err != nil {

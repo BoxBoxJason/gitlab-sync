@@ -160,7 +160,7 @@ func (m *MirrorMapping) checkProjects(errChan chan error) {
 		// Check the visibility
 		visibilityString := strings.TrimSpace(string(options.Visibility))
 		if visibilityString != "" && !checkVisibility(visibilityString) {
-			errChan <- fmt.Errorf("invalid project visibility: %s", string(options.Visibility))
+			errChan <- fmt.Errorf("invalid project visibility: %s", options.Visibility)
 			options.Visibility = string(gitlab.PublicVisibility)
 		}
 	}
@@ -224,4 +224,33 @@ func checkVisibility(visibility string) bool {
 		valid = false
 	}
 	return valid
+}
+
+func ConvertVisibility(visibility string) gitlab.VisibilityValue {
+	switch visibility {
+	case string(gitlab.PublicVisibility):
+		return gitlab.PublicVisibility
+	case string(gitlab.InternalVisibility):
+		return gitlab.InternalVisibility
+	case string(gitlab.PrivateVisibility):
+		return gitlab.PrivateVisibility
+	default:
+		return gitlab.PublicVisibility
+	}
+}
+
+func StringArraysMatchValues(array1 []string, array2 []string) bool {
+	if len(array1) != len(array2) {
+		return false
+	}
+	matchMap := make(map[string]struct{}, len(array1))
+	for _, value := range array1 {
+		matchMap[value] = struct{}{}
+	}
+	for _, value := range array2 {
+		if _, ok := matchMap[value]; !ok {
+			return false
+		}
+	}
+	return true
 }

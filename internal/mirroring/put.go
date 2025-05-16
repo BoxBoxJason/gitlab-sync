@@ -94,7 +94,7 @@ func (sourceGitlabInstance *GitlabInstance) copyGroupAvatar(destinationGitlabIns
 // The function uses goroutines to perform these tasks concurrently and waits for all of them to finish.
 func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceGitlabInstance *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) []error {
 	wg := sync.WaitGroup{}
-	maxErrors := 2
+	maxErrors := 3
 	if copyOptions.CI_CD_Catalog {
 		maxErrors++
 	}
@@ -106,44 +106,92 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 
 	go func() {
 		defer wg.Done()
-
-		zap.L().Debug("Enabling project mirror pull", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
-		err := destinationGitlabInstance.enableProjectMirrorPull(sourceProject, destinationProject, copyOptions)
-		if err != nil {
-			errorChan <- fmt.Errorf("failed to enable project mirror pull for %s: %s", destinationProject.HTTPURLToRepo, err)
-		}
+		errorChan <- destinationGitlabInstance.syncProjectAttributes(sourceProject, destinationProject, copyOptions)
 	}()
 
 	go func() {
 		defer wg.Done()
-		zap.L().Debug("Copying project avatar", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
-		err := sourceGitlabInstance.copyProjectAvatar(destinationGitlabInstance, destinationProject, sourceProject)
-		if err != nil {
-			errorChan <- fmt.Errorf("failed to copy project avatar for %s: %s", destinationProject.HTTPURLToRepo, err)
-		}
+		errorChan <- destinationGitlabInstance.enableProjectMirrorPull(sourceProject, destinationProject, copyOptions)
+	}()
+
+	go func() {
+		defer wg.Done()
+		errorChan <- sourceGitlabInstance.copyProjectAvatar(destinationGitlabInstance, destinationProject, sourceProject)
 	}()
 
 	if copyOptions.CI_CD_Catalog {
 		go func() {
 			defer wg.Done()
-			err := destinationGitlabInstance.addProjectToCICDCatalog(destinationProject)
-			if err != nil {
-				errorChan <- fmt.Errorf("failed to add project %s to CI/CD catalog: %s", destinationProject.HTTPURLToRepo, err)
-			}
+			errorChan <- destinationGitlabInstance.addProjectToCICDCatalog(destinationProject)
 		}()
 	}
 
+	allErrors := []error{}
 	if copyOptions.MirrorReleases {
 		go func() {
 			defer wg.Done()
-			err := destinationGitlabInstance.mirrorReleases(sourceGitlabInstance, sourceProject, destinationProject)
-			if err != nil {
-				errorChan <- fmt.Errorf("failed to copy project %s releases: %s", destinationProject.HTTPURLToRepo, err)
-			}
+			allErrors = destinationGitlabInstance.mirrorReleases(sourceGitlabInstance, sourceProject, destinationProject)
 		}()
 	}
 
 	wg.Wait()
 	close(errorChan)
-	return utils.MergeErrors(errorChan)
+	for err := range errorChan {
+		if err != nil {
+			allErrors = append(allErrors, err)
+		}
+	}
+	return allErrors
+}
+
+// syncProjectAttributes updates the destination project with settings from the source project.
+// It checks if any diverged project data exists and if so, it overwrites it.
+func (destinationGitlabInstance *GitlabInstance) syncProjectAttributes(sourceProject *gitlab.Project, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) error {
+	zap.L().Debug("Checking if project requires attributes resync", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+	gitlabEditOptions := &gitlab.EditProjectOptions{}
+	missmatched := false
+	if sourceProject.Name != destinationProject.Name {
+		gitlabEditOptions.Name = &sourceProject.Name
+		missmatched = true
+	}
+	if sourceProject.Description != destinationProject.Description {
+		gitlabEditOptions.Description = &sourceProject.Description
+		missmatched = true
+	}
+	if sourceProject.DefaultBranch != destinationProject.DefaultBranch {
+		gitlabEditOptions.DefaultBranch = &sourceProject.DefaultBranch
+		missmatched = true
+	}
+	if !utils.StringArraysMatchValues(sourceProject.Topics, destinationProject.Topics) {
+		gitlabEditOptions.Topics = &sourceProject.Topics
+		missmatched = true
+	}
+	if copyOptions.MirrorTriggerBuilds != destinationProject.MirrorTriggerBuilds {
+		gitlabEditOptions.MirrorTriggerBuilds = &copyOptions.MirrorTriggerBuilds
+		missmatched = true
+	}
+	if !destinationProject.MirrorOverwritesDivergedBranches {
+		gitlabEditOptions.MirrorOverwritesDivergedBranches = gitlab.Ptr(true)
+		missmatched = true
+	}
+	if !destinationProject.Mirror {
+		gitlabEditOptions.Mirror = gitlab.Ptr(true)
+		missmatched = true
+	}
+	if copyOptions.Visibility != string(destinationProject.Visibility) {
+		visibilityValue := utils.ConvertVisibility(copyOptions.Visibility)
+		gitlabEditOptions.Visibility = &visibilityValue
+		missmatched = true
+	}
+
+	if missmatched {
+		destinationProject, _, err := destinationGitlabInstance.Gitlab.Projects.EditProject(destinationProject.ID, gitlabEditOptions)
+		if err != nil {
+			return fmt.Errorf("failed to edit project %s: %s", destinationProject.HTTPURLToRepo, err)
+		}
+		zap.L().Debug("Project attributes resync completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+	} else {
+		zap.L().Debug("Project attributes are already in sync, skipping", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+	}
+	return nil
 }

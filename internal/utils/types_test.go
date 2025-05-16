@@ -5,6 +5,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 const (
@@ -246,6 +248,282 @@ func TestCheck(t *testing.T) {
 			got := toStrings(errs)
 			if !reflect.DeepEqual(got, tt.wantMsgs) {
 				t.Errorf("check() = %v, want %v", got, tt.wantMsgs)
+			}
+		})
+	}
+}
+
+func TestStringArraysMatchValues(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b []string
+		want bool
+	}{
+		{
+			name: "both empty",
+			a:    []string{},
+			b:    []string{},
+			want: true,
+		},
+		{
+			name: "same order",
+			a:    []string{"foo", "bar", "baz"},
+			b:    []string{"foo", "bar", "baz"},
+			want: true,
+		},
+		{
+			name: "different order",
+			a:    []string{"foo", "bar", "baz"},
+			b:    []string{"baz", "foo", "bar"},
+			want: true,
+		},
+		{
+			name: "duplicate values",
+			a:    []string{"x", "x", "y"},
+			b:    []string{"y", "x", "x"},
+			want: true,
+		},
+		{
+			name: "different lengths",
+			a:    []string{"one", "two"},
+			b:    []string{"one"},
+			want: false,
+		},
+		{
+			name: "mismatched values",
+			a:    []string{"a", "b", "c"},
+			b:    []string{"a", "b", "d"},
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc // capture range variable
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := StringArraysMatchValues(tc.a, tc.b)
+			if got != tc.want {
+				t.Errorf("StringArraysMatchValues(%v, %v) = %v; want %v",
+					tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestConvertVisibility(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  gitlab.VisibilityValue
+	}{
+		{
+			name:  "public visibility",
+			input: string(gitlab.PublicVisibility),
+			want:  gitlab.PublicVisibility,
+		},
+		{
+			name:  "internal visibility",
+			input: string(gitlab.InternalVisibility),
+			want:  gitlab.InternalVisibility,
+		},
+		{
+			name:  "private visibility",
+			input: string(gitlab.PrivateVisibility),
+			want:  gitlab.PrivateVisibility,
+		},
+		{
+			name:  "unknown defaults to public",
+			input: "something-else",
+			want:  gitlab.PublicVisibility,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc // capture range variable
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := ConvertVisibility(tc.input)
+			if got != tc.want {
+				t.Errorf("ConvertVisibility(%q) = %v; want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCheckVisibility(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{
+			name:  "public visibility is valid",
+			input: string(gitlab.PublicVisibility),
+			want:  true,
+		},
+		{
+			name:  "internal visibility is valid",
+			input: string(gitlab.InternalVisibility),
+			want:  true,
+		},
+		{
+			name:  "private visibility is valid",
+			input: string(gitlab.PrivateVisibility),
+			want:  true,
+		},
+		{
+			name:  "unknown visibility is invalid",
+			input: "some-other",
+			want:  false,
+		},
+		{
+			name:  "empty string is invalid",
+			input: "",
+			want:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := checkVisibility(tc.input)
+			if got != tc.want {
+				t.Errorf("checkVisibility(%q) = %v; want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMirrorMapping_GetProject(t *testing.T) {
+	// Prepare a mirror mapping with some project entries
+	opts1 := &MirroringOptions{
+		DestinationPath:     "dest1",
+		CI_CD_Catalog:       true,
+		Issues:              false,
+		MirrorTriggerBuilds: true,
+		Visibility:          "public",
+		MirrorReleases:      false,
+	}
+	opts2 := &MirroringOptions{
+		DestinationPath:     "dest2",
+		CI_CD_Catalog:       false,
+		Issues:              true,
+		MirrorTriggerBuilds: false,
+		Visibility:          "private",
+		MirrorReleases:      true,
+	}
+	mm := &MirrorMapping{
+		Projects: map[string]*MirroringOptions{
+			"project-one": opts1,
+			"project-two": opts2,
+		},
+		Groups: map[string]*MirroringOptions{},
+	}
+
+	tests := []struct {
+		name   string
+		key    string
+		want   *MirroringOptions
+		wantOk bool
+	}{
+		{
+			name:   "existing project-one",
+			key:    "project-one",
+			want:   opts1,
+			wantOk: true,
+		},
+		{
+			name:   "existing project-two",
+			key:    "project-two",
+			want:   opts2,
+			wantOk: true,
+		},
+		{
+			name:   "nonexistent project",
+			key:    "no-such-project",
+			want:   nil,
+			wantOk: false,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc // capture range variable
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := mm.GetProject(tc.key)
+			if ok != tc.wantOk {
+				t.Errorf("GetProject(%q) returned ok=%v, want %v", tc.key, ok, tc.wantOk)
+			}
+			if got != tc.want {
+				t.Errorf("GetProject(%q) returned %+v, want %+v", tc.key, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMirrorMapping_GetGroup(t *testing.T) {
+	// Prepare a mirror mapping with some group entries
+	optsA := &MirroringOptions{
+		DestinationPath:     "groupDestA",
+		CI_CD_Catalog:       true,
+		Issues:              true,
+		MirrorTriggerBuilds: false,
+		Visibility:          "internal",
+		MirrorReleases:      true,
+	}
+	optsB := &MirroringOptions{
+		DestinationPath:     "groupDestB",
+		CI_CD_Catalog:       false,
+		Issues:              false,
+		MirrorTriggerBuilds: true,
+		Visibility:          "private",
+		MirrorReleases:      false,
+	}
+	mm := &MirrorMapping{
+		Projects: map[string]*MirroringOptions{},
+		Groups: map[string]*MirroringOptions{
+			"group-A": optsA,
+			"group-B": optsB,
+		},
+	}
+
+	tests := []struct {
+		name   string
+		key    string
+		want   *MirroringOptions
+		wantOk bool
+	}{
+		{
+			name:   "existing group-A",
+			key:    "group-A",
+			want:   optsA,
+			wantOk: true,
+		},
+		{
+			name:   "existing group-B",
+			key:    "group-B",
+			want:   optsB,
+			wantOk: true,
+		},
+		{
+			name:   "nonexistent group",
+			key:    "no-such-group",
+			want:   nil,
+			wantOk: false,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc // capture range variable
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got, ok := mm.GetGroup(tc.key)
+			if ok != tc.wantOk {
+				t.Errorf("GetGroup(%q) returned ok=%v, want %v", tc.key, ok, tc.wantOk)
+			}
+			if got != tc.want {
+				t.Errorf("GetGroup(%q) returned %+v, want %+v", tc.key, got, tc.want)
 			}
 		})
 	}

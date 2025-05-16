@@ -250,3 +250,58 @@ func TestCheckVersion(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckLicense(t *testing.T) {
+	tests := []struct {
+		name          string
+		license       string
+		expectedError bool
+	}{
+		{
+			name:          "Ultimate tier license",
+			license:       "ultimate",
+			expectedError: false,
+		},
+		{
+			name:          "Premium tier license",
+			license:       "premium",
+			expectedError: false,
+		},
+		{
+			name:          "Free tier license",
+			license:       "free",
+			expectedError: true,
+		},
+		{
+			name:          "Invalid license",
+			license:       "invalid",
+			expectedError: true,
+		},
+		{
+			name:          "Empty license",
+			license:       "",
+			expectedError: true,
+		},
+	}
+	// Iterate over the test cases
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			mux.HandleFunc("/api/v4/license", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, err := w.Write([]byte(`{"plan": "` + test.license + `"}`))
+				if err != nil {
+					t.Errorf("failed to write response: %v", err)
+				}
+			})
+
+			err := gitlabInstance.CheckLicense()
+			if (err != nil) != test.expectedError {
+				t.Errorf("expected error: %v, got: %v", test.expectedError, err)
+			}
+		})
+	}
+}

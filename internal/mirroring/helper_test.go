@@ -554,24 +554,6 @@ func setupTestProject(mux *http.ServeMux, project *gitlab.Project, stringRespons
 	})
 }
 
-// setupMetadata sets up the test HTTP server with handlers for metadata-related actions.
-// This includes the version endpoint.
-func setupMetadata(mux *http.ServeMux) {
-	// Setup the version endpoint to return a mock response.
-	mux.HandleFunc("/api/v4/metadata", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			// Set response status to 200 OK
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, `{"version": "18.0.0"}`)
-		default:
-			// Set response status to 405 Method Not Allowed
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	})
-}
-
 func TestReverseGroupMirrorMap(t *testing.T) {
 	tests := []struct {
 		name                     string

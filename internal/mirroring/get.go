@@ -13,6 +13,8 @@ import (
 
 const (
 	INSTANCE_SEMVER_THRESHOLD = "17.6"
+	ULTIMATE_PLAN             = "ultimate"
+	PREMIUM_PLAN              = "premium"
 )
 
 // fetchAll retrieves all projects and groups from the GitLab instance
@@ -102,5 +104,20 @@ func (g *GitlabInstance) CheckVersion() error {
 	if currentVer.LessThan(thresholdVer) {
 		return fmt.Errorf("GitLab version %s is below required threshold %s", currentVer, thresholdVer)
 	}
+	return nil
+}
+
+func (g *GitlabInstance) CheckLicense() error {
+	license, _, err := g.Gitlab.License.GetLicense()
+	if err != nil {
+		return fmt.Errorf("failed to get GitLab license: %w", err)
+	}
+	if license.Plan != ULTIMATE_PLAN && license.Plan != PREMIUM_PLAN {
+		return fmt.Errorf("GitLab license plan %s is not supported, only %s and %s are supported", license.Plan, ULTIMATE_PLAN, PREMIUM_PLAN)
+	} else if license.Expired {
+		return fmt.Errorf("GitLab license is expired")
+	}
+
+	zap.L().Debug("GitLab Instance license", zap.String(ROLE, g.Role), zap.String("plan", license.Plan))
 	return nil
 }

@@ -2,6 +2,17 @@
 
 ![gitlab-sync logo](./assets/gitlab-sync.png)
 
+[![Coverage](https://codecov.io/gh/boxboxjason/gitlab-sync/branch/main/graph/badge.svg)](https://codecov.io/gh/boxboxjason/gitlab-sync)
+![Go Version](https://img.shields.io/github/go-mod/go-version/boxboxjason/gitlab-sync)
+[![Latest Release](https://img.shields.io/github/v/release/boxboxjason/gitlab-sync)](https://github.com/boxboxjason/gitlab-sync/releases)
+[![Release Workflow](https://github.com/boxboxjason/gitlab-sync/actions/workflows/release.yml/badge.svg)](https://github.com/boxboxjason/gitlab-sync/actions/workflows/release.yml)
+![Last Commit](https://img.shields.io/github/last-commit/boxboxjason/gitlab-sync)
+[![Tests](https://github.com/boxboxjason/gitlab-sync/actions/workflows/go.yml/badge.svg)](https://github.com/boxboxjason/gitlab-sync/actions/workflows/go.yml)
+![Stars](https://img.shields.io/github/stars/boxboxjason/gitlab-sync)
+![Contributors](https://img.shields.io/github/contributors/boxboxjason/gitlab-sync?style=social)
+![Issues](https://img.shields.io/github/issues/boxboxjason/gitlab-sync)
+![Pull Requests](https://img.shields.io/github/issues-pr/boxboxjason/gitlab-sync)
+
 (golang) CLI tool to synchronize GitLab projects and groups between two GitLab instances.
 It is designed to be used in a CI/CD pipeline to automate the process of keeping two GitLab instances in sync.
 

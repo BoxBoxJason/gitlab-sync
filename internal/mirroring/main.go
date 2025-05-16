@@ -7,6 +7,7 @@ import (
 
 	"gitlab-sync/internal/utils"
 
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
 )
 
@@ -70,7 +71,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 
 	// In case of dry run, simply print the groups and projects that would be created or updated
 	if gitlabMirrorArgs.DryRun {
-		DryRun(sourceGitlabInstance, gitlabMirrorArgs)
+		destinationGitlabInstance.DryRun(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
 		return nil
 	}
 
@@ -128,28 +129,55 @@ func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[stri
 }
 
 // DryRun prints the groups and projects that would be created or updated in dry run mode.
-func DryRun(sourceGitlabInstance *GitlabInstance, gitlabMirrorArgs *utils.ParserArgs) {
+func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *GitlabInstance, mirrorMapping *utils.MirrorMapping) []error {
 	zap.L().Info("Dry run mode enabled, will not create groups or projects")
 	zap.L().Info("Groups that will be created (or updated if they already exist):")
-	for sourceGroupPath, copyOptions := range gitlabMirrorArgs.MirrorMapping.Groups {
+	for sourceGroupPath, copyOptions := range mirrorMapping.Groups {
 		if sourceGroup, ok := sourceGitlabInstance.Groups[sourceGroupPath]; ok {
 			fmt.Printf("  - %s (source gitlab) -> %s (destination gitlab)\n", sourceGroup.WebURL, copyOptions.DestinationPath)
 		}
 	}
 	zap.L().Info("Projects that will be created (or updated if they already exist):")
-	for sourceProjectPath, copyOptions := range gitlabMirrorArgs.MirrorMapping.Projects {
+	for sourceProjectPath, copyOptions := range mirrorMapping.Projects {
 		if sourceProject, ok := sourceGitlabInstance.Projects[sourceProjectPath]; ok {
 			fmt.Printf("  - %s (source gitlab) -> %s (destination gitlab)\n", sourceProject.WebURL, copyOptions.DestinationPath)
+
+			if copyOptions.MirrorReleases {
+				if err := destinationGitlabInstance.DryRunReleases(sourceGitlabInstance, sourceProject, copyOptions); err != nil {
+					zap.L().Error("Failed to dry run releases", zap.Error(err))
+					return []error{err}
+				}
+			}
 		}
+
 	}
+	zap.L().Info("Dry run completed")
+	return nil
 }
 
-func (destinationGitlab *GitlabInstance) CheckDestinationInstance() error {
+// DryRunReleases prints the releases that would be created in dry run mode.
+// It fetches the releases from the source project and prints them.
+// It does not create any releases in the destination project.
+func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInstance *GitlabInstance, sourceProject *gitlab.Project, copyOptions *utils.MirroringOptions) error {
+	// Fetch releases from the source project
+	sourceReleases, _, err := sourceGitlabInstance.Gitlab.Releases.ListReleases(sourceProject.ID, &gitlab.ListReleasesOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to fetch releases for source project %s: %s", sourceProject.HTTPURLToRepo, err)
+	}
+	// Print the releases that will be created in the destination project
+	for _, release := range sourceReleases {
+		fmt.Printf("    - Release %s will be created in %s (if it does not already exist)\n", release.Name, destinationGitlabInstance.Gitlab.BaseURL().String()+copyOptions.DestinationPath)
+	}
+	return nil
+}
+
+// CheckDestinationInstance checks the destination GitLab instance for version and license compatibility.
+func (g *GitlabInstance) CheckDestinationInstance() error {
 	zap.L().Info("Checking destination GitLab instance")
-	if err := destinationGitlab.CheckVersion(); err != nil {
+	if err := g.CheckVersion(); err != nil {
 		return fmt.Errorf("destination GitLab instance version check failed: %w", err)
 	}
-	if err := destinationGitlab.CheckVersion(); err != nil {
+	if err := g.CheckLicense(); err != nil {
 		return fmt.Errorf("destination GitLab instance version check failed: %w", err)
 	}
 	return nil

@@ -24,7 +24,7 @@ func (destinationGitlab *GitlabInstance) createGroups(sourceGitlab *GitlabInstan
 	// Reverse the mirror mapping to get the source group path for each destination group
 	reversedMirrorMap, destinationGroupPaths := sourceGitlab.reverseGroupMirrorMap(mirrorMapping)
 
-	errorChan := make(chan error, len(destinationGroupPaths))
+	errorChan := make(chan []error, len(destinationGroupPaths))
 	// Iterate over the groups in alphabetical order (little hack to ensure parent groups are created before children)
 	for _, destinationGroupPath := range destinationGroupPaths {
 		_, err := destinationGitlab.createGroup(destinationGroupPath, sourceGitlab, mirrorMapping, &reversedMirrorMap)
@@ -39,20 +39,20 @@ func (destinationGitlab *GitlabInstance) createGroups(sourceGitlab *GitlabInstan
 // createGroup creates a GitLab group in the destination GitLab instance based on the source group and mirror mapping.
 // It checks if the group already exists in the destination instance and creates it if not.
 // The function also handles the copying of group avatars from the source to the destination instance.
-func (destinationGitlab *GitlabInstance) createGroup(destinationGroupPath string, sourceGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping, reversedMirrorMap *map[string]string) (*gitlab.Group, error) {
+func (destinationGitlab *GitlabInstance) createGroup(destinationGroupPath string, sourceGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping, reversedMirrorMap *map[string]string) (*gitlab.Group, []error) {
 	// Retrieve the corresponding source group path
 	sourceGroupPath := (*reversedMirrorMap)[destinationGroupPath]
 	zap.L().Debug("Mirroring group", zap.String(ROLE_SOURCE, sourceGroupPath), zap.String(ROLE_DESTINATION, destinationGroupPath))
 
 	sourceGroup := sourceGitlab.Groups[sourceGroupPath]
 	if sourceGroup == nil {
-		return nil, fmt.Errorf("group %s not found in destination GitLab instance (internal error, please review script)", sourceGroupPath)
+		return nil, []error{fmt.Errorf("group %s not found in destination GitLab instance (internal error, please review script)", sourceGroupPath)}
 	}
 
 	// Retrieve the corresponding group creation options from the mirror mapping
 	groupCreationOptions, ok := mirrorMapping.GetGroup(sourceGroupPath)
 	if !ok {
-		return nil, fmt.Errorf("source group %s not found in mirror mapping (internal error, please review script)", sourceGroupPath)
+		return nil, []error{fmt.Errorf("source group %s not found in mirror mapping (internal error, please review script)", sourceGroupPath)}
 	}
 
 	// Check if the group already exists in the destination GitLab instance
@@ -62,12 +62,12 @@ func (destinationGitlab *GitlabInstance) createGroup(destinationGroupPath string
 		zap.L().Debug("Group not found, creating new group in GitLab Instance", zap.String("group", destinationGroupPath), zap.String(ROLE, ROLE_DESTINATION))
 		destinationGroup, err = destinationGitlab.createGroupFromSource(sourceGroup, groupCreationOptions)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create group %s in destination GitLab instance: %s", destinationGroupPath, err)
+			return nil, []error{fmt.Errorf("failed to create group %s in destination GitLab instance: %s", destinationGroupPath, err)}
 		} else {
 			// Copy the group avatar from the source to the destination instance
-			err = sourceGitlab.copyGroupAvatar(destinationGitlab, destinationGroup, sourceGroup)
-			if err != nil {
-				return destinationGroup, fmt.Errorf("failed to copy group avatar for %s: %s", destinationGroupPath, err)
+			errArray := sourceGitlab.updateGroupFromSource(destinationGitlab, destinationGroup, sourceGroup, groupCreationOptions)
+			if errArray != nil {
+				return destinationGroup, errArray
 			}
 		}
 	}

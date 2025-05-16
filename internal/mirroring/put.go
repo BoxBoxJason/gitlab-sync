@@ -11,82 +11,9 @@ import (
 	"go.uber.org/zap"
 )
 
-// enableProjectMirrorPull enables the pull mirror for a project in the destination GitLab instance.
-// It sets the source project URL, enables mirroring, and configures other options like triggering builds and overwriting diverged branches.
-func (g *GitlabInstance) enableProjectMirrorPull(sourceProject *gitlab.Project, destinationProject *gitlab.Project, mirrorOptions *utils.MirroringOptions) error {
-	zap.L().Debug("Enabling project mirror pull", zap.String("sourceProject", sourceProject.HTTPURLToRepo), zap.String("destinationProject", destinationProject.HTTPURLToRepo))
-	_, _, err := g.Gitlab.Projects.ConfigureProjectPullMirror(destinationProject.ID, &gitlab.ConfigureProjectPullMirrorOptions{
-		URL:                              &sourceProject.HTTPURLToRepo,
-		OnlyMirrorProtectedBranches:      gitlab.Ptr(true),
-		Enabled:                          gitlab.Ptr(true),
-		MirrorOverwritesDivergedBranches: gitlab.Ptr(true),
-		MirrorTriggerBuilds:              gitlab.Ptr(mirrorOptions.MirrorTriggerBuilds),
-	})
-	return err
-}
-
-// copyProjectAvatar copies the avatar from the source project to the destination project.
-// It first checks if the destination project already has an avatar set. If not, it downloads the avatar from the source project
-// and uploads it to the destination project.
-// The avatar is saved with a unique filename based on the current timestamp.
-// The function returns an error if any step fails, including downloading or uploading the avatar.
-func (sourceGitlabInstance *GitlabInstance) copyProjectAvatar(destinationGitlabInstance *GitlabInstance, destinationProject *gitlab.Project, sourceProject *gitlab.Project) error {
-	zap.L().Debug("Checking if project avatar is already set", zap.String("project", destinationProject.HTTPURLToRepo))
-
-	// Check if the destination project already has an avatar
-	if destinationProject.AvatarURL != "" {
-		zap.L().Debug("Project already has an avatar set, skipping.", zap.String("project", destinationProject.HTTPURLToRepo), zap.String("path", destinationProject.AvatarURL))
-		return nil
-	}
-
-	zap.L().Debug("Copying project avatar", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
-
-	// Download the source project avatar
-	sourceProjectAvatar, _, err := sourceGitlabInstance.Gitlab.Projects.DownloadAvatar(sourceProject.ID)
-	if err != nil {
-		return fmt.Errorf("failed to download avatar for project %s: %s", sourceProject.HTTPURLToRepo, err)
-	}
-
-	// Upload the avatar to the destination project
-	_, _, err = destinationGitlabInstance.Gitlab.Projects.UploadAvatar(destinationProject.ID, sourceProjectAvatar, fmt.Sprintf("avatar-%d.png", time.Now().Unix()))
-	if err != nil {
-		return fmt.Errorf("failed to upload avatar for project %s: %s", destinationProject.HTTPURLToRepo, err)
-	}
-
-	return nil
-}
-
-// copyGroupAvatar copies the avatar from the source group to the destination group.
-// It first checks if the destination group already has an avatar set. If not, it downloads the avatar from the source group
-// and uploads it to the destination group.
-// The avatar is saved with a unique filename based on the current timestamp.
-// The function returns an error if any step fails, including downloading or uploading the avatar.
-func (sourceGitlabInstance *GitlabInstance) copyGroupAvatar(destinationGitlabInstance *GitlabInstance, destinationGroup *gitlab.Group, sourceGroup *gitlab.Group) error {
-	zap.L().Debug("Checking if group avatar is already set", zap.String("group", destinationGroup.WebURL))
-
-	// Check if the destination group already has an avatar
-	if destinationGroup.AvatarURL != "" {
-		zap.L().Debug("Group avatar already set", zap.String("group", destinationGroup.WebURL), zap.String("path", destinationGroup.AvatarURL))
-		return nil
-	}
-
-	zap.L().Debug("Copying group avatar", zap.String(ROLE_SOURCE, sourceGroup.WebURL), zap.String(ROLE_DESTINATION, destinationGroup.WebURL))
-
-	// Download the source group avatar
-	sourceGroupAvatar, _, err := sourceGitlabInstance.Gitlab.Groups.DownloadAvatar(sourceGroup.ID)
-	if err != nil {
-		return fmt.Errorf("failed to download avatar for group %s: %s", sourceGroup.WebURL, err)
-	}
-
-	// Upload the avatar to the destination group
-	filename := fmt.Sprintf("avatar-%d.png", time.Now().Unix())
-	_, _, err = destinationGitlabInstance.Gitlab.Groups.UploadAvatar(destinationGroup.ID, sourceGroupAvatar, filename)
-	if err != nil {
-		return fmt.Errorf("failed to upload avatar for group %s: %s", destinationGroup.WebURL, err)
-	}
-
-	return nil
-}
+// ===========================================================================
+//                         PROJECTS PUT FUNCTIONS                         //
+// ===========================================================================
 
 // updateProjectFromSource updates the destination project with settings from the source project.
 // It enables the project mirror pull, copies the project avatar, and optionally adds the project to the CI/CD catalog.
@@ -192,6 +119,143 @@ func (destinationGitlabInstance *GitlabInstance) syncProjectAttributes(sourcePro
 		zap.L().Debug("Project attributes resync completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 	} else {
 		zap.L().Debug("Project attributes are already in sync, skipping", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+	}
+	return nil
+}
+
+// enableProjectMirrorPull enables the pull mirror for a project in the destination GitLab instance.
+// It sets the source project URL, enables mirroring, and configures other options like triggering builds and overwriting diverged branches.
+func (g *GitlabInstance) enableProjectMirrorPull(sourceProject *gitlab.Project, destinationProject *gitlab.Project, mirrorOptions *utils.MirroringOptions) error {
+	zap.L().Debug("Enabling project mirror pull", zap.String("sourceProject", sourceProject.HTTPURLToRepo), zap.String("destinationProject", destinationProject.HTTPURLToRepo))
+	_, _, err := g.Gitlab.Projects.ConfigureProjectPullMirror(destinationProject.ID, &gitlab.ConfigureProjectPullMirrorOptions{
+		URL:                              &sourceProject.HTTPURLToRepo,
+		OnlyMirrorProtectedBranches:      gitlab.Ptr(true),
+		Enabled:                          gitlab.Ptr(true),
+		MirrorOverwritesDivergedBranches: gitlab.Ptr(true),
+		MirrorTriggerBuilds:              gitlab.Ptr(mirrorOptions.MirrorTriggerBuilds),
+	})
+	return err
+}
+
+// copyProjectAvatar copies the avatar from the source project to the destination project.
+// It first checks if the destination project already has an avatar set. If not, it downloads the avatar from the source project
+// and uploads it to the destination project.
+// The avatar is saved with a unique filename based on the current timestamp.
+// The function returns an error if any step fails, including downloading or uploading the avatar.
+func (sourceGitlabInstance *GitlabInstance) copyProjectAvatar(destinationGitlabInstance *GitlabInstance, destinationProject *gitlab.Project, sourceProject *gitlab.Project) error {
+	zap.L().Debug("Checking if project avatar is already set", zap.String("project", destinationProject.HTTPURLToRepo))
+
+	// Check if the destination project already has an avatar
+	if destinationProject.AvatarURL != "" {
+		zap.L().Debug("Project already has an avatar set, skipping.", zap.String("project", destinationProject.HTTPURLToRepo), zap.String("path", destinationProject.AvatarURL))
+		return nil
+	}
+
+	zap.L().Debug("Copying project avatar", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+
+	// Download the source project avatar
+	sourceProjectAvatar, _, err := sourceGitlabInstance.Gitlab.Projects.DownloadAvatar(sourceProject.ID)
+	if err != nil {
+		return fmt.Errorf("failed to download avatar for project %s: %s", sourceProject.HTTPURLToRepo, err)
+	}
+
+	// Upload the avatar to the destination project
+	_, _, err = destinationGitlabInstance.Gitlab.Projects.UploadAvatar(destinationProject.ID, sourceProjectAvatar, fmt.Sprintf("avatar-%d.png", time.Now().Unix()))
+	if err != nil {
+		return fmt.Errorf("failed to upload avatar for project %s: %s", destinationProject.HTTPURLToRepo, err)
+	}
+
+	return nil
+}
+
+// ===========================================================================
+//                           GROUPS PUT FUNCTIONS                           //
+// ===========================================================================
+
+// updateGroupFromSource updates the destination group with settings from the source group.
+// It copies the group avatar and updates the group attributes.
+func (destinationGitlabInstance *GitlabInstance) updateGroupFromSource(sourceGitlabInstance *GitlabInstance, sourceGroup *gitlab.Group, destinationGroup *gitlab.Group, copyOptions *utils.MirroringOptions) []error {
+	wg := sync.WaitGroup{}
+	maxErrors := 2
+	wg.Add(maxErrors)
+	errorChan := make(chan error, maxErrors)
+
+	go func() {
+		defer wg.Done()
+		errorChan <- destinationGitlabInstance.syncGroupAttributes(sourceGroup, destinationGroup, copyOptions)
+	}()
+
+	go func() {
+		defer wg.Done()
+		errorChan <- sourceGitlabInstance.copyGroupAvatar(destinationGitlabInstance, destinationGroup, sourceGroup)
+	}()
+
+	wg.Wait()
+	close(errorChan)
+
+	return utils.MergeErrors(errorChan)
+}
+
+// copyGroupAvatar copies the avatar from the source group to the destination group.
+// It first checks if the destination group already has an avatar set. If not, it downloads the avatar from the source group
+// and uploads it to the destination group.
+// The avatar is saved with a unique filename based on the current timestamp.
+// The function returns an error if any step fails, including downloading or uploading the avatar.
+func (sourceGitlabInstance *GitlabInstance) copyGroupAvatar(destinationGitlabInstance *GitlabInstance, destinationGroup *gitlab.Group, sourceGroup *gitlab.Group) error {
+	zap.L().Debug("Checking if group avatar is already set", zap.String("group", destinationGroup.WebURL))
+
+	// Check if the destination group already has an avatar
+	if destinationGroup.AvatarURL != "" {
+		zap.L().Debug("Group avatar already set", zap.String("group", destinationGroup.WebURL), zap.String("path", destinationGroup.AvatarURL))
+		return nil
+	}
+
+	zap.L().Debug("Copying group avatar", zap.String(ROLE_SOURCE, sourceGroup.WebURL), zap.String(ROLE_DESTINATION, destinationGroup.WebURL))
+
+	// Download the source group avatar
+	sourceGroupAvatar, _, err := sourceGitlabInstance.Gitlab.Groups.DownloadAvatar(sourceGroup.ID)
+	if err != nil {
+		return fmt.Errorf("failed to download avatar for group %s: %s", sourceGroup.WebURL, err)
+	}
+
+	// Upload the avatar to the destination group
+	filename := fmt.Sprintf("avatar-%d.png", time.Now().Unix())
+	_, _, err = destinationGitlabInstance.Gitlab.Groups.UploadAvatar(destinationGroup.ID, sourceGroupAvatar, filename)
+	if err != nil {
+		return fmt.Errorf("failed to upload avatar for group %s: %s", destinationGroup.WebURL, err)
+	}
+
+	return nil
+}
+
+// syncGroupAttributes updates the destination group with settings from the source group.
+// It checks if any diverged group data exists and if so, it overwrites it.
+func (destinationGitlabInstance *GitlabInstance) syncGroupAttributes(sourceGroup *gitlab.Group, destinationGroup *gitlab.Group, copyOptions *utils.MirroringOptions) error {
+	zap.L().Debug("Checking if group requires attributes resync", zap.String(ROLE_SOURCE, sourceGroup.FullPath), zap.String(ROLE_DESTINATION, destinationGroup.FullPath))
+	gitlabEditOptions := &gitlab.UpdateGroupOptions{}
+	missmatched := false
+	if sourceGroup.Name != destinationGroup.Name {
+		gitlabEditOptions.Name = &sourceGroup.Name
+		missmatched = true
+	}
+	if sourceGroup.Description != destinationGroup.Description {
+		gitlabEditOptions.Description = &sourceGroup.Description
+		missmatched = true
+	}
+	if copyOptions.Visibility != string(destinationGroup.Visibility) {
+		visibilityValue := utils.ConvertVisibility(copyOptions.Visibility)
+		gitlabEditOptions.Visibility = &visibilityValue
+		missmatched = true
+	}
+
+	if missmatched {
+		destinationGroup, _, err := destinationGitlabInstance.Gitlab.Groups.UpdateGroup(destinationGroup.ID, gitlabEditOptions)
+		if err != nil {
+			return fmt.Errorf("failed to edit group %s: %s", destinationGroup.FullPath, err)
+		}
+		zap.L().Debug("Group attributes resync completed", zap.String(ROLE_SOURCE, sourceGroup.FullPath), zap.String(ROLE_DESTINATION, destinationGroup.FullPath))
+	} else {
+		zap.L().Debug("Group attributes are already in sync, skipping", zap.String(ROLE_SOURCE, sourceGroup.FullPath), zap.String(ROLE_DESTINATION, destinationGroup.FullPath))
 	}
 	return nil
 }

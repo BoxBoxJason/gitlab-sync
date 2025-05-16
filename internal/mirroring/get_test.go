@@ -259,12 +259,12 @@ func TestCheckLicense(t *testing.T) {
 	}{
 		{
 			name:          "Ultimate tier license",
-			license:       "ultimate",
+			license:       ULTIMATE_PLAN,
 			expectedError: false,
 		},
 		{
 			name:          "Premium tier license",
-			license:       "premium",
+			license:       PREMIUM_PLAN,
 			expectedError: false,
 		},
 		{

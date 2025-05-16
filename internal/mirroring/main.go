@@ -46,7 +46,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	if err != nil {
 		return []error{err}
 	}
-	err = destinationGitlabInstance.CheckVersion()
+	err = destinationGitlabInstance.CheckDestinationInstance()
 	if err != nil {
 		return []error{err}
 	}
@@ -142,4 +142,15 @@ func DryRun(sourceGitlabInstance *GitlabInstance, gitlabMirrorArgs *utils.Parser
 			fmt.Printf("  - %s (source gitlab) -> %s (destination gitlab)\n", sourceProject.WebURL, copyOptions.DestinationPath)
 		}
 	}
+}
+
+func (destinationGitlab *GitlabInstance) CheckDestinationInstance() error {
+	zap.L().Info("Checking destination GitLab instance")
+	if err := destinationGitlab.CheckVersion(); err != nil {
+		return fmt.Errorf("destination GitLab instance version check failed: %w", err)
+	}
+	if err := destinationGitlab.CheckVersion(); err != nil {
+		return fmt.Errorf("destination GitLab instance version check failed: %w", err)
+	}
+	return nil
 }

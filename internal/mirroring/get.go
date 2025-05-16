@@ -7,7 +7,12 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Masterminds/semver/v3"
 	"go.uber.org/zap"
+)
+
+const (
+	INSTANCE_SEMVER_THRESHOLD = "17.6"
 )
 
 // fetchAll retrieves all projects and groups from the GitLab instance
@@ -76,4 +81,26 @@ func checkPathMatchesFilters(resourcePath string, projectFilters *map[string]str
 		}
 	}
 	return "", false
+}
+
+func (g *GitlabInstance) CheckVersion() error {
+	metadata, _, err := g.Gitlab.Metadata.GetMetadata()
+	if err != nil {
+		return fmt.Errorf("failed to get GitLab version: %w", err)
+	}
+	zap.L().Debug("GitLab Instance version", zap.String(ROLE, g.Role), zap.String("version", metadata.Version))
+
+	currentVer, err := semver.NewVersion(metadata.Version)
+	if err != nil {
+		return fmt.Errorf("failed to parse GitLab version: %w", err)
+	}
+	thresholdVer, err := semver.NewVersion(INSTANCE_SEMVER_THRESHOLD)
+	if err != nil {
+		return fmt.Errorf("failed to parse version threshold: %w", err)
+	}
+
+	if currentVer.LessThan(thresholdVer) {
+		return fmt.Errorf("GitLab version %s is below required threshold %s", currentVer, thresholdVer)
+	}
+	return nil
 }

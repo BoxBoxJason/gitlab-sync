@@ -1,8 +1,9 @@
 module gitlab-sync
 
-go 1.24.2
+go 1.24.3
 
 require (
+	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/hashicorp/go-retryablehttp v0.7.7
 	github.com/spf13/cobra v1.9.1
 	gitlab.com/gitlab-org/api/client-go v0.128.0

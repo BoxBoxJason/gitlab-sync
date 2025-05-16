@@ -2,6 +2,7 @@ package mirroring
 
 import (
 	"gitlab-sync/internal/utils"
+	"net/http"
 	"testing"
 )
 
@@ -64,11 +65,10 @@ func TestCheckPathMatchesFilters(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestGetParentNamespaceID(t *testing.T) {
-	gitlabInstance := setupTestGitlabInstance(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
 	gitlabInstance.addGroup(TEST_GROUP)
 	gitlabInstance.addProject(TEST_PROJECT)
 
@@ -193,4 +193,60 @@ func TestFetchAll(t *testing.T) {
 		})
 	}
 
+}
+
+func TestCheckVersion(t *testing.T) {
+	tests := []struct {
+		name          string
+		version       string
+		expectedError bool
+	}{
+		{
+			name:          "Valid version under threshold",
+			version:       "15.0.0",
+			expectedError: true,
+		},
+		{
+			name:          "Valid version above threshold",
+			version:       "17.9.3-ce.0",
+			expectedError: false,
+		},
+		{
+			name:          "Invalid version format with 1 dot",
+			version:       "invalid.version",
+			expectedError: true,
+		},
+		{
+			name:          "Invalid version format with 2 dots",
+			version:       "invalid.version.1",
+			expectedError: true,
+		},
+		{
+			name:          "Invalid empty version",
+			version:       "",
+			expectedError: true,
+		},
+	}
+
+	// Iterate over the test cases
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			mux.HandleFunc("/api/v4/metadata", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, err := w.Write([]byte(`{"version": "` + test.version + `"}`))
+				if err != nil {
+					t.Errorf("failed to write response: %v", err)
+				}
+			})
+
+			err := gitlabInstance.CheckVersion()
+			if (err != nil) != test.expectedError {
+				t.Errorf("expected error: %v, got: %v", test.expectedError, err)
+			}
+		})
+	}
 }

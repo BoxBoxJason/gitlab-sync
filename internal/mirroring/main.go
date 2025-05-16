@@ -46,6 +46,10 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	if err != nil {
 		return []error{err}
 	}
+	err = destinationGitlabInstance.CheckVersion()
+	if err != nil {
+		return []error{err}
+	}
 
 	sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters := processFilters(gitlabMirrorArgs.MirrorMapping)
 

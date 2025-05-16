@@ -265,6 +265,29 @@ var (
 		}`}
 )
 
+func setupEmptyTestServer(t *testing.T, role string, instanceSize string) (*http.ServeMux, *GitlabInstance) {
+	// mux is the HTTP request multiplexer used with the test server.
+	mux := http.NewServeMux()
+
+	// server is a test HTTP server used to provide mock API responses.
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	gitlabInstance, err := newGitlabInstance(&GitlabInstanceOpts{
+		GitlabURL:    server.URL,
+		GitlabToken:  "test-token",
+		Role:         role,
+		InstanceSize: instanceSize,
+		MaxRetries:   0,
+	})
+
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	return mux, gitlabInstance
+}
+
 // setup sets up a test HTTP server along with a gitlab.Client that is
 // configured to talk to that test server.  Tests should register handlers on
 // mux which provide mock responses for the API method being tested.
@@ -531,19 +554,22 @@ func setupTestProject(mux *http.ServeMux, project *gitlab.Project, stringRespons
 	})
 }
 
-// setupTestGitlabInstance sets up a test Gitlab instance with the given role and instance size.
-func setupTestGitlabInstance(t *testing.T, role string, instanceSize string) *GitlabInstance {
-	gitlabInstance, err := newGitlabInstance(&GitlabInstanceOpts{
-		GitlabURL:    "https://gitlab.example.com",
-		GitlabToken:  "test-token",
-		Role:         role,
-		InstanceSize: instanceSize,
-		MaxRetries:   0,
+// setupMetadata sets up the test HTTP server with handlers for metadata-related actions.
+// This includes the version endpoint.
+func setupMetadata(mux *http.ServeMux) {
+	// Setup the version endpoint to return a mock response.
+	mux.HandleFunc("/api/v4/metadata", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+			// Set response status to 200 OK
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, `{"version": "18.0.0"}`)
+		default:
+			// Set response status to 405 Method Not Allowed
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
 	})
-	if err != nil {
-		t.Fatalf("Failed to create Gitlab instance: %v", err)
-	}
-	return gitlabInstance
 }
 
 func TestReverseGroupMirrorMap(t *testing.T) {

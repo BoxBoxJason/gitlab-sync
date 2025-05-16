@@ -1,6 +1,7 @@
 package mirroring
 
 import (
+	"net/http"
 	"reflect"
 	"testing"
 
@@ -126,6 +127,119 @@ func TestProcessFilters(t *testing.T) {
 
 			if !reflect.DeepEqual(destinationGroupFilters, tt.expectedDestinationGroupFilters) {
 				t.Errorf("expected destinationGroupFilters %v, got %v", tt.expectedDestinationGroupFilters, destinationGroupFilters)
+			}
+		})
+	}
+}
+
+func TestDryRun(t *testing.T) {
+	tests := []struct {
+		name       string
+		sourceSize string
+	}{
+		{
+			name:       "Dry Run Source Small",
+			sourceSize: INSTANCE_SIZE_SMALL,
+		},
+		{
+			name:       "Dry Run Source Big",
+			sourceSize: INSTANCE_SIZE_BIG,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, tt.sourceSize)
+			_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			gitlabMirrorArgs := &utils.MirrorMapping{
+				Projects: map[string]*utils.MirroringOptions{
+					TEST_PROJECT.PathWithNamespace: {
+						DestinationPath: TEST_PROJECT.PathWithNamespace,
+						MirrorReleases:  true,
+					},
+				},
+				Groups: map[string]*utils.MirroringOptions{
+					TEST_GROUP_2.FullPath: {
+						DestinationPath: TEST_GROUP_2.FullPath,
+						MirrorReleases:  true,
+					},
+				},
+			}
+			sourceGitlabInstance.addProject(TEST_PROJECT)
+			sourceGitlabInstance.addGroup(TEST_GROUP_2)
+			sourceGitlabInstance.addGroup(TEST_GROUP_2)
+
+			destinationGitlabInstance.DryRun(sourceGitlabInstance, gitlabMirrorArgs)
+		})
+	}
+}
+
+func TestCheckDestinationInstance(t *testing.T) {
+	tests := []struct {
+		name          string
+		licensePlan   string
+		version       string
+		expectedError bool
+	}{
+		{
+			name:          "Premium license, good version",
+			licensePlan:   PREMIUM_PLAN,
+			version:       "18.0.0",
+			expectedError: false,
+		},
+		{
+			name:          "Ultimate license, good version",
+			licensePlan:   ULTIMATE_PLAN,
+			version:       "18.0.0",
+			expectedError: false,
+		},
+		{
+			name:          "Free license, good version",
+			licensePlan:   "free",
+			version:       "18.0.0",
+			expectedError: true,
+		},
+		{
+			name:          "Premium license, bad version",
+			licensePlan:   PREMIUM_PLAN,
+			version:       "17.0.0",
+			expectedError: true,
+		},
+		{
+			name:          "Ultimate license, bad version",
+			licensePlan:   ULTIMATE_PLAN,
+			version:       "17.0.0",
+			expectedError: true,
+		},
+		{
+			name:          "Bad license, good version",
+			licensePlan:   "bad_license",
+			version:       "18.0.0",
+			expectedError: true,
+		},
+		{
+			name:          "Bad license, bad version",
+			licensePlan:   "bad_license",
+			version:       "17.0.0",
+			expectedError: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			mux.HandleFunc("/api/v4/license", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(200)
+				w.Write([]byte(`{"plan": "` + tt.licensePlan + `", "expired": false}`))
+			})
+			mux.HandleFunc("/api/v4/metadata", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(200)
+				w.Write([]byte(`{"version": "` + tt.version + `"}`))
+			})
+
+			err := gitlabInstance.CheckDestinationInstance()
+			if (err != nil) != tt.expectedError {
+				t.Errorf("CheckDestinationInstance() error = %v, expectedError %v", err, tt.expectedError)
 			}
 		})
 	}

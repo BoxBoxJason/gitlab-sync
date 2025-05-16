@@ -51,6 +51,9 @@ jobs:
         with:
           go-version: "1.24.2"
       - run: go mod tidy
-      - name: go-test
-        run: |
-          go test -v ./...
+      - run: go install gotest.tools/gotestsum@latest
+      - run: gotestsum --junitfile unit-tests.xml -- -coverprofile=coverage.out -covermode=atomic ./...
+      - uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
+          token: ${{ secrets.CODECOV_TOKEN }}

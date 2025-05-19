@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
@@ -33,7 +34,7 @@ func (destinationGitlab *GitlabInstance) createGroups(sourceGitlab *GitlabInstan
 		}
 	}
 	close(errorChan)
-	return utils.MergeErrors(errorChan)
+	return helpers.MergeErrors(errorChan)
 }
 
 // createGroup creates a GitLab group in the destination GitLab instance based on the source group and mirror mapping.
@@ -147,7 +148,7 @@ func (destinationGitlab *GitlabInstance) createProjects(sourceGitlab *GitlabInst
 	wg.Wait()
 	close(errorChan)
 
-	return utils.MergeErrors(errorChan)
+	return helpers.MergeErrors(errorChan)
 }
 
 // createProject creates a GitLab project in the destination GitLab instance based on the source project and mirror mapping.
@@ -285,7 +286,7 @@ func (destinationGitlab *GitlabInstance) mirrorReleases(sourceGitlab *GitlabInst
 	close(errorChan)
 
 	zap.L().Info("Releases mirroring completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
-	return utils.MergeErrors(errorChan)
+	return helpers.MergeErrors(errorChan)
 }
 
 // ============================================================ //

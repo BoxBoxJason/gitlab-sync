@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
@@ -170,7 +171,7 @@ func (g *GitlabInstance) fetchAndProcessProjectsBigInstance(projectFilters *map[
 	for project := range projectsChan {
 		g.storeProject(project, project.PathWithNamespace, mirrorMapping)
 	}
-	return utils.MergeErrors(errCh)
+	return helpers.MergeErrors(errCh)
 }
 
 // fetchAndProcessGroupProjects retrieves all projects from the group and processes them to store in the instance cache.

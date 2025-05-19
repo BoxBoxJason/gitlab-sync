@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
@@ -193,7 +194,7 @@ func (destinationGitlabInstance *GitlabInstance) updateGroupFromSource(sourceGit
 	wg.Wait()
 	close(errorChan)
 
-	return utils.MergeErrors(errorChan)
+	return helpers.MergeErrors(errorChan)
 }
 
 // copyGroupAvatar copies the avatar from the source group to the destination group.

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"gitlab-sync/pkg/helpers"
 	"os"
 	"path/filepath"
 	"strings"
@@ -139,7 +140,7 @@ func (m *MirrorMapping) check() []error {
 	m.checkGroups(errChan)
 
 	close(errChan)
-	return MergeErrors(errChan)
+	return helpers.MergeErrors(errChan)
 }
 
 // checkProjects checks if the projects are valid

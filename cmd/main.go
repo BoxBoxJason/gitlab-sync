@@ -8,6 +8,7 @@ import (
 
 	"gitlab-sync/internal/mirroring"
 	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -58,14 +59,14 @@ func main() {
 			zap.L().Debug("Parsing mirror mapping file")
 			mapping, mappingErrors := utils.OpenMirrorMapping(mirrorMappingPath)
 			if mappingErrors != nil {
-				zap.L().Fatal("Error opening mirror mapping file", zap.Array("errors", utils.ErrorArray(mappingErrors)))
+				zap.L().Fatal("Error opening mirror mapping file", zap.Array("errors", helpers.ErrorArray(mappingErrors)))
 			}
 			zap.L().Debug("Mirror mapping file parsed successfully")
 			args.MirrorMapping = mapping
 
 			mirroringErrors := mirroring.MirrorGitlabs(&args)
 			if mirroringErrors != nil {
-				zap.L().Error("Error during mirroring process", zap.Array("errors", utils.ErrorArray(mirroringErrors)))
+				zap.L().Error("Error during mirroring process", zap.Array("errors", helpers.ErrorArray(mirroringErrors)))
 			}
 			zap.L().Info("Mirroring completed")
 		},

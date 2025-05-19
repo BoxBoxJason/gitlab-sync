@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
@@ -80,7 +81,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	errCh <- destinationGitlabInstance.createProjects(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
 
 	close(errCh)
-	return utils.MergeErrors(errCh)
+	return helpers.MergeErrors(errCh)
 }
 
 // processFilters processes the filters for groups and projects.

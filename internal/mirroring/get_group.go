@@ -3,6 +3,7 @@ package mirroring
 import (
 	"fmt"
 	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 	"path/filepath"
 	"sync"
 
@@ -166,7 +167,7 @@ func (g *GitlabInstance) fetchAndProcessGroupsLargeInstance(groupFilters *map[st
 	// Wait for all goroutines to finish
 	wg.Wait()
 	close(errChan)
-	return utils.MergeErrors(errs)
+	return helpers.MergeErrors(errs)
 }
 
 // fetchAndProcessGroupRecursive fetches a group and its projects recursively

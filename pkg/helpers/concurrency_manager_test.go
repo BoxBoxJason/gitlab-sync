@@ -1,4 +1,4 @@
-package utils
+package helpers
 
 import (
 	"errors"
@@ -14,18 +14,6 @@ const (
 	EXPECT_GOT_MESSAGE     = "Expected: %q, Got: %q"
 	EXPECT_NIL_GOT_MESSAGE = "Expected nil, Got: %q"
 )
-
-// toStrings converts a []error into a []string for easy comparison
-func toStrings(errs []error) []string {
-	if errs == nil {
-		return nil
-	}
-	out := make([]string, len(errs))
-	for i, e := range errs {
-		out[i] = e.Error()
-	}
-	return out
-}
 
 func TestMergeErrors(t *testing.T) {
 	type args struct {
@@ -171,7 +159,7 @@ func TestMergeErrors(t *testing.T) {
 				}
 				return
 			}
-			got := toStrings(gotErrs)
+			got := ToStrings(gotErrs)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("got %v, want %v", got, tc.want)
 			}

@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"gitlab-sync/pkg/helpers"
 	"os"
 	"reflect"
 	"testing"
@@ -245,7 +246,7 @@ func TestCheck(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			errs := tt.mapping.check() // now returns []error
-			got := toStrings(errs)
+			got := helpers.ToStrings(errs)
 			if !reflect.DeepEqual(got, tt.wantMsgs) {
 				t.Errorf("check() = %v, want %v", got, tt.wantMsgs)
 			}

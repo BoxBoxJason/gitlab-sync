@@ -3,6 +3,7 @@ package mirroring
 import (
 	"fmt"
 	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -39,7 +40,7 @@ func (g *GitlabInstance) fetchAll(projectFilters map[string]struct{}, groupFilte
 	wg.Wait()
 	close(errCh)
 
-	return utils.MergeErrors(errCh)
+	return helpers.MergeErrors(errCh)
 }
 
 // getParentNamespaceID retrieves the parent namespace ID for a given project or group path.

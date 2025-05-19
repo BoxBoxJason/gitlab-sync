@@ -59,3 +59,4 @@ go.sum
 sonar-project.properties
 unit-tests.xml
 coverage.out
+republisher.sh

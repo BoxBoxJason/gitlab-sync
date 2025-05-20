@@ -6,6 +6,7 @@ WORKDIR /app
 
 COPY go.mod .
 COPY ./cmd/ ./cmd/
+COPY ./pkg/ ./pkg/
 COPY ./internal/ ./internal/
 
 ENV GO111MODULE=on \

@@ -113,7 +113,7 @@ func (destinationGitlabInstance *GitlabInstance) syncProjectAttributes(sourcePro
 	}
 
 	if missmatched {
-		destinationProject, _, err := destinationGitlabInstance.Gitlab.Projects.EditProject(destinationProject.ID, gitlabEditOptions)
+		_, _, err := destinationGitlabInstance.Gitlab.Projects.EditProject(destinationProject.ID, gitlabEditOptions)
 		if err != nil {
 			return fmt.Errorf("failed to edit project %s: %s", destinationProject.HTTPURLToRepo, err)
 		}

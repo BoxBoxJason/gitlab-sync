@@ -56,7 +56,10 @@ Desktop.ini
 
 mirroring.json
 go.sum
+republisher.sh
+
+# Reports files
 sonar-project.properties
 unit-tests.xml
 coverage.out
-republisher.sh
+.scannerwork/

@@ -2,8 +2,6 @@ package helpers
 
 import (
 	"fmt"
-
-	"go.uber.org/zap/zapcore"
 )
 
 // MergeErrors collects any number of errors from various inputs:
@@ -73,15 +71,4 @@ func MergeErrors(input any) []error {
 		return nil
 	}
 	return merged
-}
-
-type ErrorArray []error
-
-func (ea ErrorArray) MarshalLogArray(enc zapcore.ArrayEncoder) error {
-	for _, err := range ea {
-		if err != nil {
-			enc.AppendString(err.Error())
-		}
-	}
-	return nil
 }

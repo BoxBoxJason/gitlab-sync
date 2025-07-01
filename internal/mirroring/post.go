@@ -111,7 +111,7 @@ func (g *GitlabInstance) createGroupFromSource(sourceGroup *gitlab.Group, copyOp
 }
 
 // ============================================================ //
-//                 PROJECT CREATION FUNCTIONS                    //
+//                 PROJECT CREATION FUNCTIONS                   //
 // ============================================================ //
 
 // createProjects creates GitLab projects in the destination GitLab instance based on the mirror mapping.
@@ -139,7 +139,7 @@ func (destinationGitlab *GitlabInstance) createProjects(sourceGitlab *GitlabInst
 			defer wg.Done()
 			_, err := destinationGitlab.createProject(sourcePath, destinationCopyOptions, sourceGitlab)
 			if err != nil {
-				errorChan <- fmt.Errorf("failed to create project %s in destination GitLab instance: %s", destinationCopyOptions.DestinationPath, err)
+				errorChan <- fmt.Errorf("failed to create project %s in destination GitLab instance: %v", destinationCopyOptions.DestinationPath, err)
 			}
 		}(sourceProjectPath, destinationProjectOptions)
 	}
@@ -168,7 +168,7 @@ func (destinationGitlab *GitlabInstance) createProject(sourceProjectPath string,
 	// If it does not exist, create it
 	if destinationProject == nil {
 		destinationProject, err = destinationGitlab.createProjectFromSource(sourceProject, projectCreationOptions)
-		if err != nil {
+		if err != nil || destinationProject == nil {
 			return nil, []error{fmt.Errorf("failed to create project %s in destination GitLab instance: %s", destinationProjectPath, err)}
 		}
 	}
@@ -215,7 +215,7 @@ func (g *GitlabInstance) createProjectFromSource(sourceProject *gitlab.Project, 
 		g.addProject(destinationProject)
 	}
 
-	return destinationProject, nil
+	return destinationProject, err
 }
 
 // ============================================================ //

@@ -21,6 +21,13 @@ import (
 // It also mirrors releases if the option is set.
 // The function uses goroutines to perform these tasks concurrently and waits for all of them to finish.
 func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceGitlabInstance *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) []error {
+	// Immediately capture pointers in local variables to avoid any late overrides
+	srcProj := sourceProject
+	dstProj := destinationProject
+	if srcProj == nil || dstProj == nil {
+		return []error{fmt.Errorf("source or destination project is nil")}
+	}
+
 	wg := sync.WaitGroup{}
 	maxErrors := 3
 	if copyOptions.CI_CD_Catalog {
@@ -29,41 +36,43 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 	if copyOptions.MirrorReleases {
 		maxErrors++
 	}
+
 	wg.Add(maxErrors)
 	errorChan := make(chan error, maxErrors)
 
-	go func() {
+	go func(sp *gitlab.Project, dp *gitlab.Project) {
 		defer wg.Done()
-		errorChan <- destinationGitlabInstance.syncProjectAttributes(sourceProject, destinationProject, copyOptions)
-	}()
+		errorChan <- destinationGitlabInstance.syncProjectAttributes(sp, dp, copyOptions)
+	}(srcProj, dstProj)
 
-	go func() {
+	go func(sp *gitlab.Project, dp *gitlab.Project) {
 		defer wg.Done()
-		errorChan <- destinationGitlabInstance.enableProjectMirrorPull(sourceProject, destinationProject, copyOptions)
-	}()
+		errorChan <- destinationGitlabInstance.enableProjectMirrorPull(sp, dp, copyOptions)
+	}(srcProj, dstProj)
 
-	go func() {
+	go func(sp *gitlab.Project, dp *gitlab.Project) {
 		defer wg.Done()
-		errorChan <- sourceGitlabInstance.copyProjectAvatar(destinationGitlabInstance, destinationProject, sourceProject)
-	}()
+		errorChan <- sourceGitlabInstance.copyProjectAvatar(destinationGitlabInstance, dp, sp)
+	}(srcProj, dstProj)
 
 	if copyOptions.CI_CD_Catalog {
-		go func() {
+		go func(dp *gitlab.Project) {
 			defer wg.Done()
-			errorChan <- destinationGitlabInstance.addProjectToCICDCatalog(destinationProject)
-		}()
+			errorChan <- destinationGitlabInstance.addProjectToCICDCatalog(dp)
+		}(dstProj)
 	}
 
 	allErrors := []error{}
 	if copyOptions.MirrorReleases {
-		go func() {
+		go func(sp *gitlab.Project, dp *gitlab.Project) {
 			defer wg.Done()
-			allErrors = destinationGitlabInstance.mirrorReleases(sourceGitlabInstance, sourceProject, destinationProject)
-		}()
+			allErrors = destinationGitlabInstance.mirrorReleases(sourceGitlabInstance, sp, dp)
+		}(srcProj, dstProj)
 	}
 
 	wg.Wait()
 	close(errorChan)
+
 	for err := range errorChan {
 		if err != nil {
 			allErrors = append(allErrors, err)
@@ -176,20 +185,29 @@ func (sourceGitlabInstance *GitlabInstance) copyProjectAvatar(destinationGitlabI
 // updateGroupFromSource updates the destination group with settings from the source group.
 // It copies the group avatar and updates the group attributes.
 func (destinationGitlabInstance *GitlabInstance) updateGroupFromSource(sourceGitlabInstance *GitlabInstance, sourceGroup *gitlab.Group, destinationGroup *gitlab.Group, copyOptions *utils.MirroringOptions) []error {
+	// Immediately capture pointers in local variables to avoid any late overrides
+	srcGroup := sourceGroup
+	dstGroup := destinationGroup
+	cpOpts := copyOptions
+
+	if srcGroup == nil || dstGroup == nil {
+		return []error{fmt.Errorf("source or destination group is nil")}
+	}
+
 	wg := sync.WaitGroup{}
 	maxErrors := 2
 	wg.Add(maxErrors)
 	errorChan := make(chan error, maxErrors)
 
-	go func() {
+	go func(sg *gitlab.Group, dg *gitlab.Group, cp *utils.MirroringOptions) {
 		defer wg.Done()
-		errorChan <- destinationGitlabInstance.syncGroupAttributes(sourceGroup, destinationGroup, copyOptions)
-	}()
+		errorChan <- destinationGitlabInstance.syncGroupAttributes(sg, dg, cp)
+	}(srcGroup, dstGroup, cpOpts)
 
-	go func() {
+	go func(sg *gitlab.Group, dg *gitlab.Group) {
 		defer wg.Done()
-		errorChan <- sourceGitlabInstance.copyGroupAvatar(destinationGitlabInstance, destinationGroup, sourceGroup)
-	}()
+		errorChan <- sourceGitlabInstance.copyGroupAvatar(destinationGitlabInstance, dg, sg)
+	}(srcGroup, dstGroup)
 
 	wg.Wait()
 	close(errorChan)

@@ -86,39 +86,38 @@ func checkPathMatchesFilters(resourcePath string, projectFilters *map[string]str
 	return "", false
 }
 
-func (g *GitlabInstance) CheckVersion() error {
+// IsVersionGreaterThanThreshold checks if the GitLab instance version is below the defined threshold.
+// It retrieves the metadata from the GitLab instance and compares the version
+// with the INSTANCE_SEMVER_THRESHOLD.
+func (g *GitlabInstance) IsVersionGreaterThanThreshold() (bool, error) {
 	metadata, _, err := g.Gitlab.Metadata.GetMetadata()
 	if err != nil {
-		return fmt.Errorf("failed to get GitLab version: %w", err)
+		return false, fmt.Errorf("failed to get GitLab version: %w", err)
 	}
 	zap.L().Debug("GitLab Instance version", zap.String(ROLE, g.Role), zap.String("version", metadata.Version))
 
 	currentVer, err := semver.NewVersion(metadata.Version)
 	if err != nil {
-		return fmt.Errorf("failed to parse GitLab version: %w", err)
+		return false, fmt.Errorf("failed to parse GitLab version: %w", err)
 	}
 	thresholdVer, err := semver.NewVersion(INSTANCE_SEMVER_THRESHOLD)
 	if err != nil {
-		return fmt.Errorf("failed to parse version threshold: %w", err)
+		return false, fmt.Errorf("failed to parse version threshold: %w", err)
 	}
 
-	if currentVer.LessThan(thresholdVer) {
-		return fmt.Errorf("GitLab version %s is below required threshold %s", currentVer, thresholdVer)
-	}
-	return nil
+	return currentVer.GreaterThanEqual(thresholdVer), nil
 }
 
-func (g *GitlabInstance) CheckLicense() error {
+// IsLicensePremium checks if the GitLab instance has a premium license.
+// It retrieves the license information and checks the plan type.
+func (g *GitlabInstance) IsLicensePremium() (bool, error) {
 	license, _, err := g.Gitlab.License.GetLicense()
 	if err != nil {
-		return fmt.Errorf("failed to get GitLab license: %w", err)
+		return false, fmt.Errorf("failed to get GitLab license: %w", err)
 	}
-	if license.Plan != ULTIMATE_PLAN && license.Plan != PREMIUM_PLAN {
-		return fmt.Errorf("GitLab license plan %s is not supported, only %s and %s are supported", license.Plan, ULTIMATE_PLAN, PREMIUM_PLAN)
-	} else if license.Expired {
-		return fmt.Errorf("GitLab license is expired")
+	zap.L().Info("GitLab Instance license", zap.String(ROLE, g.Role), zap.String("plan", license.Plan))
+	if license.Plan != ULTIMATE_PLAN && license.Plan != PREMIUM_PLAN || license.Expired {
+		return false, nil
 	}
-
-	zap.L().Debug("GitLab Instance license", zap.String(ROLE, g.Role), zap.String("plan", license.Plan))
-	return nil
+	return true, nil
 }

@@ -1,8 +1,10 @@
 package mirroring
 
 import (
+	"gitlab-sync/pkg/helpers"
 	"sync"
 
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/hashicorp/go-retryablehttp"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
@@ -28,6 +30,10 @@ type GitlabInstance struct {
 	// InstanceSize is the size of the GitLab instance, it can be either "small" or "big"
 	// It is used to determine the behavior of the fetching process
 	InstanceSize string
+	// PullMirrorAvailable is a boolean indicating whether the GitLab instance supports pull mirroring
+	PullMirrorAvailable bool
+	// GitAuth is the HTTP authentication used for GitLab git over HTTP operations (only for non premium instances)
+	GitAuth transport.AuthMethod
 }
 
 type GitlabInstanceOpts struct {
@@ -59,6 +65,7 @@ func newGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 		Groups:       make(map[string]*gitlab.Group),
 		Role:         initArgs.Role,
 		InstanceSize: initArgs.InstanceSize,
+		GitAuth:      helpers.BuildHTTPAuth("", initArgs.GitlabToken),
 	}
 
 	return gitlabInstance, nil

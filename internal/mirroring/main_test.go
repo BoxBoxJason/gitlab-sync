@@ -174,72 +174,85 @@ func TestDryRun(t *testing.T) {
 	}
 }
 
-func TestCheckDestinationInstance(t *testing.T) {
+func TestIsPullMirrorAvailable(t *testing.T) {
 	tests := []struct {
-		name          string
-		licensePlan   string
-		version       string
-		expectedError bool
+		name           string
+		licensePlan    string
+		version        string
+		expectedError  bool
+		expectedResult bool
 	}{
 		{
-			name:          "Premium license, good version",
-			licensePlan:   PREMIUM_PLAN,
-			version:       "18.0.0",
-			expectedError: false,
+			name:           "Premium license, good version",
+			licensePlan:    PREMIUM_PLAN,
+			version:        "18.0.0",
+			expectedResult: true,
 		},
 		{
-			name:          "Ultimate license, good version",
-			licensePlan:   ULTIMATE_PLAN,
-			version:       "18.0.0",
-			expectedError: false,
+			name:           "Ultimate license, good version",
+			licensePlan:    ULTIMATE_PLAN,
+			version:        "18.0.0",
+			expectedResult: true,
 		},
 		{
-			name:          "Free license, good version",
-			licensePlan:   "free",
-			version:       "18.0.0",
-			expectedError: true,
+			name:           "Free license, good version",
+			licensePlan:    "free",
+			version:        "18.0.0",
+			expectedResult: false,
 		},
 		{
-			name:          "Premium license, bad version",
-			licensePlan:   PREMIUM_PLAN,
-			version:       "17.0.0",
-			expectedError: true,
+			name:           "Premium license, bad version",
+			licensePlan:    PREMIUM_PLAN,
+			version:        "17.0.0",
+			expectedResult: false,
 		},
 		{
-			name:          "Ultimate license, bad version",
-			licensePlan:   ULTIMATE_PLAN,
-			version:       "17.0.0",
-			expectedError: true,
+			name:           "Ultimate license, bad version",
+			licensePlan:    ULTIMATE_PLAN,
+			version:        "17.0.0",
+			expectedResult: false,
 		},
 		{
-			name:          "Bad license, good version",
-			licensePlan:   "bad_license",
-			version:       "18.0.0",
-			expectedError: true,
+			name:           "Bad license, good version",
+			licensePlan:    "bad_license",
+			version:        "18.0.0",
+			expectedResult: false,
 		},
 		{
-			name:          "Bad license, bad version",
-			licensePlan:   "bad_license",
-			version:       "17.0.0",
-			expectedError: true,
+			name:           "Bad license, bad version",
+			licensePlan:    "bad_license",
+			version:        "17.0.0",
+			expectedResult: false,
+		},
+		{
+			name:           "Error API response",
+			licensePlan:    "",
+			version:        "",
+			expectedError:  true,
+			expectedResult: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
-			mux.HandleFunc("/api/v4/license", func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(200)
-				w.Write([]byte(`{"plan": "` + tt.licensePlan + `", "expired": false}`))
-			})
-			mux.HandleFunc("/api/v4/metadata", func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(200)
-				w.Write([]byte(`{"version": "` + tt.version + `"}`))
-			})
+			if !tt.expectedError {
+				mux.HandleFunc("/api/v4/license", func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(200)
+					w.Write([]byte(`{"plan": "` + tt.licensePlan + `", "expired": false}`))
+				})
+				mux.HandleFunc("/api/v4/metadata", func(w http.ResponseWriter, r *http.Request) {
+					w.WriteHeader(200)
+					w.Write([]byte(`{"version": "` + tt.version + `"}`))
+				})
+			}
 
-			err := gitlabInstance.CheckDestinationInstance()
+			pullMirrorAvailable, err := gitlabInstance.IsPullMirrorAvailable()
 			if (err != nil) != tt.expectedError {
-				t.Errorf("CheckDestinationInstance() error = %v, expectedError %v", err, tt.expectedError)
+				t.Fatalf("CheckDestinationInstance() error = %v, expectedError %v", err, tt.expectedError)
+			}
+			if pullMirrorAvailable != tt.expectedResult {
+				t.Errorf("CheckDestinationInstance() = %v, expectedResult %v", pullMirrorAvailable, tt.expectedResult)
 			}
 		})
 	}

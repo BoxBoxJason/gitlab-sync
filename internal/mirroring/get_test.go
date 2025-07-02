@@ -195,36 +195,50 @@ func TestFetchAll(t *testing.T) {
 
 }
 
-func TestCheckVersion(t *testing.T) {
+func TestIsVersionGreaterThanThreshold(t *testing.T) {
 	tests := []struct {
-		name          string
-		version       string
-		expectedError bool
+		name             string
+		version          string
+		expectedError    bool
+		expectedResponse bool
+		noApiResponse    bool
 	}{
 		{
-			name:          "Valid version under threshold",
-			version:       "15.0.0",
-			expectedError: true,
+			name:             "Valid version under threshold",
+			version:          "15.0.0",
+			expectedError:    false,
+			expectedResponse: false,
 		},
 		{
-			name:          "Valid version above threshold",
-			version:       "17.9.3-ce.0",
-			expectedError: false,
+			name:             "Valid version above threshold",
+			version:          "17.9.3-ce.0",
+			expectedError:    false,
+			expectedResponse: true,
 		},
 		{
-			name:          "Invalid version format with 1 dot",
-			version:       "invalid.version",
-			expectedError: true,
+			name:             "Invalid version format with 1 dot",
+			version:          "invalid.version",
+			expectedError:    true,
+			expectedResponse: false,
 		},
 		{
-			name:          "Invalid version format with 2 dots",
-			version:       "invalid.version.1",
-			expectedError: true,
+			name:             "Invalid version format with 2 dots",
+			version:          "invalid.version.1",
+			expectedError:    true,
+			expectedResponse: false,
 		},
 		{
-			name:          "Invalid empty version",
-			version:       "",
-			expectedError: true,
+			name:             "Invalid empty version",
+			version:          "",
+			expectedError:    true,
+			expectedResponse: false,
+		},
+		{
+			name:             "No API response",
+			version:          "",
+			expectedError:    true,
+			expectedResponse: false,
+			noApiResponse:    true,
 		},
 	}
 
@@ -234,53 +248,64 @@ func TestCheckVersion(t *testing.T) {
 			t.Parallel()
 
 			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
-			mux.HandleFunc("/api/v4/metadata", func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				_, err := w.Write([]byte(`{"version": "` + test.version + `"}`))
-				if err != nil {
-					t.Errorf("failed to write response: %v", err)
-				}
-			})
+			if !test.noApiResponse {
+				mux.HandleFunc("/api/v4/metadata", func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					_, err := w.Write([]byte(`{"version": "` + test.version + `"}`))
+					if err != nil {
+						t.Errorf("failed to write response: %v", err)
+					}
+				})
+			}
 
-			err := gitlabInstance.CheckVersion()
+			thresholdOk, err := gitlabInstance.IsVersionGreaterThanThreshold()
 			if (err != nil) != test.expectedError {
-				t.Errorf("expected error: %v, got: %v", test.expectedError, err)
+				t.Fatalf("expected error: %v, got: %v", test.expectedError, err)
+			}
+			if thresholdOk != test.expectedResponse {
+				t.Errorf("expected thresholdOk: %v, got: %v", test.expectedResponse, thresholdOk)
 			}
 		})
 	}
 }
 
-func TestCheckLicense(t *testing.T) {
+func TestIsLicensePremium(t *testing.T) {
 	tests := []struct {
-		name          string
-		license       string
-		expectedError bool
+		name             string
+		license          string
+		expectedError    bool
+		expectedResponse bool
 	}{
 		{
-			name:          "Ultimate tier license",
-			license:       ULTIMATE_PLAN,
-			expectedError: false,
+			name:             "Ultimate tier license",
+			license:          ULTIMATE_PLAN,
+			expectedError:    false,
+			expectedResponse: true,
 		},
 		{
-			name:          "Premium tier license",
-			license:       PREMIUM_PLAN,
-			expectedError: false,
+			name:             "Premium tier license",
+			license:          PREMIUM_PLAN,
+			expectedError:    false,
+			expectedResponse: true,
 		},
 		{
-			name:          "Free tier license",
-			license:       "free",
-			expectedError: true,
+			name:             "Free tier license",
+			license:          "free",
+			expectedError:    false,
+			expectedResponse: false,
 		},
 		{
-			name:          "Invalid license",
-			license:       "invalid",
-			expectedError: true,
+			name:             "Invalid license",
+			license:          "invalid",
+			expectedError:    false,
+			expectedResponse: false,
 		},
 		{
-			name:          "Empty license",
-			license:       "",
-			expectedError: true,
+			name:             "Error API response",
+			license:          "",
+			expectedError:    true,
+			expectedResponse: false,
 		},
 	}
 	// Iterate over the test cases
@@ -289,18 +314,23 @@ func TestCheckLicense(t *testing.T) {
 			t.Parallel()
 
 			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
-			mux.HandleFunc("/api/v4/license", func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusOK)
-				_, err := w.Write([]byte(`{"plan": "` + test.license + `"}`))
-				if err != nil {
-					t.Errorf("failed to write response: %v", err)
-				}
-			})
+			if !test.expectedError {
+				mux.HandleFunc("/api/v4/license", func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusOK)
+					_, err := w.Write([]byte(`{"plan": "` + test.license + `"}`))
+					if err != nil {
+						t.Errorf("failed to write response: %v", err)
+					}
+				})
+			}
 
-			err := gitlabInstance.CheckLicense()
+			isPremium, err := gitlabInstance.IsLicensePremium()
 			if (err != nil) != test.expectedError {
-				t.Errorf("expected error: %v, got: %v", test.expectedError, err)
+				t.Fatalf("expected error: %v, got: %v", test.expectedError, err)
+			}
+			if isPremium != test.expectedResponse {
+				t.Errorf("expected isPremium: %v, got: %v", test.expectedResponse, isPremium)
 			}
 		})
 	}

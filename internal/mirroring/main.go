@@ -48,10 +48,16 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	if err != nil {
 		return []error{err}
 	}
-	err = destinationGitlabInstance.CheckDestinationInstance()
+	pullMirrorAvailable, err := destinationGitlabInstance.IsPullMirrorAvailable()
 	if err != nil {
 		return []error{err}
+	} else if pullMirrorAvailable {
+		zap.L().Info("GitLab instance is compatible with the pull mirroring process", zap.String(ROLE, destinationGitlabInstance.Role), zap.String(INSTANCE_SIZE, destinationGitlabInstance.InstanceSize))
+	} else {
+		zap.L().Warn("Destination GitLab instance is not compatible with the pull mirroring process (requires a >= 17.6 ; >= Premium destination GitLab instance)", zap.String(ROLE, destinationGitlabInstance.Role), zap.String(INSTANCE_SIZE, destinationGitlabInstance.InstanceSize))
+		zap.L().Warn("Will use local pull / push mirroring instead (takes a lot longer)", zap.String(ROLE, destinationGitlabInstance.Role), zap.String(INSTANCE_SIZE, destinationGitlabInstance.InstanceSize))
 	}
+	destinationGitlabInstance.PullMirrorAvailable = pullMirrorAvailable
 
 	sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters := processFilters(gitlabMirrorArgs.MirrorMapping)
 
@@ -121,7 +127,6 @@ func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[stri
 				destinationGroupFilters[destinationGroupPath] = struct{}{}
 				mu.Unlock()
 			}
-
 		}
 	}()
 
@@ -172,14 +177,18 @@ func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInst
 	return nil
 }
 
-// CheckDestinationInstance checks the destination GitLab instance for version and license compatibility.
-func (g *GitlabInstance) CheckDestinationInstance() error {
+// IsPullMirrorAvailable checks the destination GitLab instance for version and license compatibility.
+func (g *GitlabInstance) IsPullMirrorAvailable() (bool, error) {
 	zap.L().Info("Checking destination GitLab instance")
-	if err := g.CheckVersion(); err != nil {
-		return fmt.Errorf("destination GitLab instance version check failed: %w", err)
+	thresholdOk, err := g.IsVersionGreaterThanThreshold()
+	if err != nil {
+		return false, fmt.Errorf("destination GitLab instance version check failed: %w", err)
 	}
-	if err := g.CheckLicense(); err != nil {
-		return fmt.Errorf("destination GitLab instance version check failed: %w", err)
+
+	isPremium, err := g.IsLicensePremium()
+	if err != nil {
+		return false, fmt.Errorf("failed to check if destination GitLab instance is premium: %w", err)
 	}
-	return nil
+
+	return thresholdOk && isPremium, nil
 }

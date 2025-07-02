@@ -19,7 +19,9 @@ It is designed to be used in a CI/CD pipeline to automate the process of keeping
 ## Features
 
 - Synchronize projects / groups between two GitLab instances
-- Enable Pull Mirroring for projects (requires GitLab Premium)
+- Recreates your git repository content in another location:
+  - Enable Pull Mirroring for projects (requires GitLab Premium)
+  - Clone the repository content from the source GitLab instance to the destination GitLab instance (on GitLab Free)
 - Can add projects to CI/CD catalog
 - Full copy of the project (description, icon, topics,...). Can also copy issues
 

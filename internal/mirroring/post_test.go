@@ -198,6 +198,7 @@ func TestCreateProjects(t *testing.T) {
 		sourceGitlabInstance.addProject(TEST_PROJECT)
 		_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
 		destinationGitlabInstance.addGroup(TEST_GROUP)
+		destinationGitlabInstance.PullMirrorAvailable = true
 		mirrorMapping := &utils.MirrorMapping{
 			Projects: map[string]*utils.MirroringOptions{
 				TEST_PROJECT.PathWithNamespace: {

@@ -1,7 +1,6 @@
 package mirroring
 
 import (
-	"context"
 	"fmt"
 	"sync"
 
@@ -312,6 +311,6 @@ func (g *GitlabInstance) addProjectToCICDCatalog(project *gitlab.Project) error 
 		} `json:"data"`
 	}
 
-	_, err := g.Gitlab.GraphQL.Do(context.Background(), gitlab.GraphQLQuery{Query: query}, &response)
+	_, err := g.Gitlab.GraphQL.Do(gitlab.GraphQLQuery{Query: query}, &response)
 	return err
 }

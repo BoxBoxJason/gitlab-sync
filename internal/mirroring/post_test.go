@@ -212,7 +212,7 @@ func TestCreateProjects(t *testing.T) {
 			},
 		}
 		err := destinationGitlabInstance.createProjects(sourceGitlabInstance, mirrorMapping)
-		if err != nil && len(err) > 0 {
+		if len(err) > 0 {
 			t.Errorf("Unexpected error when creating projects: %v", err)
 		}
 		if len(destinationGitlabInstance.Projects) == 0 {

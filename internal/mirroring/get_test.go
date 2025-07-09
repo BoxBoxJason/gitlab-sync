@@ -6,6 +6,10 @@ import (
 	"testing"
 )
 
+const (
+	EXPECTED_ERROR_MESSAGE = "expected error: %v, got: %v"
+)
+
 func TestCheckPathMatchesFilters(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -112,7 +116,7 @@ func TestGetParentNamespaceID(t *testing.T) {
 
 			// Check if an error was expected
 			if (err != nil) != test.expectedError {
-				t.Errorf("expected error: %v, got: %v", test.expectedError, err)
+				t.Errorf(EXPECTED_ERROR_MESSAGE, test.expectedError, err)
 			}
 		})
 	}
@@ -180,7 +184,7 @@ func TestFetchAll(t *testing.T) {
 
 			// Check if an error was expected
 			if (err != nil) != test.expectedError {
-				t.Errorf("expected error: %v, got: %v", test.expectedError, err)
+				t.Errorf(EXPECTED_ERROR_MESSAGE, test.expectedError, err)
 			}
 
 			//Check if the instance cache contains the expected projects and groups
@@ -261,7 +265,7 @@ func TestIsVersionGreaterThanThreshold(t *testing.T) {
 
 			thresholdOk, err := gitlabInstance.IsVersionGreaterThanThreshold()
 			if (err != nil) != test.expectedError {
-				t.Fatalf("expected error: %v, got: %v", test.expectedError, err)
+				t.Fatalf(EXPECTED_ERROR_MESSAGE, test.expectedError, err)
 			}
 			if thresholdOk != test.expectedResponse {
 				t.Errorf("expected thresholdOk: %v, got: %v", test.expectedResponse, thresholdOk)
@@ -327,7 +331,7 @@ func TestIsLicensePremium(t *testing.T) {
 
 			isPremium, err := gitlabInstance.IsLicensePremium()
 			if (err != nil) != test.expectedError {
-				t.Fatalf("expected error: %v, got: %v", test.expectedError, err)
+				t.Fatalf(EXPECTED_ERROR_MESSAGE, test.expectedError, err)
 			}
 			if isPremium != test.expectedResponse {
 				t.Errorf("expected isPremium: %v, got: %v", test.expectedResponse, isPremium)

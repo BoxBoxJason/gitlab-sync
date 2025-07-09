@@ -175,53 +175,63 @@ func TestDryRun(t *testing.T) {
 }
 
 func TestIsPullMirrorAvailable(t *testing.T) {
+	const supportedVersion = "18.0.0"
+	const unsupportedVersion = "17.0.0"
 	tests := []struct {
 		name           string
 		licensePlan    string
 		version        string
 		expectedError  bool
 		expectedResult bool
+		forcePremium   bool
 	}{
 		{
 			name:           "Premium license, good version",
 			licensePlan:    PREMIUM_PLAN,
-			version:        "18.0.0",
+			version:        supportedVersion,
 			expectedResult: true,
 		},
 		{
 			name:           "Ultimate license, good version",
 			licensePlan:    ULTIMATE_PLAN,
-			version:        "18.0.0",
+			version:        supportedVersion,
 			expectedResult: true,
 		},
 		{
 			name:           "Free license, good version",
 			licensePlan:    "free",
-			version:        "18.0.0",
+			version:        supportedVersion,
 			expectedResult: false,
+		},
+		{
+			name:           "Free license, good version, force premium",
+			licensePlan:    "free",
+			version:        supportedVersion,
+			expectedResult: true,
+			forcePremium:   true,
 		},
 		{
 			name:           "Premium license, bad version",
 			licensePlan:    PREMIUM_PLAN,
-			version:        "17.0.0",
+			version:        unsupportedVersion,
 			expectedResult: false,
 		},
 		{
 			name:           "Ultimate license, bad version",
 			licensePlan:    ULTIMATE_PLAN,
-			version:        "17.0.0",
+			version:        unsupportedVersion,
 			expectedResult: false,
 		},
 		{
 			name:           "Bad license, good version",
 			licensePlan:    "bad_license",
-			version:        "18.0.0",
+			version:        supportedVersion,
 			expectedResult: false,
 		},
 		{
 			name:           "Bad license, bad version",
 			licensePlan:    "bad_license",
-			version:        "17.0.0",
+			version:        unsupportedVersion,
 			expectedResult: false,
 		},
 		{
@@ -247,7 +257,7 @@ func TestIsPullMirrorAvailable(t *testing.T) {
 				})
 			}
 
-			pullMirrorAvailable, err := gitlabInstance.IsPullMirrorAvailable()
+			pullMirrorAvailable, err := gitlabInstance.IsPullMirrorAvailable(tt.forcePremium)
 			if (err != nil) != tt.expectedError {
 				t.Fatalf("CheckDestinationInstance() error = %v, expectedError %v", err, tt.expectedError)
 			}

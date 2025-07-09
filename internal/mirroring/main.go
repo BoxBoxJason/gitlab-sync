@@ -48,7 +48,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	if err != nil {
 		return []error{err}
 	}
-	pullMirrorAvailable, err := destinationGitlabInstance.IsPullMirrorAvailable()
+	pullMirrorAvailable, err := destinationGitlabInstance.IsPullMirrorAvailable(gitlabMirrorArgs.DestinationGitlabForcePremium)
 	if err != nil {
 		return []error{err}
 	} else if pullMirrorAvailable {
@@ -178,7 +178,7 @@ func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInst
 }
 
 // IsPullMirrorAvailable checks the destination GitLab instance for version and license compatibility.
-func (g *GitlabInstance) IsPullMirrorAvailable() (bool, error) {
+func (g *GitlabInstance) IsPullMirrorAvailable(forcePremium bool) (bool, error) {
 	zap.L().Info("Checking destination GitLab instance")
 	thresholdOk, err := g.IsVersionGreaterThanThreshold()
 	if err != nil {
@@ -187,8 +187,10 @@ func (g *GitlabInstance) IsPullMirrorAvailable() (bool, error) {
 
 	isPremium, err := g.IsLicensePremium()
 	if err != nil {
-		return false, fmt.Errorf("failed to check if destination GitLab instance is premium: %w", err)
+		if !forcePremium {
+			return false, fmt.Errorf("failed to check if destination GitLab instance is premium: %w", err)
+		}
 	}
 
-	return thresholdOk && isPremium, nil
+	return thresholdOk && (isPremium || forcePremium), nil
 }

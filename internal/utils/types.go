@@ -33,17 +33,18 @@ const (
 // - version: whether to show the version
 // - retry: the number of retries for the GitLab API requests
 type ParserArgs struct {
-	SourceGitlabURL        string
-	SourceGitlabToken      string
-	SourceGitlabIsBig      bool
-	DestinationGitlabURL   string
-	DestinationGitlabToken string
-	DestinationGitlabIsBig bool
-	MirrorMapping          *MirrorMapping
-	Verbose                bool
-	NoPrompt               bool
-	DryRun                 bool
-	Retry                  int
+	SourceGitlabURL               string
+	SourceGitlabToken             string
+	SourceGitlabIsBig             bool
+	DestinationGitlabURL          string
+	DestinationGitlabToken        string
+	DestinationGitlabIsBig        bool
+	DestinationGitlabForcePremium bool
+	MirrorMapping                 *MirrorMapping
+	Verbose                       bool
+	NoPrompt                      bool
+	DryRun                        bool
+	Retry                         int
 }
 
 // ProjectMirrorOptions defines how the project should be mirrored
@@ -72,18 +73,25 @@ type MirrorMapping struct {
 	muGroups   sync.RWMutex
 }
 
+// AddProject adds a project to the mapping
+// It takes the project name and the mirroring options as parameters
+// It locks the projects mutex to ensure thread safety
 func (m *MirrorMapping) AddProject(project string, options *MirroringOptions) {
 	m.muProjects.Lock()
 	defer m.muProjects.Unlock()
 	m.Projects[project] = options
 }
 
+// AddGroup adds a group to the mapping
+// It takes the group name and the mirroring options as parameters
+// It locks the groups mutex to ensure thread safety
 func (m *MirrorMapping) AddGroup(group string, options *MirroringOptions) {
 	m.muGroups.Lock()
 	defer m.muGroups.Unlock()
 	m.Groups[group] = options
 }
 
+// GetProject retrieves the mirroring options for a project
 func (m *MirrorMapping) GetProject(project string) (*MirroringOptions, bool) {
 	m.muProjects.RLock()
 	defer m.muProjects.RUnlock()
@@ -91,6 +99,7 @@ func (m *MirrorMapping) GetProject(project string) (*MirroringOptions, bool) {
 	return options, ok
 }
 
+// GetGroup retrieves the mirroring options for a group
 func (m *MirrorMapping) GetGroup(group string) (*MirroringOptions, bool) {
 	m.muGroups.RLock()
 	defer m.muGroups.RUnlock()
@@ -167,6 +176,9 @@ func (m *MirrorMapping) checkProjects(errChan chan error) {
 	}
 }
 
+// checkCopyPaths checks if the source and destination paths are valid
+// It checks if the paths are not empty, do not start or end with a slash,
+// and if the destination path is in a namespace for projects
 func checkCopyPaths(sourcePath string, destinationPath string, pathType string, errChan chan error) {
 	// Ensure the source project path and destination path are not empty
 	if sourcePath == "" || destinationPath == "" {
@@ -191,6 +203,8 @@ func checkCopyPaths(sourcePath string, destinationPath string, pathType string, 
 	}
 }
 
+// checkGroups checks if the groups are valid
+// It checks if the group names and destination paths are valid
 func (m *MirrorMapping) checkGroups(errChan chan error) {
 	duplicateDestinationFinder := make(map[string]struct{}, len(m.Groups))
 	for group, options := range m.Groups {
@@ -212,6 +226,8 @@ func (m *MirrorMapping) checkGroups(errChan chan error) {
 	}
 }
 
+// checkVisibility checks if the visibility string is valid
+// It checks if the visibility string is one of the valid GitLab visibility values
 func checkVisibility(visibility string) bool {
 	var valid bool
 	switch visibility {
@@ -227,6 +243,8 @@ func checkVisibility(visibility string) bool {
 	return valid
 }
 
+// ConvertVisibility converts a visibility string to a gitlab.VisibilityValue
+// It returns the corresponding gitlab.VisibilityValue or gitlab.PublicVisibility if the string is invalid
 func ConvertVisibility(visibility string) gitlab.VisibilityValue {
 	switch visibility {
 	case string(gitlab.PublicVisibility):
@@ -240,6 +258,8 @@ func ConvertVisibility(visibility string) gitlab.VisibilityValue {
 	}
 }
 
+// StringArraysMatchValues checks if two string arrays match in values
+// It returns true if both arrays have the same values, regardless of order
 func StringArraysMatchValues(array1 []string, array2 []string) bool {
 	if len(array1) != len(array2) {
 		return false

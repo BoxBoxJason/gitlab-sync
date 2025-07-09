@@ -30,13 +30,6 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 
 	wg := sync.WaitGroup{}
 	maxErrors := 3
-	if copyOptions.CI_CD_Catalog {
-		maxErrors++
-	}
-	if copyOptions.MirrorReleases {
-		maxErrors++
-	}
-
 	wg.Add(maxErrors)
 	errorChan := make(chan error, maxErrors)
 
@@ -47,7 +40,7 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 
 	go func(sp *gitlab.Project, dp *gitlab.Project) {
 		defer wg.Done()
-		errorChan <- destinationGitlabInstance.enableProjectMirrorPull(sp, dp, copyOptions)
+		errorChan <- destinationGitlabInstance.mirrorProjectGit(sourceGitlabInstance, sp, dp, copyOptions)
 	}(srcProj, dstProj)
 
 	go func(sp *gitlab.Project, dp *gitlab.Project) {
@@ -56,14 +49,19 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 	}(srcProj, dstProj)
 
 	if copyOptions.CI_CD_Catalog {
+		wg.Add(1)
 		go func(dp *gitlab.Project) {
 			defer wg.Done()
 			errorChan <- destinationGitlabInstance.addProjectToCICDCatalog(dp)
 		}(dstProj)
 	}
 
+	// Wait for git duplication to finish
+	wg.Wait()
+
 	allErrors := []error{}
 	if copyOptions.MirrorReleases {
+		wg.Add(1)
 		go func(sp *gitlab.Project, dp *gitlab.Project) {
 			defer wg.Done()
 			allErrors = destinationGitlabInstance.mirrorReleases(sourceGitlabInstance, sp, dp)
@@ -131,6 +129,13 @@ func (destinationGitlabInstance *GitlabInstance) syncProjectAttributes(sourcePro
 		zap.L().Debug("Project attributes are already in sync, skipping", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 	}
 	return nil
+}
+
+func (destinationGitlabInstance *GitlabInstance) mirrorProjectGit(sourceGitlabInstance *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project, mirrorOptions *utils.MirroringOptions) error {
+	if destinationGitlabInstance.PullMirrorAvailable {
+		return destinationGitlabInstance.enableProjectMirrorPull(sourceProject, destinationProject, mirrorOptions)
+	}
+	return helpers.MirrorRepo(sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, destinationGitlabInstance.GitAuth)
 }
 
 // enableProjectMirrorPull enables the pull mirror for a project in the destination GitLab instance.

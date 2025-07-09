@@ -198,6 +198,7 @@ func TestCreateProjects(t *testing.T) {
 		sourceGitlabInstance.addProject(TEST_PROJECT)
 		_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
 		destinationGitlabInstance.addGroup(TEST_GROUP)
+		destinationGitlabInstance.PullMirrorAvailable = true
 		mirrorMapping := &utils.MirrorMapping{
 			Projects: map[string]*utils.MirroringOptions{
 				TEST_PROJECT.PathWithNamespace: {
@@ -211,7 +212,7 @@ func TestCreateProjects(t *testing.T) {
 			},
 		}
 		err := destinationGitlabInstance.createProjects(sourceGitlabInstance, mirrorMapping)
-		if err != nil && len(err) > 0 {
+		if len(err) > 0 {
 			t.Errorf("Unexpected error when creating projects: %v", err)
 		}
 		if len(destinationGitlabInstance.Projects) == 0 {

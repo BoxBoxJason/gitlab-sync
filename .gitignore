@@ -63,3 +63,5 @@ sonar-project.properties
 unit-tests.xml
 coverage.out
 .scannerwork/
+*-report*
+.sonarlint/

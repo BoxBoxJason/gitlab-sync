@@ -396,7 +396,7 @@ func TestCheckVisibility(t *testing.T) {
 	}
 }
 
-func TestMirrorMapping_GetProject(t *testing.T) {
+func TestMirrorMappingGetProject(t *testing.T) {
 	// Prepare a mirror mapping with some project entries
 	opts1 := &MirroringOptions{
 		DestinationPath:     "dest1",
@@ -463,7 +463,7 @@ func TestMirrorMapping_GetProject(t *testing.T) {
 	}
 }
 
-func TestMirrorMapping_GetGroup(t *testing.T) {
+func TestMirrorMappingGetGroup(t *testing.T) {
 	// Prepare a mirror mapping with some group entries
 	optsA := &MirroringOptions{
 		DestinationPath:     "groupDestA",

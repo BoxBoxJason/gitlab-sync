@@ -257,7 +257,7 @@ func TestIsPullMirrorAvailable(t *testing.T) {
 				})
 			}
 
-			pullMirrorAvailable, err := gitlabInstance.IsPullMirrorAvailable(tt.forcePremium)
+			pullMirrorAvailable, err := gitlabInstance.IsPullMirrorAvailable(tt.forcePremium, false)
 			if (err != nil) != tt.expectedError {
 				t.Fatalf("CheckDestinationInstance() error = %v, expectedError %v", err, tt.expectedError)
 			}

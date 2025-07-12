@@ -33,18 +33,19 @@ const (
 // - version: whether to show the version
 // - retry: the number of retries for the GitLab API requests
 type ParserArgs struct {
-	SourceGitlabURL               string
-	SourceGitlabToken             string
-	SourceGitlabIsBig             bool
-	DestinationGitlabURL          string
-	DestinationGitlabToken        string
-	DestinationGitlabIsBig        bool
-	DestinationGitlabForcePremium bool
-	MirrorMapping                 *MirrorMapping
-	Verbose                       bool
-	NoPrompt                      bool
-	DryRun                        bool
-	Retry                         int
+	SourceGitlabURL        string
+	SourceGitlabToken      string
+	SourceGitlabIsBig      bool
+	DestinationGitlabURL   string
+	DestinationGitlabToken string
+	DestinationGitlabIsBig bool
+	ForcePremium           bool
+	ForceNonPremium        bool
+	MirrorMapping          *MirrorMapping
+	Verbose                bool
+	NoPrompt               bool
+	DryRun                 bool
+	Retry                  int
 }
 
 // ProjectMirrorOptions defines how the project should be mirrored

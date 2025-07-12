@@ -19,10 +19,13 @@ import (
 // If the dry run flag is set, it will only print the groups and projects that would be created or updated.
 func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	zap.L().Info("Starting GitLab mirroring process", zap.String(ROLE_SOURCE, gitlabMirrorArgs.SourceGitlabURL), zap.String(ROLE_DESTINATION, gitlabMirrorArgs.DestinationGitlabURL))
+
+	// Create source GitLab instance
 	sourceGitlabSize := INSTANCE_SIZE_SMALL
 	if gitlabMirrorArgs.SourceGitlabIsBig {
 		sourceGitlabSize = INSTANCE_SIZE_BIG
 	}
+
 	sourceGitlabInstance, err := newGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:    gitlabMirrorArgs.SourceGitlabURL,
 		GitlabToken:  gitlabMirrorArgs.SourceGitlabToken,
@@ -34,6 +37,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 		return []error{err}
 	}
 
+	// Create destination GitLab instance
 	destinationGitlabSize := INSTANCE_SIZE_SMALL
 	if gitlabMirrorArgs.DestinationGitlabIsBig {
 		destinationGitlabSize = INSTANCE_SIZE_BIG
@@ -48,12 +52,16 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	if err != nil {
 		return []error{err}
 	}
-	pullMirrorAvailable, err := destinationGitlabInstance.IsPullMirrorAvailable(gitlabMirrorArgs.DestinationGitlabForcePremium)
+	pullMirrorAvailable, err := destinationGitlabInstance.IsPullMirrorAvailable(gitlabMirrorArgs.ForcePremium, gitlabMirrorArgs.ForceNonPremium)
+
 	if err != nil {
+		// Could not obtain a result from the destination GitLab instance, so we cannot proceed with the mirroring process.
 		return []error{err}
 	} else if pullMirrorAvailable {
+		// Proceed with the pull mirroring process
 		zap.L().Info("GitLab instance is compatible with the pull mirroring process", zap.String(ROLE, destinationGitlabInstance.Role), zap.String(INSTANCE_SIZE, destinationGitlabInstance.InstanceSize))
 	} else {
+		// Use local pull/push mirroring instead
 		zap.L().Warn("Destination GitLab instance is not compatible with the pull mirroring process (requires a >= 17.6 ; >= Premium destination GitLab instance)", zap.String(ROLE, destinationGitlabInstance.Role), zap.String(INSTANCE_SIZE, destinationGitlabInstance.InstanceSize))
 		zap.L().Warn("Will use local pull / push mirroring instead (takes a lot longer)", zap.String(ROLE, destinationGitlabInstance.Role), zap.String(INSTANCE_SIZE, destinationGitlabInstance.InstanceSize))
 	}
@@ -75,6 +83,8 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	}()
 
 	wg.Wait()
+
+	zap.L().Debug("Fully Computed Mirror Mapping", zap.Any("MirrorMapping", gitlabMirrorArgs.MirrorMapping))
 
 	// In case of dry run, simply print the groups and projects that would be created or updated
 	if gitlabMirrorArgs.DryRun {
@@ -104,7 +114,7 @@ func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[stri
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Process group filters concurrently.
+	// Process group filters concurrently
 	go func() {
 		defer wg.Done()
 		for group, copyOptions := range filters.Groups {
@@ -115,7 +125,7 @@ func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[stri
 		}
 	}()
 
-	// Process project filters concurrently.
+	// Process project filters concurrently
 	go func() {
 		defer wg.Done()
 		for project, copyOptions := range filters.Projects {
@@ -178,7 +188,7 @@ func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInst
 }
 
 // IsPullMirrorAvailable checks the destination GitLab instance for version and license compatibility.
-func (g *GitlabInstance) IsPullMirrorAvailable(forcePremium bool) (bool, error) {
+func (g *GitlabInstance) IsPullMirrorAvailable(forcePremium bool, forceNonPremium bool) (bool, error) {
 	zap.L().Info("Checking destination GitLab instance")
 	thresholdOk, err := g.IsVersionGreaterThanThreshold()
 	if err != nil {
@@ -187,10 +197,10 @@ func (g *GitlabInstance) IsPullMirrorAvailable(forcePremium bool) (bool, error) 
 
 	isPremium, err := g.IsLicensePremium()
 	if err != nil {
-		if !forcePremium {
+		if !forcePremium && !forceNonPremium {
 			return false, fmt.Errorf("failed to check if destination GitLab instance is premium: %w", err)
 		}
 	}
 
-	return thresholdOk && (isPremium || forcePremium), nil
+	return !forceNonPremium && (thresholdOk && (isPremium || forcePremium)), nil
 }

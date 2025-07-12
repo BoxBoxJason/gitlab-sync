@@ -5,13 +5,9 @@
 [![Coverage](https://codecov.io/gh/boxboxjason/gitlab-sync/branch/main/graph/badge.svg)](https://codecov.io/gh/boxboxjason/gitlab-sync)
 ![Go Version](https://img.shields.io/github/go-mod/go-version/boxboxjason/gitlab-sync)
 [![Latest Release](https://img.shields.io/github/v/release/boxboxjason/gitlab-sync)](https://github.com/boxboxjason/gitlab-sync/releases)
-[![Release Workflow](https://github.com/boxboxjason/gitlab-sync/actions/workflows/release.yml/badge.svg)](https://github.com/boxboxjason/gitlab-sync/actions/workflows/release.yml)
 ![Last Commit](https://img.shields.io/github/last-commit/boxboxjason/gitlab-sync)
 [![Tests](https://github.com/boxboxjason/gitlab-sync/actions/workflows/go.yml/badge.svg)](https://github.com/boxboxjason/gitlab-sync/actions/workflows/go.yml)
-![Stars](https://img.shields.io/github/stars/boxboxjason/gitlab-sync)
 ![Contributors](https://img.shields.io/github/contributors/boxboxjason/gitlab-sync?style=social)
-![Issues](https://img.shields.io/github/issues/boxboxjason/gitlab-sync)
-![Pull Requests](https://img.shields.io/github/issues-pr/boxboxjason/gitlab-sync)
 
 (golang) CLI tool to synchronize GitLab projects and groups between two GitLab instances.
 It is designed to be used in a CI/CD pipeline to automate the process of keeping two GitLab instances in sync.
@@ -74,6 +70,8 @@ If mandatory arguments are not provided, the program will prompt for them.
 | `--source-token` | `SOURCE_GITLAB_TOKEN` | No | Access token for the source GitLab instance |
 | `--source-big` | `SOURCE_GITLAB_BIG` | No | Specify if the source GitLab instance is a big instance (default: false) |
 | `--destination-url` | `DESTINATION_GITLAB_URL` | Yes | URL of the destination GitLab instance |
+| `--destination-force-freemium` or `-f` | N/A | No | Force the destination GitLab to be treated as a non-premium instance (default: false) |
+| `--destination-force-premium` or `-p` | N/A | No | Force the destination GitLab to be treated as a premium instance (default: false) |
 | `--destination-token` | `DESTINATION_GITLAB_TOKEN` | Yes | Access token for the destination GitLab instance |
 | `--destination-big` | `DESTINATION_GITLAB_BIG` | No | Specify if the destination GitLab instance is a big instance (default: false) |
 | `--mirror-mapping` | `MIRROR_MAPPING` | Yes | Path to a JSON file containing the mirror mapping |

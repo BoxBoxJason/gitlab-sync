@@ -195,7 +195,7 @@ func (g *GitlabInstance) fetchAndProcessGroupRecursive(gid any, fetchOriginPath 
 	}
 	if group != nil {
 		g.storeGroup(group, fetchOriginPath, mirrorMapping)
-		if g.isSource() {
+		if g.isSource() || g.isBig() {
 			wg.Add(2)
 			// Fetch the projects of the group
 			go g.fetchAndProcessGroupProjects(group, fetchOriginPath, mirrorMapping, errChan, wg)
@@ -225,7 +225,7 @@ func (g *GitlabInstance) fetchAndProcessGroupSubgroups(group *gitlab.Group, fetc
 		}
 		for _, subgroup := range subgroups {
 			g.storeGroup(subgroup, fetchOriginPath, mirrorMapping)
-			if g.isSource() {
+			if g.isSource() || g.isBig() {
 				wg.Add(1)
 				go g.fetchAndProcessGroupRecursive(subgroup, fetchOriginPath, mirrorMapping, errChan, wg)
 			}

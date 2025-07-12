@@ -2,7 +2,6 @@ name: lint-test
 
 on:
   workflow_dispatch:
-  push:
   pull_request:
 
 permissions:
@@ -17,12 +16,13 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24.2"
+          go-version: "1.24.4"
       - run: go mod tidy
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.0
+          version: latest
+          args: --tests=false
         continue-on-error: true
 
   gosec:
@@ -35,7 +35,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24.2"
+          go-version: "1.24.4"
       - run: go mod tidy
       - name: Run Gosec Security Scanner
         uses: securego/gosec@master
@@ -47,9 +47,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
-          go-version: "1.24.2"
+          go-version: "1.24.4"
       - run: go mod tidy
       - run: go install gotest.tools/gotestsum@latest
       - run: gotestsum --junitfile unit-tests.xml -- -coverprofile=coverage.out -covermode=atomic ./...

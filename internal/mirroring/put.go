@@ -29,9 +29,8 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 	}
 
 	wg := sync.WaitGroup{}
-	maxErrors := 3
-	wg.Add(maxErrors)
-	errorChan := make(chan error, maxErrors)
+	wg.Add(3)
+	errorChan := make(chan error, 4)
 
 	go func(sp *gitlab.Project, dp *gitlab.Project) {
 		defer wg.Done()

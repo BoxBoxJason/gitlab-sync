@@ -76,7 +76,7 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 		wg.Add(1)
 		go func(sp *gitlab.Project, dp *gitlab.Project) {
 			defer wg.Done()
-			allErrors = destinationGitlabInstance.mirrorReleases(sourceGitlabInstance, sp, dp)
+			allErrors = destinationGitlabInstance.MirrorReleases(sourceGitlabInstance, sp, dp)
 		}(srcProj, dstProj)
 	}
 

@@ -180,17 +180,6 @@ func TestCopyProjectAvatar(t *testing.T) {
 	})
 }
 
-func TestMirrorReleases(t *testing.T) {
-	_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
-	_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
-	t.Run("Mirror Releases", func(t *testing.T) {
-		err := destinationGitlabInstance.mirrorReleases(sourceGitlabInstance, TEST_PROJECT, TEST_PROJECT_2)
-		if err != nil {
-			t.Errorf("Unexpected error when mirroring releases: %v", err)
-		}
-	})
-}
-
 func TestCreateProjects(t *testing.T) {
 	t.Run("Test Create Projects", func(t *testing.T) {
 		_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)

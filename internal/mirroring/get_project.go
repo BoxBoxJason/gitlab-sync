@@ -127,7 +127,7 @@ func (g *GitlabInstance) processProjectsSmallInstance(allProjects []*gitlab.Proj
 		go func(project *gitlab.Project) {
 			defer wg.Done()
 
-			group, matches := checkPathMatchesFilters(project.PathWithNamespace, projectFilters, groupFilters)
+			group, matches := helpers.MatchPathAgainstFilters(project.PathWithNamespace, projectFilters, groupFilters)
 			if matches {
 				g.storeProject(project, group, mirrorMapping)
 			}

@@ -2,6 +2,7 @@ package mirroring
 
 import (
 	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 	"net/http"
 	"testing"
 )
@@ -61,7 +62,7 @@ func TestCheckPathMatchesFilters(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 			// Call the function with the test case parameters
-			_, got := checkPathMatchesFilters(test.path, &test.projectFilters, &test.groupFilters)
+			_, got := helpers.MatchPathAgainstFilters(test.path, &test.projectFilters, &test.groupFilters)
 
 			// Check if the result matches the expected value
 			if got != test.expected {

@@ -121,7 +121,7 @@ func (g *GitlabInstance) processGroupsSmallInstance(allGroups []*gitlab.Group, g
 		go func(group *gitlab.Group) {
 			defer wg.Done()
 
-			groupPath, matches := checkPathMatchesFilters(group.FullPath, nil, groupFilters)
+			groupPath, matches := helpers.MatchPathAgainstFilters(group.FullPath, nil, groupFilters)
 			if matches {
 				g.storeGroup(group, groupPath, mirrorMapping)
 			}

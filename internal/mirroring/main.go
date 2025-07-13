@@ -173,7 +173,6 @@ func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *Gi
 
 // DryRunReleases prints the releases that would be created in dry run mode.
 // It fetches the releases from the source project and prints them.
-// It does not create any releases in the destination project.
 func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInstance *GitlabInstance, sourceProject *gitlab.Project, copyOptions *utils.MirroringOptions) error {
 	// Fetch releases from the source project
 	sourceReleases, _, err := sourceGitlabInstance.Gitlab.Releases.ListReleases(sourceProject.ID, &gitlab.ListReleasesOptions{})
@@ -186,6 +185,10 @@ func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInst
 	}
 	return nil
 }
+
+// ===========================================================================
+//                       INSTANCE HEALTH MANAGEMENT                         //
+// ===========================================================================
 
 // IsPullMirrorAvailable checks the destination GitLab instance for version and license compatibility.
 func (g *GitlabInstance) IsPullMirrorAvailable(forcePremium bool, forceNonPremium bool) (bool, error) {

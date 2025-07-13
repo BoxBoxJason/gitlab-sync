@@ -5,7 +5,6 @@ import (
 	"gitlab-sync/internal/utils"
 	"gitlab-sync/pkg/helpers"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	"github.com/Masterminds/semver/v3"
@@ -60,30 +59,6 @@ func (g *GitlabInstance) getParentNamespaceID(projectOrGroupPath string) (int, e
 		}
 	}
 	return parentGroupID, err
-}
-
-// checkPathMatchesFilters checks if the resources matches the filters
-//   - either is in the projects map
-//   - or path starts with any of the groups in the groups map
-//
-// In the case of a match with a group, it returns the group path
-func checkPathMatchesFilters(resourcePath string, projectFilters *map[string]struct{}, groupFilters *map[string]struct{}) (string, bool) {
-	zap.L().Debug("Checking if path matches filters", zap.String("path", resourcePath))
-	if projectFilters != nil {
-		if _, ok := (*projectFilters)[resourcePath]; ok {
-			zap.L().Debug("Resource path matches project filter", zap.String("project", resourcePath))
-			return "", true
-		}
-	}
-	if groupFilters != nil {
-		for groupPath := range *groupFilters {
-			if strings.HasPrefix(resourcePath, groupPath) {
-				zap.L().Debug("Resource path matches group filter", zap.String("resource", resourcePath), zap.String("group", groupPath))
-				return groupPath, true
-			}
-		}
-	}
-	return "", false
 }
 
 // IsVersionGreaterThanThreshold checks if the GitLab instance version is below the defined threshold.

@@ -50,7 +50,7 @@ func (g *GitlabInstance) storeProject(project *gitlab.Project, parentGroupPath s
 		mirrorMapping.AddProject(project.PathWithNamespace, &utils.MirroringOptions{
 			DestinationPath:     filepath.Join(groupCreationOptions.DestinationPath, relativePath),
 			CI_CD_Catalog:       groupCreationOptions.CI_CD_Catalog,
-			Issues:              groupCreationOptions.Issues,
+			MirrorIssues:        groupCreationOptions.MirrorIssues,
 			MirrorTriggerBuilds: groupCreationOptions.MirrorTriggerBuilds,
 			Visibility:          groupCreationOptions.Visibility,
 			MirrorReleases:      groupCreationOptions.MirrorReleases,

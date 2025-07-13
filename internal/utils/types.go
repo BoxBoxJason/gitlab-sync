@@ -56,7 +56,7 @@ type ParserArgs struct {
 type MirroringOptions struct {
 	DestinationPath     string `json:"destination_path"`
 	CI_CD_Catalog       bool   `json:"ci_cd_catalog"`
-	Issues              bool   `json:"issues"`
+	MirrorIssues        bool   `json:"mirror_issues"`
 	MirrorTriggerBuilds bool   `json:"mirror_trigger_builds"`
 	Visibility          string `json:"visibility"`
 	MirrorReleases      bool   `json:"mirror_releases"`

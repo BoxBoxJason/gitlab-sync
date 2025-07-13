@@ -50,7 +50,7 @@ func (g *GitlabInstance) storeGroup(group *gitlab.Group, parentGroupPath string,
 			mirrorMapping.AddGroup(group.FullPath, &utils.MirroringOptions{
 				DestinationPath:     filepath.Join(groupCreationOptions.DestinationPath, relativePath),
 				CI_CD_Catalog:       groupCreationOptions.CI_CD_Catalog,
-				Issues:              groupCreationOptions.Issues,
+				MirrorIssues:        groupCreationOptions.MirrorIssues,
 				MirrorTriggerBuilds: groupCreationOptions.MirrorTriggerBuilds,
 				Visibility:          groupCreationOptions.Visibility,
 				MirrorReleases:      groupCreationOptions.MirrorReleases,

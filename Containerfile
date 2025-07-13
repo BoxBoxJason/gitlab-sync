@@ -15,7 +15,7 @@ ENV GO111MODULE=on \
 RUN go mod tidy && \
     go build -ldflags "-X 'main.version=${VERSION}'" -o /app/bin/gitlab-sync ./cmd/main.go
 
-FROM alpine:latest as security_provider
+FROM alpine:3.22.0 as security_provider
 
 RUN addgroup -S gitlab-sync \
     && adduser -S gitlab-sync -G gitlab-sync

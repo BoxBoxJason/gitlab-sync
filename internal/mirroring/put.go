@@ -30,7 +30,7 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 
 	wg := sync.WaitGroup{}
 	wg.Add(3)
-	errorChan := make(chan error, 4)
+	errorChan := make(chan error, 5)
 
 	go func(sp *gitlab.Project, dp *gitlab.Project) {
 		defer wg.Done()
@@ -53,6 +53,19 @@ func (destinationGitlabInstance *GitlabInstance) updateProjectFromSource(sourceG
 			defer wg.Done()
 			errorChan <- destinationGitlabInstance.addProjectToCICDCatalog(dp)
 		}(dstProj)
+	}
+
+	if copyOptions.MirrorIssues {
+		wg.Add(1)
+		go func(sp *gitlab.Project, dp *gitlab.Project) {
+			defer wg.Done()
+			allErrors := destinationGitlabInstance.MirrorIssues(sourceGitlabInstance, sp, dp)
+			for _, err := range allErrors {
+				if err != nil {
+					errorChan <- fmt.Errorf("failed to mirror issues from %s to %s: %v", sp.HTTPURLToRepo, dp.HTTPURLToRepo, err)
+				}
+			}
+		}(srcProj, dstProj)
 	}
 
 	// Wait for git duplication to finish

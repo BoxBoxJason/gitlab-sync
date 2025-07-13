@@ -35,14 +35,14 @@ func TestProcessFilters(t *testing.T) {
 					"sourceProject": {
 						DestinationPath: "destinationGroupPath/destinationProjectPath",
 						CI_CD_Catalog:   true,
-						Issues:          true,
+						MirrorIssues:    true,
 					},
 				},
 				Groups: map[string]*utils.MirroringOptions{
 					"sourceGroup": {
 						DestinationPath: "destinationGroupPath",
 						CI_CD_Catalog:   true,
-						Issues:          true,
+						MirrorIssues:    true,
 					},
 				},
 			},
@@ -66,24 +66,24 @@ func TestProcessFilters(t *testing.T) {
 					"sourceProject1": {
 						DestinationPath: "destinationGroupPath1/destinationProjectPath1",
 						CI_CD_Catalog:   true,
-						Issues:          true,
+						MirrorIssues:    true,
 					},
 					"sourceProject2": {
 						DestinationPath: "destinationGroupPath2/destinationProjectPath2",
 						CI_CD_Catalog:   false,
-						Issues:          false,
+						MirrorIssues:    false,
 					},
 				},
 				Groups: map[string]*utils.MirroringOptions{
 					"sourceGroup1": {
 						DestinationPath: "destinationGroupPath3",
 						CI_CD_Catalog:   true,
-						Issues:          true,
+						MirrorIssues:    true,
 					},
 					"sourceGroup2": {
 						DestinationPath: "destinationGroupPath4",
 						CI_CD_Catalog:   false,
-						Issues:          false,
+						MirrorIssues:    false,
 					},
 				},
 			},

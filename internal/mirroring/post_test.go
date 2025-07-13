@@ -87,7 +87,7 @@ func TestCreateProjectFromSource(t *testing.T) {
 			gitlabInstance.addGroup(TEST_GROUP)
 			createdProject, err := gitlabInstance.createProjectFromSource(TEST_PROJECT, &utils.MirroringOptions{
 				DestinationPath:     TEST_PROJECT.PathWithNamespace,
-				Issues:              true,
+				MirrorIssues:        true,
 				MirrorReleases:      true,
 				MirrorTriggerBuilds: true,
 				Visibility:          "public",
@@ -204,7 +204,7 @@ func TestCreateProjects(t *testing.T) {
 				TEST_PROJECT.PathWithNamespace: {
 					DestinationPath:     TEST_PROJECT.PathWithNamespace,
 					CI_CD_Catalog:       false,
-					Issues:              true,
+					MirrorIssues:        true,
 					MirrorTriggerBuilds: false,
 					Visibility:          "public",
 					MirrorReleases:      true,

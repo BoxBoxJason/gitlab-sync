@@ -99,7 +99,7 @@ Allowed options are:
 |--------|-------------|
 | `destination_path` | The path to the project / group on the destination GitLab instance. |
 | `ci_cd_catalog` | Whether to add the project to the CI/CD catalog. |
-| `issues` | Whether to copy issues from the source project to the destination project. |
+| `mirror_issues` | Whether to copy issues from the source project to the destination project. |
 | `visibility` | The visibility level of the project on the destination GitLab instance. Can be `public`, `internal`, or `private`. |
 | `mirror_trigger_builds` | Whether to trigger builds on the destination project when a push is made to the source project. |
 | `mirror_releases` | Whether to mirror releases from the source project to the destination project. |
@@ -114,7 +114,7 @@ Also, the destination namespace must exist on the destination GitLab instance. I
     "existingGroup1/project1" : {
       "destination_path": "existingGroup64/project1",
       "ci_cd_catalog": true,
-      "issues": false,
+      "mirror_issues": false,
       "visibility": "public",
       "mirror_trigger_builds": false,
       "mirror_releases": false
@@ -124,7 +124,7 @@ Also, the destination namespace must exist on the destination GitLab instance. I
     "existingGroup152" : {
       "destination_path": "existingGroup64/existingGroup152",
       "ci_cd_catalog": true,
-      "issues": false,
+      "mirror_issues": false,
       "visibility": "public",
       "mirror_trigger_builds": false,
       "mirror_releases": false

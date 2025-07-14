@@ -379,7 +379,7 @@ func setupEmptyTestServer(t *testing.T, role string, instanceSize string) (*http
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
-	gitlabInstance, err := newGitlabInstance(&GitlabInstanceOpts{
+	gitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:    server.URL,
 		GitlabToken:  "test-token",
 		Role:         role,
@@ -405,7 +405,7 @@ func setupTestServer(t *testing.T, role string, instanceSize string) (*http.Serv
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
-	gitlabInstance, err := newGitlabInstance(&GitlabInstanceOpts{
+	gitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:    server.URL,
 		GitlabToken:  "test-token",
 		Role:         role,

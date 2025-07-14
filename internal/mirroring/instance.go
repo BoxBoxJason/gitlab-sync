@@ -1,12 +1,23 @@
 package mirroring
 
 import (
+	"fmt"
+	"gitlab-sync/internal/utils"
 	"gitlab-sync/pkg/helpers"
+	"path/filepath"
 	"sync"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/hashicorp/go-retryablehttp"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
+	"go.uber.org/zap"
+)
+
+const (
+	INSTANCE_SEMVER_THRESHOLD = "17.6"
+	ULTIMATE_PLAN             = "ultimate"
+	PREMIUM_PLAN              = "premium"
 )
 
 type GitlabInstance struct {
@@ -50,9 +61,9 @@ type GitlabInstanceOpts struct {
 	InstanceSize string
 }
 
-// newGitlabInstance creates a new GitlabInstance with the provided parameters
+// NewGitlabInstance creates a new GitlabInstance with the provided parameters
 // and initializes the GitLab client with a custom HTTP client.
-func newGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
+func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 	// Initialize the GitLab client with the custom HTTP client
 	gitlabClient, err := gitlab.NewClient(initArgs.GitlabToken, gitlab.WithBaseURL(initArgs.GitlabURL), gitlab.WithCustomRetryMax(initArgs.MaxRetries), gitlab.WithCustomBackoff(retryablehttp.DefaultBackoff))
 	if err != nil {
@@ -71,50 +82,131 @@ func newGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 	return gitlabInstance, nil
 }
 
-// addProject adds a project to the GitLabInstance
+// AddProject adds a project to the GitLabInstance
 // with the given projectPath and project object.
 // It uses a mutex to ensure thread-safe access to the Projects map.
-func (g *GitlabInstance) addProject(project *gitlab.Project) {
+func (g *GitlabInstance) AddProject(project *gitlab.Project) {
 	g.muProjects.Lock()
 	defer g.muProjects.Unlock()
 	g.Projects[project.PathWithNamespace] = project
 }
 
-// getProject retrieves a project from the GitLabInstance
+// GetProject retrieves a project from the GitLabInstance
 // using the given projectPath.
 // It uses a read lock to ensure thread-safe access to the Projects map.
 // If the project is not found, it returns nil.
-func (g *GitlabInstance) getProject(projectPath string) *gitlab.Project {
+func (g *GitlabInstance) GetProject(projectPath string) *gitlab.Project {
 	g.muProjects.RLock()
 	defer g.muProjects.RUnlock()
 	return g.Projects[projectPath]
 }
 
-// addGroup adds a group to the GitLabInstance
+// AddGroup adds a group to the GitLabInstance
 // with the given groupPath and group object.
 // It uses a mutex to ensure thread-safe access to the Groups map.
-func (g *GitlabInstance) addGroup(group *gitlab.Group) {
+func (g *GitlabInstance) AddGroup(group *gitlab.Group) {
 	g.muGroups.Lock()
 	defer g.muGroups.Unlock()
 	g.Groups[group.FullPath] = group
 }
 
-// getGroup retrieves a group from the GitLabInstance
+// GetGroup retrieves a group from the GitLabInstance
 // using the given groupPath.
 // It uses a read lock to ensure thread-safe access to the Groups map.
 // If the group is not found, it returns nil.
-func (g *GitlabInstance) getGroup(groupPath string) *gitlab.Group {
+func (g *GitlabInstance) GetGroup(groupPath string) *gitlab.Group {
 	g.muGroups.RLock()
 	defer g.muGroups.RUnlock()
 	return g.Groups[groupPath]
 }
 
-// isBig checks if the GitLab instance is of size "big".
+// IsBig checks if the GitLab instance is of size "big".
 // It returns true if the InstanceSize is "big", otherwise false.
-func (g *GitlabInstance) isBig() bool {
+func (g *GitlabInstance) IsBig() bool {
 	return g.InstanceSize == INSTANCE_SIZE_BIG
 }
 
-func (g *GitlabInstance) isSource() bool {
+// IsSource checks if the GitLab instance is a source instance.
+func (g *GitlabInstance) IsSource() bool {
 	return g.Role == ROLE_SOURCE
+}
+
+// IsVersionGreaterThanThreshold checks if the GitLab instance version is below the defined threshold.
+// It retrieves the metadata from the GitLab instance and compares the version
+// with the INSTANCE_SEMVER_THRESHOLD.
+func (g *GitlabInstance) IsVersionGreaterThanThreshold() (bool, error) {
+	metadata, _, err := g.Gitlab.Metadata.GetMetadata()
+	if err != nil {
+		return false, fmt.Errorf("failed to get GitLab version: %w", err)
+	}
+	zap.L().Debug("GitLab Instance version", zap.String(ROLE, g.Role), zap.String("version", metadata.Version))
+
+	currentVer, err := semver.NewVersion(metadata.Version)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse GitLab version: %w", err)
+	}
+	thresholdVer, err := semver.NewVersion(INSTANCE_SEMVER_THRESHOLD)
+	if err != nil {
+		return false, fmt.Errorf("failed to parse version threshold: %w", err)
+	}
+
+	return currentVer.GreaterThanEqual(thresholdVer), nil
+}
+
+// IsLicensePremium checks if the GitLab instance has a premium license.
+// It retrieves the license information and checks the plan type.
+func (g *GitlabInstance) IsLicensePremium() (bool, error) {
+	license, _, err := g.Gitlab.License.GetLicense()
+	if err != nil {
+		return false, fmt.Errorf("failed to get GitLab license: %w", err)
+	}
+	zap.L().Info("GitLab Instance license", zap.String(ROLE, g.Role), zap.String("plan", license.Plan))
+	if license.Plan != ULTIMATE_PLAN && license.Plan != PREMIUM_PLAN || license.Expired {
+		return false, nil
+	}
+	return true, nil
+}
+
+// FetchAll retrieves all projects and groups from the GitLab instance
+// that match the filters and stores them in the instance cache.
+func (g *GitlabInstance) FetchAll(projectFilters map[string]struct{}, groupFilters map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
+	zap.L().Info("Fetching all projects and groups from GitLab instance", zap.String(ROLE, g.Role), zap.String(INSTANCE_SIZE, g.InstanceSize), zap.Int("projects", len(projectFilters)), zap.Int("groups", len(groupFilters)))
+	wg := sync.WaitGroup{}
+	errCh := make(chan []error, 2)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		if err := g.FetchAndProcessGroups(&groupFilters, mirrorMapping); err != nil {
+			errCh <- err
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		if err := g.FetchAndProcessProjects(&projectFilters, &groupFilters, mirrorMapping); err != nil {
+			errCh <- err
+		}
+	}()
+	wg.Wait()
+	close(errCh)
+
+	return helpers.MergeErrors(errCh)
+}
+
+// GetParentNamespaceID retrieves the parent namespace ID for a given project or group path.
+// It checks if the parent path is already in the instance groups cache.
+//
+// If not, it returns an error indicating that the parent group was not found.
+func (g *GitlabInstance) GetParentNamespaceID(projectOrGroupPath string) (int, error) {
+	parentGroupID := -1
+	parentPath := filepath.Dir(projectOrGroupPath)
+	var err error = nil
+	if parentPath != "." && parentPath != "/" {
+		// Check if parent path is already in the instance groups cache
+		if parentGroup, ok := g.Groups[parentPath]; ok {
+			parentGroupID = parentGroup.ID
+		} else {
+			err = fmt.Errorf("parent group not found for path: %s", parentPath)
+		}
+	}
+	return parentGroupID, err
 }

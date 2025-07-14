@@ -2,6 +2,7 @@ package mirroring
 
 import (
 	"fmt"
+	"gitlab-sync/internal/utils"
 	"gitlab-sync/pkg/helpers"
 	"sync"
 
@@ -61,6 +62,21 @@ func (g *GitlabInstance) FetchProjectReleasesTags(project *gitlab.Project) (map[
 		}
 	}
 	return releasesTags, nil
+}
+
+// DryRunReleases prints the releases that would be created in dry run mode.
+// It fetches the releases from the source project and prints them.
+func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInstance *GitlabInstance, sourceProject *gitlab.Project, copyOptions *utils.MirroringOptions) error {
+	// Fetch releases from the source project
+	sourceReleases, err := sourceGitlabInstance.FetchProjectReleasesTags(sourceProject)
+	if err != nil {
+		return fmt.Errorf("failed to fetch releases for source project %s: %s", sourceProject.HTTPURLToRepo, err)
+	}
+	// Print the releases that will be created in the destination project
+	for release := range sourceReleases {
+		fmt.Printf("    - Release %s will be created in %s (if it does not already exist)\n", release, destinationGitlabInstance.Gitlab.BaseURL().String()+copyOptions.DestinationPath)
+	}
+	return nil
 }
 
 // ================

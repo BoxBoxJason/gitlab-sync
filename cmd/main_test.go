@@ -61,7 +61,7 @@ func TestSetupZapLogger(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Call the setup function with appropriate parameters.
-			setupZapLogger(tc.verbose, tc.filename)
+			SetupZapLogger(tc.verbose, tc.filename)
 
 			// Check that the logger's log level for debug is set as expected.
 			if zap.L().Core().Enabled(zap.DebugLevel) != tc.debugExpected {

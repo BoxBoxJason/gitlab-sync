@@ -27,3 +27,7 @@ func TestMatchPathAgainstFilters(t *testing.T) {
 		}
 	}
 }
+
+const (
+	EXPECTED_ERROR_MESSAGE = "expected error: %v, got: %v"
+)

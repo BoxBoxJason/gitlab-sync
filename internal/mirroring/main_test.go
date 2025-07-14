@@ -165,9 +165,9 @@ func TestDryRun(t *testing.T) {
 					},
 				},
 			}
-			sourceGitlabInstance.addProject(TEST_PROJECT)
-			sourceGitlabInstance.addGroup(TEST_GROUP_2)
-			sourceGitlabInstance.addGroup(TEST_GROUP_2)
+			sourceGitlabInstance.AddProject(TEST_PROJECT)
+			sourceGitlabInstance.AddGroup(TEST_GROUP_2)
+			sourceGitlabInstance.AddGroup(TEST_GROUP_2)
 
 			destinationGitlabInstance.DryRun(sourceGitlabInstance, gitlabMirrorArgs)
 		})

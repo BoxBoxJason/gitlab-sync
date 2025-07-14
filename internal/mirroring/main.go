@@ -8,7 +8,6 @@ import (
 	"gitlab-sync/internal/utils"
 	"gitlab-sync/pkg/helpers"
 
-	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
 )
 
@@ -26,7 +25,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 		sourceGitlabSize = INSTANCE_SIZE_BIG
 	}
 
-	sourceGitlabInstance, err := newGitlabInstance(&GitlabInstanceOpts{
+	sourceGitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:    gitlabMirrorArgs.SourceGitlabURL,
 		GitlabToken:  gitlabMirrorArgs.SourceGitlabToken,
 		Role:         ROLE_SOURCE,
@@ -42,7 +41,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	if gitlabMirrorArgs.DestinationGitlabIsBig {
 		destinationGitlabSize = INSTANCE_SIZE_BIG
 	}
-	destinationGitlabInstance, err := newGitlabInstance(&GitlabInstanceOpts{
+	destinationGitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:    gitlabMirrorArgs.DestinationGitlabURL,
 		GitlabToken:  gitlabMirrorArgs.DestinationGitlabToken,
 		Role:         ROLE_DESTINATION,
@@ -75,11 +74,11 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 
 	go func() {
 		defer wg.Done()
-		errCh <- sourceGitlabInstance.fetchAll(sourceProjectFilters, sourceGroupFilters, gitlabMirrorArgs.MirrorMapping)
+		errCh <- sourceGitlabInstance.FetchAll(sourceProjectFilters, sourceGroupFilters, gitlabMirrorArgs.MirrorMapping)
 	}()
 	go func() {
 		defer wg.Done()
-		errCh <- destinationGitlabInstance.fetchAll(destinationProjectFilters, destinationGroupFilters, gitlabMirrorArgs.MirrorMapping)
+		errCh <- destinationGitlabInstance.FetchAll(destinationProjectFilters, destinationGroupFilters, gitlabMirrorArgs.MirrorMapping)
 	}()
 
 	wg.Wait()
@@ -93,8 +92,8 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	}
 
 	// Create groups and projects in the destination GitLab instance (Groups must be created before projects)
-	errCh <- destinationGitlabInstance.createGroups(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
-	errCh <- destinationGitlabInstance.createProjects(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
+	errCh <- destinationGitlabInstance.CreateGroups(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
+	errCh <- destinationGitlabInstance.CreateProjects(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
 
 	close(errCh)
 	return helpers.MergeErrors(errCh)
@@ -168,21 +167,6 @@ func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *Gi
 
 	}
 	zap.L().Info("Dry run completed")
-	return nil
-}
-
-// DryRunReleases prints the releases that would be created in dry run mode.
-// It fetches the releases from the source project and prints them.
-func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInstance *GitlabInstance, sourceProject *gitlab.Project, copyOptions *utils.MirroringOptions) error {
-	// Fetch releases from the source project
-	sourceReleases, _, err := sourceGitlabInstance.Gitlab.Releases.ListReleases(sourceProject.ID, &gitlab.ListReleasesOptions{})
-	if err != nil {
-		return fmt.Errorf("failed to fetch releases for source project %s: %s", sourceProject.HTTPURLToRepo, err)
-	}
-	// Print the releases that will be created in the destination project
-	for _, release := range sourceReleases {
-		fmt.Printf("    - Release %s will be created in %s (if it does not already exist)\n", release.Name, destinationGitlabInstance.Gitlab.BaseURL().String()+copyOptions.DestinationPath)
-	}
 	return nil
 }
 

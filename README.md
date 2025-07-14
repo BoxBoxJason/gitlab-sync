@@ -2,11 +2,11 @@
 
 ![gitlab-sync logo](./assets/gitlab-sync.png)
 
-[![Coverage](https://codecov.io/gh/boxboxjason/gitlab-sync/branch/main/graph/badge.svg)](https://codecov.io/gh/boxboxjason/gitlab-sync)
+![Coverage](https://sonarqube.boxboxjason.dev/api/project_badges/measure?project=gitlab-sync&metric=coverage&token=sqb_d6468715387db0c98009b78dd80c936893d1e680)
+![Lines of Code](https://sonarqube.boxboxjason.dev/api/project_badges/measure?project=gitlab-sync&metric=ncloc&token=sqb_d6468715387db0c98009b78dd80c936893d1e680)
 ![Go Version](https://img.shields.io/github/go-mod/go-version/boxboxjason/gitlab-sync)
 [![Latest Release](https://img.shields.io/github/v/release/boxboxjason/gitlab-sync)](https://github.com/boxboxjason/gitlab-sync/releases)
 ![Last Commit](https://img.shields.io/github/last-commit/boxboxjason/gitlab-sync)
-[![Tests](https://github.com/boxboxjason/gitlab-sync/actions/workflows/go.yml/badge.svg)](https://github.com/boxboxjason/gitlab-sync/actions/workflows/go.yml)
 ![Contributors](https://img.shields.io/github/contributors/boxboxjason/gitlab-sync?style=social)
 
 (golang) CLI tool to synchronize GitLab projects and groups between two GitLab instances.
@@ -78,7 +78,7 @@ If mandatory arguments are not provided, the program will prompt for them.
 | `--retry` or `-r` | N/A | No | Number of retries for failed GitLab API requests (default: 3) |
 | `--log-file` |  `GITLAB_SYNC_LOG_FILE` | No | Path to a log file for output logs (default: `none`, only outputs logs to stderr) |
 
-## Example
+### Example
 
 ```bash
 gitlab-sync \
@@ -89,7 +89,7 @@ gitlab-sync \
   --mirror-mapping /path/to/mirror.json
 ```
 
-## JSON Mapping File
+### JSON Mapping File
 
 The JSON mapping file is used to define the projects and groups to be synchronized between the two GitLab instances. You also define the copy options for each project / group.
 
@@ -132,3 +132,7 @@ Also, the destination namespace must exist on the destination GitLab instance. I
   }
 }
 ```
+
+## Development
+
+Check the [CONTRIBUTING.md](./CONTRIBUTING.md) file for guidelines on how to contribute to this project.

@@ -1,4 +1,4 @@
-FROM docker.io/golang:1.24.4-alpine AS build
+FROM docker.io/golang:1.25.3-alpine AS build
 
 ARG VERSION="dev"
 
@@ -15,7 +15,7 @@ ENV GO111MODULE=on \
 RUN go mod tidy && \
     go build -ldflags "-X 'main.version=${VERSION}'" -o /app/bin/gitlab-sync ./cmd/main.go
 
-FROM alpine:3.22.0 AS security_provider
+FROM alpine:3.22.2 AS security_provider
 
 RUN addgroup -S gitlab-sync \
     && adduser -S gitlab-sync -G gitlab-sync

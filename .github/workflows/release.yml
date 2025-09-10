@@ -41,7 +41,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24.2
+          go-version: "1.24.7"
 
       - name: Build
         run: go mod tidy && go build -ldflags "-X main.version=${{ github.ref_name }}" -o gitlab-sync_${{ matrix.os }}_${{ matrix.arch }} cmd/main.go

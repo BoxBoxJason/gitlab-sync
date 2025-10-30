@@ -7,7 +7,7 @@ require (
 	github.com/go-git/go-git/v5 v5.16.3
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/spf13/cobra v1.10.1
-	gitlab.com/gitlab-org/api/client-go v0.157.0
+	gitlab.com/gitlab-org/api/client-go v0.157.1
 	go.uber.org/zap v1.27.0
 )
 

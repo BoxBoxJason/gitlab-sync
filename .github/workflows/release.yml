@@ -117,6 +117,6 @@ jobs:
             ghcr.io/${{ env.REPO_NAME }}:latest
 
       - name: Release Changelog Builder
-        uses: mikepenz/release-changelog-builder-action@v5
+        uses: mikepenz/release-changelog-builder-action@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

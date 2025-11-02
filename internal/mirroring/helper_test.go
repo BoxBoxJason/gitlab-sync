@@ -17,6 +17,17 @@ const (
 	HEADER_ACCEPT       = "application/json"
 )
 
+// Helper functions for common HTTP responses
+func writeJSONResponse(w http.ResponseWriter, status int, body string) {
+	w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+	w.WriteHeader(status)
+	fmt.Fprint(w, body)
+}
+
+func writeMethodNotAllowed(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusMethodNotAllowed)
+}
+
 var (
 	// TEST_PROJECT is a test project used in unit tests.
 	TEST_PROJECT = &gitlab.Project{
@@ -379,6 +390,18 @@ func setupEmptyTestServer(t *testing.T, role string, instanceSize string) (*http
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
+	// Add test handler for current user
+	mux.HandleFunc("/api/v4/user", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+		w.WriteHeader(http.StatusOK)
+		// Return mock current user with ID 1
+		fmt.Fprint(w, `{"id": 1, "username": "testuser", "name": "Test User", "state": "active"}`)
+	})
+
 	gitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:    server.URL,
 		GitlabToken:  "test-token",
@@ -405,6 +428,30 @@ func setupTestServer(t *testing.T, role string, instanceSize string) (*http.Serv
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 
+	// Add test handlers for the projects and groups endpoints.
+	setupTestProjects(mux)
+	setupTestGroups(mux)
+
+	// Add test handlers for the GraphQL endpoint.
+	setupTestGraphQL(mux)
+
+	// Add test handler for current user
+	mux.HandleFunc("/api/v4/user", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+		w.WriteHeader(http.StatusOK)
+		// Return mock current user with ID 1
+		fmt.Fprint(w, `{"id": 1, "username": "testuser", "name": "Test User", "state": "active"}`)
+	})
+
+	// Catch-all handler for undefined routes
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, fmt.Sprintf("Undefined route accessed: %s %s", r.Method, r.URL.Path), http.StatusNotFound)
+	})
+
 	gitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:    server.URL,
 		GitlabToken:  "test-token",
@@ -416,18 +463,6 @@ func setupTestServer(t *testing.T, role string, instanceSize string) (*http.Serv
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
-
-	// Add test handlers for the projects and groups endpoints.
-	setupTestProjects(mux)
-	setupTestGroups(mux)
-
-	// Add test handlers for the GraphQL endpoint.
-	setupTestGraphQL(mux)
-
-	// Catch-all handler for undefined routes
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, fmt.Sprintf("Undefined route accessed: %s %s", r.Method, r.URL.Path), http.StatusNotFound)
-	})
 
 	return mux, gitlabInstance
 }
@@ -476,15 +511,11 @@ func setupTestGroup(mux *http.ServeMux, group *gitlab.Group, stringResponse stri
 	mux.HandleFunc(fmt.Sprintf("/api/v4/groups/%d", group.ID), func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, stringResponse)
+			writeJSONResponse(w, http.StatusOK, stringResponse)
 		case http.MethodPut:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, stringResponse)
+			writeJSONResponse(w, http.StatusOK, stringResponse)
 		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
+			writeMethodNotAllowed(w)
 			return
 		}
 	})
@@ -498,6 +529,17 @@ func setupTestGroup(mux *http.ServeMux, group *gitlab.Group, stringResponse stri
 		w.Header().Set(HEADER_CONTENT_TYPE, "image/png")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}) // PNG header
+	})
+	// Setup the add group member endpoint
+	mux.HandleFunc(fmt.Sprintf("/api/v4/groups/%d/members", group.ID), func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+		w.WriteHeader(http.StatusCreated)
+		// Return a mock member response
+		fmt.Fprint(w, `{"id": 1, "username": "testuser", "name": "Test User", "state": "active", "access_level": 50}`)
 	})
 }
 
@@ -678,17 +720,24 @@ func setupTestProject(mux *http.ServeMux, project *gitlab.Project, stringRespons
 	mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%d/issues/%d", project.ID, TEST_ISSUE.IID), func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, TEST_ISSUE_STRING)
+			writeJSONResponse(w, http.StatusOK, TEST_ISSUE_STRING)
 		case http.MethodPut:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, TEST_ISSUE_STRING)
+			writeJSONResponse(w, http.StatusOK, TEST_ISSUE_STRING)
 		default:
+			writeMethodNotAllowed(w)
+			return
+		}
+	})
+
+	mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%d/members", project.ID), func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
+		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+		w.WriteHeader(http.StatusCreated)
+		// Return a mock member response
+		fmt.Fprint(w, `{"id": 1, "username": "testuser", "name": "Test User", "state": "active", "access_level": 50}`)
 	})
 	// Setup the get project issue notes response from the project ID and issue IID
 }

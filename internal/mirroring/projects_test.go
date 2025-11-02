@@ -283,3 +283,12 @@ func TestAddProjectToCICDCatalog(t *testing.T) {
 		}
 	})
 }
+
+func TestClaimOwnershipToProject(t *testing.T) {
+	_, gitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+
+	err := gitlabInstance.ClaimOwnershipToProject(TEST_PROJECT)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}

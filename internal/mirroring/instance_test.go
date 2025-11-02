@@ -1,7 +1,9 @@
 package mirroring
 
 import (
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
@@ -12,12 +14,25 @@ const (
 )
 
 func TestNewGitlabInstance(t *testing.T) {
-	gitlabURL := "https://gitlab.example.com"
-	gitlabToken := "test-token"
+	// Create a test server to mock the CurrentUser API
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	// Add mock handler for current user
+	mux.HandleFunc("/api/v4/user", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id": 1, "username": "testuser", "name": "Test User", "state": "active"}`)
+	})
 
 	instance, err := NewGitlabInstance(&GitlabInstanceOpts{
-		GitlabURL:    gitlabURL,
-		GitlabToken:  gitlabToken,
+		GitlabURL:    server.URL,
+		GitlabToken:  "test-token",
 		Role:         ROLE_SOURCE,
 		MaxRetries:   3,
 		InstanceSize: INSTANCE_SIZE_SMALL,
@@ -36,6 +51,10 @@ func TestNewGitlabInstance(t *testing.T) {
 
 	if instance.Groups == nil {
 		t.Error("expected Groups map to be initialized")
+	}
+
+	if instance.UserID != 1 {
+		t.Errorf("expected UserID to be 1, got %d", instance.UserID)
 	}
 }
 
@@ -209,7 +228,7 @@ func TestIsVersionGreaterThanThreshold(t *testing.T) {
 			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
 			if !test.noApiResponse {
 				mux.HandleFunc("/api/v4/metadata", func(w http.ResponseWriter, r *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
+					w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
 					w.WriteHeader(http.StatusOK)
 					_, err := w.Write([]byte(`{"version": "` + test.version + `"}`))
 					if err != nil {
@@ -275,7 +294,7 @@ func TestIsLicensePremium(t *testing.T) {
 			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
 			if !test.expectedError {
 				mux.HandleFunc("/api/v4/license", func(w http.ResponseWriter, r *http.Request) {
-					w.Header().Set("Content-Type", "application/json")
+					w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
 					w.WriteHeader(http.StatusOK)
 					_, err := w.Write([]byte(`{"plan": "` + test.license + `"}`))
 					if err != nil {

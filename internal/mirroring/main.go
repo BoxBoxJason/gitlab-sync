@@ -55,6 +55,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 
 	if err != nil {
 		// Could not obtain a result from the destination GitLab instance, so we cannot proceed with the mirroring process.
+		// TODO: have a non zero exit code in this case
 		return []error{err}
 	} else if pullMirrorAvailable {
 		// Proceed with the pull mirroring process

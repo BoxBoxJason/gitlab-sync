@@ -105,6 +105,11 @@ func (g *GitlabInstance) CreateGroupFromSource(sourceGroup *gitlab.Group, copyOp
 	if err == nil {
 		zap.L().Info("Group created", zap.String("group", destinationGroup.WebURL))
 		g.AddGroup(destinationGroup)
+
+		// Claim ownership of the created group
+		if err := g.ClaimOwnershipToGroup(destinationGroup); err != nil {
+			zap.L().Warn("Failed to claim ownership of group", zap.String("group", destinationGroup.FullPath), zap.Error(err))
+		}
 	}
 
 	return destinationGroup, err
@@ -438,5 +443,22 @@ func (destinationGitlabInstance *GitlabInstance) syncGroupAttributes(sourceGroup
 	} else {
 		zap.L().Debug("Group attributes are already in sync, skipping", zap.String(ROLE_SOURCE, sourceGroup.FullPath), zap.String(ROLE_DESTINATION, destinationGroup.FullPath))
 	}
+	return nil
+}
+
+// ClaimOwnershipToGroup adds the authenticated user as an owner to the specified group.
+// It uses the GitLab API to add the user as a group member with owner access level.
+func (g *GitlabInstance) ClaimOwnershipToGroup(group *gitlab.Group) error {
+	zap.L().Debug("Claiming ownership of group", zap.String("group", group.FullPath), zap.Int("userID", g.UserID))
+
+	_, _, err := g.Gitlab.GroupMembers.AddGroupMember(group.ID, &gitlab.AddGroupMemberOptions{
+		UserID:      &g.UserID,
+		AccessLevel: gitlab.Ptr(gitlab.AccessLevelValue(50)),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add user as owner to group %s: %w", group.FullPath, err)
+	}
+
+	zap.L().Info("Successfully claimed ownership of group", zap.String("group", group.FullPath))
 	return nil
 }

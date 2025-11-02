@@ -315,6 +315,11 @@ func (g *GitlabInstance) CreateProjectFromSource(sourceProject *gitlab.Project, 
 	if err == nil {
 		zap.L().Info("Project created", zap.String("project", destinationProject.HTTPURLToRepo))
 		g.AddProject(destinationProject)
+
+		// Claim ownership of the created project
+		if err := g.ClaimOwnershipToProject(destinationProject); err != nil {
+			zap.L().Warn("Failed to claim ownership of project", zap.String("project", destinationProject.PathWithNamespace), zap.Error(err))
+		}
 	}
 
 	return destinationProject, err
@@ -524,4 +529,21 @@ func (g *GitlabInstance) AddProjectToCICDCatalog(project *gitlab.Project) error 
 
 	_, err := g.Gitlab.GraphQL.Do(gitlab.GraphQLQuery{Query: query}, &response)
 	return err
+}
+
+// ClaimOwnershipToProject adds the authenticated user as an owner to the specified project.
+// It uses the GitLab API to add the user as a project member with owner access level.
+func (g *GitlabInstance) ClaimOwnershipToProject(project *gitlab.Project) error {
+	zap.L().Debug("Claiming ownership of project", zap.String("project", project.PathWithNamespace), zap.Int("userID", g.UserID))
+
+	_, _, err := g.Gitlab.ProjectMembers.AddProjectMember(project.ID, &gitlab.AddProjectMemberOptions{
+		UserID:      &g.UserID,
+		AccessLevel: gitlab.Ptr(gitlab.AccessLevelValue(50)),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to add user as owner to project %s: %w", project.PathWithNamespace, err)
+	}
+
+	zap.L().Info("Successfully claimed ownership of project", zap.String("project", project.PathWithNamespace))
+	return nil
 }

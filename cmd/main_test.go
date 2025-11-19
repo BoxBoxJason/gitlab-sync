@@ -249,7 +249,6 @@ func TestPromptForMandatoryInputEmptyPrompt(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected subprocess to exit with fatal error, but it succeeded, output: %q", output)
 	}
-	// Optionally, check output contains INPUT_REQUIRED message or similar, if desired.
 }
 
 // TestPromptForMandatoryInputPromptDisabled tests that if prompting is disabled and no defaultValue is provided,
@@ -267,5 +266,4 @@ func TestPromptForMandatoryInputPromptDisabled(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected subprocess to fail due to prompting disabled, but it succeeded, output: %q", output)
 	}
-	// Optionally, further validate that output contains "Prompting is disabled" if needed.
 }

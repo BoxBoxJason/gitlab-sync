@@ -33,7 +33,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 		InstanceSize: sourceGitlabSize,
 	})
 	if err != nil {
-		return []error{err}
+		return []error{helpers.NewBlocking(err)}
 	}
 
 	// Create destination GitLab instance
@@ -49,14 +49,13 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 		InstanceSize: destinationGitlabSize,
 	})
 	if err != nil {
-		return []error{err}
+		return []error{helpers.NewBlocking(err)}
 	}
 	pullMirrorAvailable, err := destinationGitlabInstance.IsPullMirrorAvailable(gitlabMirrorArgs.ForcePremium, gitlabMirrorArgs.ForceNonPremium)
 
 	if err != nil {
 		// Could not obtain a result from the destination GitLab instance, so we cannot proceed with the mirroring process.
-		// TODO: have a non zero exit code in this case
-		return []error{err}
+		return []error{helpers.NewBlocking(err)}
 	} else if pullMirrorAvailable {
 		// Proceed with the pull mirroring process
 		zap.L().Info("GitLab instance is compatible with the pull mirroring process", zap.String(ROLE, destinationGitlabInstance.Role), zap.String(INSTANCE_SIZE, destinationGitlabInstance.InstanceSize))
@@ -161,7 +160,7 @@ func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *Gi
 			if copyOptions.MirrorReleases {
 				if err := destinationGitlabInstance.DryRunReleases(sourceGitlabInstance, sourceProject, copyOptions); err != nil {
 					zap.L().Error("Failed to dry run releases", zap.Error(err))
-					return []error{err}
+					return []error{helpers.NewNonBlocking(err)}
 				}
 			}
 		}

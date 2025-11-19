@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 )
 
 func TestProcessFilters(t *testing.T) {
@@ -265,5 +266,27 @@ func TestIsPullMirrorAvailable(t *testing.T) {
 				t.Errorf("CheckDestinationInstance() = %v, expectedResult %v", pullMirrorAvailable, tt.expectedResult)
 			}
 		})
+	}
+}
+
+func TestMirrorGitlabsErrorWrapping(t *testing.T) {
+	// Test that blocking errors are wrapped correctly
+	args := &utils.ParserArgs{
+		SourceGitlabURL:        "invalid-url",
+		SourceGitlabToken:      "token",
+		DestinationGitlabURL:   "https://example.com",
+		DestinationGitlabToken: "token",
+		MirrorMapping:          &utils.MirrorMapping{},
+		Retry:                  1,
+	}
+
+	errors := MirrorGitlabs(args)
+	if len(errors) == 0 {
+		t.Fatal("Expected errors, got none")
+	}
+
+	// Check that the first error is blocking
+	if severity := helpers.SeverityOf(errors[0]); severity != helpers.SeverityBlocking {
+		t.Errorf("Expected blocking error, got %v", severity)
 	}
 }

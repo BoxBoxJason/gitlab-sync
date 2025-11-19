@@ -55,7 +55,6 @@ Desktop.ini
 *.pub
 
 mirroring.json
-go.sum
 republisher.sh
 
 # Reports files
@@ -66,3 +65,5 @@ coverage.out
 *-report*
 .sonarlint/
 dependency-check/
+
+.copilot/

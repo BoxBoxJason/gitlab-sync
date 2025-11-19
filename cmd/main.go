@@ -8,6 +8,7 @@ import (
 
 	"gitlab-sync/internal/mirroring"
 	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -65,9 +66,23 @@ func main() {
 
 			mirroringErrors := mirroring.MirrorGitlabs(&args)
 			if mirroringErrors != nil {
-				zap.L().Error("Error during mirroring process", zap.Errors("errors", mirroringErrors))
+				// Determine exit code based on error severity
+				hasBlocking := false
+				for _, err := range mirroringErrors {
+					if helpers.SeverityOf(err) == helpers.SeverityBlocking {
+						hasBlocking = true
+						break
+					}
+				}
+				if hasBlocking {
+					zap.L().Error("Blocking errors occurred during mirroring process", zap.Errors("errors", mirroringErrors))
+					os.Exit(1)
+				} else {
+					zap.L().Warn("Non-blocking errors occurred during mirroring process", zap.Errors("errors", mirroringErrors))
+					os.Exit(2)
+				}
 			}
-			zap.L().Info("Mirroring completed")
+			zap.L().Info("Mirroring completed successfully")
 		},
 	}
 

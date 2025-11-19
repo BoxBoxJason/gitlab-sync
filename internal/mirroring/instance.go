@@ -72,12 +72,6 @@ func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 		return nil, err
 	}
 
-	// Get the current user ID
-	user, _, err := gitlabClient.Users.CurrentUser()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current user: %w", err)
-	}
-
 	gitlabInstance := &GitlabInstance{
 		Gitlab:       gitlabClient,
 		Projects:     make(map[string]*gitlab.Project),
@@ -85,7 +79,15 @@ func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 		Role:         initArgs.Role,
 		InstanceSize: initArgs.InstanceSize,
 		GitAuth:      helpers.BuildHTTPAuth("", initArgs.GitlabToken),
-		UserID:       user.ID,
+	}
+
+	if initArgs.GitlabToken != "" {
+		// Get the current user ID
+		user, _, err := gitlabClient.Users.CurrentUser()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current user: %w", err)
+		}
+		gitlabInstance.UserID = user.ID
 	}
 
 	return gitlabInstance, nil

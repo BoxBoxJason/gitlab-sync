@@ -449,7 +449,7 @@ func (destinationGitlabInstance *GitlabInstance) syncGroupAttributes(sourceGroup
 // ClaimOwnershipToGroup adds the authenticated user as an owner to the specified group.
 // It uses the GitLab API to add the user as a group member with owner access level.
 func (g *GitlabInstance) ClaimOwnershipToGroup(group *gitlab.Group) error {
-	zap.L().Debug("Claiming ownership of group", zap.String("group", group.FullPath), zap.Int("userID", g.UserID))
+	zap.L().Debug("Claiming ownership of group", zap.String("group", group.FullPath), zap.Int64("userID", g.UserID))
 
 	_, _, err := g.Gitlab.GroupMembers.AddGroupMember(group.ID, &gitlab.AddGroupMemberOptions{
 		UserID:      &g.UserID,

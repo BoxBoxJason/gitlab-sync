@@ -130,7 +130,7 @@ func TestGetParentNamespaceID(t *testing.T) {
 	tests := []struct {
 		name          string
 		path          string
-		expectedID    int
+		expectedID    int64
 		expectedError bool
 	}{
 		{

@@ -534,7 +534,7 @@ func (g *GitlabInstance) AddProjectToCICDCatalog(project *gitlab.Project) error 
 // ClaimOwnershipToProject adds the authenticated user as an owner to the specified project.
 // It uses the GitLab API to add the user as a project member with owner access level.
 func (g *GitlabInstance) ClaimOwnershipToProject(project *gitlab.Project) error {
-	zap.L().Debug("Claiming ownership of project", zap.String("project", project.PathWithNamespace), zap.Int("userID", g.UserID))
+	zap.L().Debug("Claiming ownership of project", zap.String("project", project.PathWithNamespace), zap.Int64("userID", g.UserID))
 
 	_, _, err := g.Gitlab.ProjectMembers.AddProjectMember(project.ID, &gitlab.AddProjectMemberOptions{
 		UserID:      &g.UserID,

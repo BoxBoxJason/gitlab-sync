@@ -46,7 +46,7 @@ type GitlabInstance struct {
 	// GitAuth is the HTTP authentication used for GitLab git over HTTP operations (only for non premium instances)
 	GitAuth transport.AuthMethod
 	// UserID is the ID of the authenticated user
-	UserID int
+	UserID int64
 }
 
 type GitlabInstanceOpts struct {
@@ -207,8 +207,8 @@ func (g *GitlabInstance) FetchAll(projectFilters map[string]struct{}, groupFilte
 // It checks if the parent path is already in the instance groups cache.
 //
 // If not, it returns an error indicating that the parent group was not found.
-func (g *GitlabInstance) GetParentNamespaceID(projectOrGroupPath string) (int, error) {
-	parentGroupID := -1
+func (g *GitlabInstance) GetParentNamespaceID(projectOrGroupPath string) (int64, error) {
+	parentGroupID := int64(-1)
 	parentPath := filepath.Dir(projectOrGroupPath)
 	var err error = nil
 	if parentPath != "." && parentPath != "/" {

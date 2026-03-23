@@ -470,8 +470,9 @@ func (destinationGitlabInstance *GitlabInstance) SyncProjectAttributes(sourcePro
 		missmatched = true
 	}
 
-	if helpers.Deref(copyOptions.MirrorTriggerBuilds, false) != destinationProject.MirrorTriggerBuilds {
-		gitlabEditOptions.MirrorTriggerBuilds = copyOptions.MirrorTriggerBuilds
+	desiredMirrorTriggerBuilds := helpers.Deref(copyOptions.MirrorTriggerBuilds, false)
+	if desiredMirrorTriggerBuilds != destinationProject.MirrorTriggerBuilds {
+		gitlabEditOptions.MirrorTriggerBuilds = gitlab.Ptr(desiredMirrorTriggerBuilds)
 		missmatched = true
 	}
 

@@ -250,8 +250,8 @@ func (g *GitlabInstance) FetchAllGroupsSmallInstance() ([]*gitlab.Group, error) 
 	return allGroups, nil
 }
 
-// ProcessGroupsSmallInstance processes groups fetched from a small GitLab instance.
-// It uses pagination to fetch all groups in batches of 100. Queries all groups of the instance.
+// ProcessGroupsSmallInstance processes a list of groups from a small GitLab instance.
+// It iterates over the provided allGroups slice, applies the groupFilters, and stores matching groups.
 func (g *GitlabInstance) ProcessGroupsSmallInstance(allGroups []*gitlab.Group, groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) {
 	zap.L().Debug("Processing groups from GitLab instance", zap.String(INSTANCE_SIZE, g.InstanceSize), zap.String(ROLE, g.Role), zap.Int("groups", len(allGroups)))
 

@@ -314,7 +314,7 @@ func (g *GitlabInstance) FetchAndProcessGroupsLargeInstance(groupFilters *map[st
 }
 
 // FetchAndProcessGroupRecursive fetches a group and its projects recursively
-// It uses a wait group to ensure that all goroutines finish befopidpre returning
+// It uses a wait group to ensure that all goroutines finish before returning
 // It sends the fetched group to the allGroupsChannel and the projects to the allProjectsChannel
 //
 // gid can be either an int, a string or a *gitlab.Group.

@@ -20,16 +20,6 @@ type MirrorError struct {
 	Severity Severity
 }
 
-// Error implements the error interface.
-func (e MirrorError) Error() string {
-	return e.Err.Error()
-}
-
-// Unwrap returns the underlying error.
-func (e MirrorError) Unwrap() error {
-	return e.Err
-}
-
 // NewBlocking creates a new blocking error.
 func NewBlocking(err error) MirrorError {
 	return MirrorError{Err: err, Severity: SeverityBlocking}
@@ -38,6 +28,16 @@ func NewBlocking(err error) MirrorError {
 // NewNonBlocking creates a new non-blocking error.
 func NewNonBlocking(err error) MirrorError {
 	return MirrorError{Err: err, Severity: SeverityNonBlocking}
+}
+
+// Error implements the error interface.
+func (e MirrorError) Error() string {
+	return e.Err.Error()
+}
+
+// Unwrap returns the underlying error.
+func (e MirrorError) Unwrap() error {
+	return e.Err
 }
 
 // SeverityOf returns the severity of the error.

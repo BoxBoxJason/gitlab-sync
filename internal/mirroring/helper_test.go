@@ -2,13 +2,13 @@ package mirroring
 
 import (
 	"fmt"
-	"gitlab-sync/internal/utils"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"testing"
 
+	"gitlab-sync/internal/utils"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
@@ -173,7 +173,8 @@ var (
 	}`
 
 	// TEST_RELEASES_STRING is a string representation of multiple test releases.
-	TEST_RELEASES_STRING = []string{`{
+	TEST_RELEASES_STRING = []string{
+		`{
 			"tag_name": "v0.2",
 			"description": "description",
 			"name": "Awesome app v0.2 beta",
@@ -273,7 +274,8 @@ var (
 			],
 			"links": []
 			}
-		}`}
+		}`,
+	}
 
 	issue_string = "issue"
 
@@ -382,7 +384,7 @@ var (
    }`
 )
 
-func setupEmptyTestServer(t *testing.T, role string, instanceSize string) (*http.ServeMux, *GitlabInstance) {
+func setupEmptyTestServer(t *testing.T, role, instanceSize string) (*http.ServeMux, *GitlabInstance) {
 	// mux is the HTTP request multiplexer used with the test server.
 	mux := http.NewServeMux()
 
@@ -409,7 +411,6 @@ func setupEmptyTestServer(t *testing.T, role string, instanceSize string) (*http
 		InstanceSize: instanceSize,
 		MaxRetries:   0,
 	})
-
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -420,7 +421,7 @@ func setupEmptyTestServer(t *testing.T, role string, instanceSize string) (*http
 // setup sets up a test HTTP server along with a gitlab.Client that is
 // configured to talk to that test server.  Tests should register handlers on
 // mux which provide mock responses for the API method being tested.
-func setupTestServer(t *testing.T, role string, instanceSize string) (*http.ServeMux, *GitlabInstance) {
+func setupTestServer(t *testing.T, role, instanceSize string) (*http.ServeMux, *GitlabInstance) {
 	// mux is the HTTP request multiplexer used with the test server.
 	mux := http.NewServeMux()
 
@@ -459,7 +460,6 @@ func setupTestServer(t *testing.T, role string, instanceSize string) (*http.Serv
 		InstanceSize: instanceSize,
 		MaxRetries:   0,
 	})
-
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}

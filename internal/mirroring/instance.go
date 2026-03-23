@@ -5,11 +5,13 @@ import (
 	"path/filepath"
 	"sync"
 
+	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
+
 	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/hashicorp/go-retryablehttp"
-	"gitlab-sync/internal/utils"
-	"gitlab-sync/pkg/helpers"
+
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
 )
@@ -18,6 +20,7 @@ const (
 	INSTANCE_SEMVER_THRESHOLD = "17.6"
 	ULTIMATE_PLAN             = "ultimate"
 	PREMIUM_PLAN              = "premium"
+	fetchWorkerCount          = 2
 )
 
 type GitlabInstance struct {
@@ -47,7 +50,7 @@ func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 	// Initialize the GitLab client with the custom HTTP client
 	gitlabClient, err := gitlab.NewClient(initArgs.GitlabToken, gitlab.WithBaseURL(initArgs.GitlabURL), gitlab.WithCustomRetryMax(initArgs.MaxRetries), gitlab.WithCustomBackoff(retryablehttp.DefaultBackoff))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize GitLab client: %w", err)
 	}
 
 	gitlabInstance := &GitlabInstance{
@@ -168,30 +171,30 @@ func (g *GitlabInstance) IsLicensePremium() (bool, error) {
 
 // FetchAll retrieves all projects and groups from the GitLab instance
 // that match the filters and stores them in the instance cache.
-func (g *GitlabInstance) FetchAll(projectFilters map[string]struct{}, groupFilters map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
+func (g *GitlabInstance) FetchAll(projectFilters, groupFilters map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
 	zap.L().Info("Fetching all projects and groups from GitLab instance", zap.String(ROLE, g.Role), zap.String(INSTANCE_SIZE, g.InstanceSize), zap.Int("projects", len(projectFilters)), zap.Int("groups", len(groupFilters)))
 
-	wg := sync.WaitGroup{}
-	errCh := make(chan []error, 2)
+	waitGroup := sync.WaitGroup{}
+	errCh := make(chan []error, fetchWorkerCount)
 
-	wg.Add(2)
+	waitGroup.Add(fetchWorkerCount)
 
 	go func() {
-		defer wg.Done()
+		defer waitGroup.Done()
 
 		if err := g.FetchAndProcessGroups(&groupFilters, mirrorMapping); err != nil {
 			errCh <- err
 		}
 	}()
 	go func() {
-		defer wg.Done()
+		defer waitGroup.Done()
 
 		if err := g.FetchAndProcessProjects(&projectFilters, &groupFilters, mirrorMapping); err != nil {
 			errCh <- err
 		}
 	}()
 
-	wg.Wait()
+	waitGroup.Wait()
 	close(errCh)
 
 	return helpers.MergeErrors(errCh)

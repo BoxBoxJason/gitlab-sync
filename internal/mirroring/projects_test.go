@@ -1,15 +1,14 @@
 package mirroring
 
 import (
-	"gitlab-sync/internal/utils"
 	"net/http"
 	"testing"
 
+	"gitlab-sync/internal/utils"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 func TestFetchAll(t *testing.T) {
-
 	tests := []struct {
 		name          string
 		instanceSize  string
@@ -73,7 +72,7 @@ func TestFetchAll(t *testing.T) {
 				t.Errorf(EXPECTED_ERROR_MESSAGE, test.expectedError, err)
 			}
 
-			//Check if the instance cache contains the expected projects and groups
+			// Check if the instance cache contains the expected projects and groups
 			if _, ok := gitlabInstance.Projects[TEST_PROJECT.PathWithNamespace]; !ok {
 				t.Errorf("expected project %s not found in %s %s instance cache", TEST_PROJECT.PathWithNamespace, gitlabInstance.Role, gitlabInstance.InstanceSize)
 			}
@@ -82,7 +81,6 @@ func TestFetchAll(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
@@ -179,7 +177,6 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestCreateProjectFromSource(t *testing.T) {
@@ -233,7 +230,6 @@ func TestCreateProjectFromSource(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestCreateProjectFromSourceWithMinimalOptions(t *testing.T) {

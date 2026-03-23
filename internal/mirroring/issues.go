@@ -2,14 +2,15 @@ package mirroring
 
 import (
 	"fmt"
-	"sync"
 
-	"gitlab-sync/pkg/helpers"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
 )
 
-var CLOSE_STATE_EVENT = "close"
+const (
+	issuesPerPage   = 100
+	closeStateEvent = "close"
+)
 
 // ===========================================================================
 //                         ISSUES MIRRORING FUNCTIONS                       //
@@ -25,7 +26,7 @@ func (g *GitlabInstance) FetchProjectIssues(project *gitlab.Project) ([]*gitlab.
 
 	fetchOpts := &gitlab.ListProjectIssuesOptions{
 		ListOptions: gitlab.ListOptions{
-			PerPage: 100,
+			PerPage: issuesPerPage,
 			Page:    1,
 		},
 	}
@@ -35,7 +36,7 @@ func (g *GitlabInstance) FetchProjectIssues(project *gitlab.Project) ([]*gitlab.
 	for {
 		fetchedIssues, resp, err := g.Gitlab.Issues.ListProjectIssues(project.ID, fetchOpts)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to list issues for project %s: %w", project.PathWithNamespace, err)
 		}
 
 		issues = append(issues, fetchedIssues...)
@@ -101,11 +102,15 @@ func (g *GitlabInstance) MirrorIssue(project *gitlab.Project, issue *gitlab.Issu
 // CloseIssue closes an issue in the destination project.
 func (g *GitlabInstance) CloseIssue(project *gitlab.Project, issue *gitlab.Issue) error {
 	zap.L().Debug("Closing issue in destination project", zap.String("issue", issue.Title), zap.String(ROLE_DESTINATION, project.HTTPURLToRepo))
-	_, _, err := g.Gitlab.Issues.UpdateIssue(project.ID, issue.IID, &gitlab.UpdateIssueOptions{
-		StateEvent: &CLOSE_STATE_EVENT,
-	})
 
-	return err
+	_, _, err := g.Gitlab.Issues.UpdateIssue(project.ID, issue.IID, &gitlab.UpdateIssueOptions{
+		StateEvent: gitlab.Ptr(closeStateEvent),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to close issue %d in project %s: %w", issue.IID, project.PathWithNamespace, err)
+	}
+
+	return nil
 }
 
 // ================
@@ -114,53 +119,18 @@ func (g *GitlabInstance) CloseIssue(project *gitlab.Project, issue *gitlab.Issue
 
 // MirrorIssues mirrors issues from the source project to the destination project.
 // It fetches existing issues from the destination project and creates new issues for those that do not.
-func (destinationGitlab *GitlabInstance) MirrorIssues(sourceGitlab *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project) []error {
-	zap.L().Info("Starting issues mirroring", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
-
-	// Fetch existing issues from the destination project
-	existingIssuesTitles, err := destinationGitlab.FetchProjectIssuesTitles(destinationProject)
-	if err != nil {
-		return []error{fmt.Errorf("failed to fetch existing issues for destination project %s: %w", destinationProject.HTTPURLToRepo, err)}
-	}
-
-	// Fetch issues from the source project
-	sourceIssues, err := sourceGitlab.FetchProjectIssues(sourceProject)
-	if err != nil {
-		return []error{fmt.Errorf("failed to fetch issues for source project %s: %w", sourceProject.HTTPURLToRepo, err)}
-	}
-
-	// Create a wait group and an error channel for handling API calls concurrently
-	var wg sync.WaitGroup
-
-	errorChan := make(chan error, len(sourceIssues))
-
-	// Iterate over each source issue
-	for _, issue := range sourceIssues {
-		// Check if the issue already exists in the destination project
-		if _, exists := existingIssuesTitles[issue.Title]; exists {
-			zap.L().Debug("Issue already exists", zap.String("issue", issue.Title), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
-
-			continue
-		}
-
-		// Increment the wait group counter
-		wg.Add(1)
-
-		// Define the API call logic for creating an issue
-		go func(project *gitlab.Project, issueToMirror *gitlab.Issue) {
-			defer wg.Done()
-
-			err := destinationGitlab.MirrorIssue(destinationProject, issueToMirror)
-			if err != nil {
-				errorChan <- fmt.Errorf("failed to create issue %s in project %s: %w", issueToMirror.Title, destinationProject.HTTPURLToRepo, err)
-			}
-		}(destinationProject, issue)
-	}
-
-	// Wait for all goroutines to finish
-	wg.Wait()
-	close(errorChan)
-	zap.L().Info("Issues mirroring completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
-
-	return helpers.MergeErrors(errorChan)
+func (destinationGitlab *GitlabInstance) MirrorIssues(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project) []error {
+	return mirrorProjectEntities(
+		"issue",
+		sourceProject,
+		destinationProject,
+		destinationGitlab.FetchProjectIssuesTitles,
+		sourceGitlab.FetchProjectIssues,
+		func(issue *gitlab.Issue) string {
+			return issue.Title
+		},
+		func(project *gitlab.Project, issue *gitlab.Issue) error {
+			return destinationGitlab.MirrorIssue(project, issue)
+		},
+	)
 }

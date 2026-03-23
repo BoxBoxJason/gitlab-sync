@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"gitlab-sync/pkg/helpers"
+	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 

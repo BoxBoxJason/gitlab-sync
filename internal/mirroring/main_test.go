@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"gitlab-sync/internal/utils"
-	"gitlab-sync/pkg/helpers"
+	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 

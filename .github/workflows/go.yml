@@ -29,6 +29,9 @@ jobs:
       - name: build
         run: make build
 
+      - name: Verify go install
+        run: go install .
+
       - name: Lint
         run: make lint
 

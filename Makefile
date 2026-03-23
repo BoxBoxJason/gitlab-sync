@@ -2,24 +2,26 @@
 GO ?= go
 OUTPUT_DIR ?= ./bin
 PROJECT_NAME ?= gitlab-sync
-MAIN_FILE ?= cmd/main.go
+MAIN_FILE ?= .
 DOCKERFILE ?= Containerfile
 DOCKER_ENGINE ?= podman
+GO_BUILD_FLAGS ?= -buildvcs=true
 
 # Default target
 .DEFAULT_GOAL := build
 
+# Download dependencies
+deps:
+	@echo "Downloading dependencies..."
+	$(GO) mod download
+
 # Build target
-build:
-	@echo "Running go mod tidy..."
-	$(GO) mod tidy
+build: deps
 	@echo "Building the binary..."
-	$(GO) build -o $(OUTPUT_DIR)/$(PROJECT_NAME) $(MAIN_FILE)
+	$(GO) build $(GO_BUILD_FLAGS) -o $(OUTPUT_DIR)/$(PROJECT_NAME) $(MAIN_FILE)
 
 # Lint target
-lint:
-	@echo "Running go mod tidy..."
-	$(GO) mod tidy
+lint: deps
 	@echo "Running golangci-lint..."
 	golangci-lint run ./...
 
@@ -28,7 +30,7 @@ dependency-check:
 	dependency-check --nvdApiKey $(NVD_API_KEY) --scan ./ --format ALL --out dependency-check/ --enableExperimental
 
 # Test target
-test:
+test: deps
 	@echo "Running tests with coverage..."
 	gotestsum --format-icons octicons -- -covermode=atomic ./...
 

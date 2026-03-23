@@ -1,22 +1,21 @@
-package main
+package cmd
 
 import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"runtime/debug"
 	"strings"
 
-	"gitlab-sync/internal/mirroring"
-	"gitlab-sync/internal/utils"
-	"gitlab-sync/pkg/helpers"
+	"github.com/boxboxjason/gitlab-sync/internal/mirroring"
+	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	"github.com/spf13/cobra"
-
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
-
-var version = "dev"
 
 const (
 	defaultRetryCount   = 3
@@ -24,7 +23,18 @@ const (
 	nonBlockingExitCode = 2
 )
 
-func main() {
+// version and buildTime can optionally be set at build time via -ldflags.
+// When they are unset (for example with `go install`), version resolution
+// falls back to runtime/debug.ReadBuildInfo.
+//
+//nolint:gochecknoglobals // intentional ldflags injection targets
+var (
+	version   string // set via -X github.com/boxboxjason/gitlab-sync/cmd.version=vX.Y.Z
+	buildTime string // set via -X github.com/boxboxjason/gitlab-sync/cmd.buildTime=2006-01-02T15:04:05Z
+)
+
+// Execute runs the CLI command.
+func Execute() {
 	var (
 		args              utils.ParserArgs
 		err               error
@@ -44,7 +54,7 @@ func main() {
 func buildRootCmd(args *utils.ParserArgs, mirrorMappingPath, logFile *string) *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:     "gitlab-sync",
-		Version: version,
+		Version: versionInfo(),
 		Short:   "Copy and enable mirroring of gitlab projects and groups",
 		Long:    "Fully customizable gitlab repositories and groups mirroring between two (or one) gitlab instances.",
 		Run: func(cmd *cobra.Command, cmdArgs []string) {
@@ -66,8 +76,41 @@ func buildRootCmd(args *utils.ParserArgs, mirrorMappingPath, logFile *string) *c
 	rootCmd.Flags().BoolVar(&args.DryRun, "dry-run", false, "Perform a dry run without making any changes")
 	rootCmd.Flags().IntVarP(&args.Retry, "retry", "r", defaultRetryCount, "Number of retries for failed requests")
 	rootCmd.Flags().StringVar(logFile, "log-file", strings.TrimSpace(os.Getenv("GITLAB_SYNC_LOG_FILE")), "Path to the log file")
+	_ = rootCmd.MarkFlagFilename("mirror-mapping", "json")
+	_ = rootCmd.MarkFlagFilename("log-file", "log", "txt")
+
+	addCompletionCommand(rootCmd)
 
 	return rootCmd
+}
+
+func addCompletionCommand(rootCmd *cobra.Command) {
+	rootCmd.CompletionOptions.DisableDefaultCmd = true
+
+	completionCmd := &cobra.Command{
+		Use:                   "completion [bash|zsh|fish|powershell]",
+		Short:                 "Generate shell completion script",
+		Long:                  "Generate shell completion script for gitlab-sync.",
+		Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),
+		ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
+		DisableFlagsInUseLine: true,
+		RunE: func(cmd *cobra.Command, cmdArgs []string) error {
+			switch cmdArgs[0] {
+			case "bash":
+				return rootCmd.GenBashCompletionV2(cmd.OutOrStdout(), true)
+			case "zsh":
+				return rootCmd.GenZshCompletion(cmd.OutOrStdout())
+			case "fish":
+				return rootCmd.GenFishCompletion(cmd.OutOrStdout(), true)
+			case "powershell":
+				return rootCmd.GenPowerShellCompletionWithDesc(cmd.OutOrStdout())
+			default:
+				return fmt.Errorf("unsupported shell: %s", cmdArgs[0])
+			}
+		},
+	}
+
+	rootCmd.AddCommand(completionCmd)
 }
 
 func executeMirroringCommand(args *utils.ParserArgs, mirrorMappingPath, logFile *string) {
@@ -206,4 +249,98 @@ func SetupZapLogger(verbose bool, filename string) {
 
 	// Set the global logger
 	zap.ReplaceGlobals(logger)
+}
+
+// versionInfo returns a human-readable version string of the form:
+//
+//	v1.2.3 (go1.25.7, built: 2026-02-22T20:00:00Z)
+//
+// Version resolution order:
+//  1. ldflags-injected version  (make build / make build version=x.y.z)
+//  2. Module version from debug.ReadBuildInfo  (go install @vX.Y.Z)
+//  3. VCS commit hash from build settings  (local go build / go install @latest)
+//  4. "dev" as final fallback
+//
+// Build time resolution order:
+//  1. ldflags-injected buildTime  (make build)
+//  2. vcs.time from build settings
+//  3. "unknown"
+func versionInfo() string {
+	ver := resolveVersion()
+	bt := resolveBuildTime()
+
+	return fmt.Sprintf("%s (go: %s, built: %s)", ver, runtime.Version(), bt)
+}
+
+// resolveVersion returns the most specific version string available.
+func resolveVersion() string {
+	// ldflags injection wins — used by `make build` and CI releases.
+	if version != "" {
+		return version
+	}
+
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "dev"
+	}
+
+	// `go install @vX.Y.Z` populates Main.Version with the module tag.
+	if info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+
+	// Local `go build` / `go install @latest` — fall back to VCS revision.
+	return vcsRevision(info)
+}
+
+// vcsRevision extracts the short commit hash (and a "-dirty" suffix when the
+// working tree has uncommitted changes) from the VCS build settings.
+func vcsRevision(info *debug.BuildInfo) string {
+	var revision string
+
+	var dirty bool
+
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			if len(setting.Value) > 7 { //nolint:mnd // 7 is the conventional short-hash length
+				revision = setting.Value[:7]
+			} else {
+				revision = setting.Value
+			}
+		case "vcs.modified":
+			dirty = setting.Value == "true"
+		}
+	}
+
+	if revision == "" {
+		return "dev"
+	}
+
+	if dirty {
+		return revision + "-dirty"
+	}
+
+	return revision
+}
+
+// resolveBuildTime returns the build timestamp, falling back through ldflags →
+// vcs.time build setting → "unknown".
+func resolveBuildTime() string {
+	if buildTime != "" {
+		return buildTime
+	}
+
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.time" {
+			return setting.Value
+		}
+	}
+
+	return "unknown"
 }

@@ -1,0 +1,52 @@
+version: 2
+
+run:
+  timeout: 5m
+  tests: false
+
+# Output format to generate checkstyle report (used by CI)
+output:
+  formats:
+    checkstyle:
+      path: codequality/golangci-lint-report.xml
+    text:
+      path: stdout
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes: github.com/boxboxjason/gitlab-sync
+    gofmt:
+      simplify: true
+
+linters:
+  default: all
+  disable:
+    - depguard
+    - lll
+    - err113
+    - wsl
+    - nonamedreturns
+    - revive
+  settings:
+    govet:
+      enable-all: true
+    gci:
+      custom-order: true
+      sections:
+        - standard
+        - default
+        - prefix(github.com/boxboxjason)
+      skip-generated: true
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+    gosec:
+      excludes:
+        - G117 # secret pattern matches in exported structs (required for API client)
+        - G704 # SSRF false positives on client HTTP calls (required for API client)

@@ -21,9 +21,7 @@ lint:
 	@echo "Running go mod tidy..."
 	$(GO) mod tidy
 	@echo "Running golangci-lint..."
-	golangci-lint run --tests=false --fix --issues-exit-code 0
-	@echo "Running gosec..."
-	gosec -enable-audit -no-fail -quiet ./...
+	golangci-lint run ./...
 
 dependency-check:
 	@echo "Running dependency-check..."

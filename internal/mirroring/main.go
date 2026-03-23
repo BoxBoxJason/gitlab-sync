@@ -7,7 +7,6 @@ import (
 
 	"gitlab-sync/internal/utils"
 	"gitlab-sync/pkg/helpers"
-
 	"go.uber.org/zap"
 )
 
@@ -41,6 +40,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	if gitlabMirrorArgs.DestinationGitlabIsBig {
 		destinationGitlabSize = INSTANCE_SIZE_BIG
 	}
+
 	destinationGitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:    gitlabMirrorArgs.DestinationGitlabURL,
 		GitlabToken:  gitlabMirrorArgs.DestinationGitlabToken,
@@ -51,8 +51,8 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	if err != nil {
 		return []error{helpers.NewBlocking(err)}
 	}
-	pullMirrorAvailable, err := destinationGitlabInstance.IsPullMirrorAvailable(gitlabMirrorArgs.ForcePremium, gitlabMirrorArgs.ForceNonPremium)
 
+	pullMirrorAvailable, err := destinationGitlabInstance.IsPullMirrorAvailable(gitlabMirrorArgs.ForcePremium, gitlabMirrorArgs.ForceNonPremium)
 	if err != nil {
 		// Could not obtain a result from the destination GitLab instance, so we cannot proceed with the mirroring process.
 		return []error{helpers.NewBlocking(err)}
@@ -64,20 +64,24 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 		zap.L().Warn("Destination GitLab instance is not compatible with the pull mirroring process (requires a >= 17.6 ; >= Premium destination GitLab instance)", zap.String(ROLE, destinationGitlabInstance.Role), zap.String(INSTANCE_SIZE, destinationGitlabInstance.InstanceSize))
 		zap.L().Warn("Will use local pull / push mirroring instead (takes a lot longer)", zap.String(ROLE, destinationGitlabInstance.Role), zap.String(INSTANCE_SIZE, destinationGitlabInstance.InstanceSize))
 	}
+
 	destinationGitlabInstance.PullMirrorAvailable = pullMirrorAvailable
 
 	sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters := processFilters(gitlabMirrorArgs.MirrorMapping)
 
 	wg := sync.WaitGroup{}
 	errCh := make(chan []error, 4)
+
 	wg.Add(2)
 
 	go func() {
 		defer wg.Done()
+
 		errCh <- sourceGitlabInstance.FetchAll(sourceProjectFilters, sourceGroupFilters, gitlabMirrorArgs.MirrorMapping)
 	}()
 	go func() {
 		defer wg.Done()
+
 		errCh <- destinationGitlabInstance.FetchAll(destinationProjectFilters, destinationGroupFilters, gitlabMirrorArgs.MirrorMapping)
 	}()
 
@@ -88,14 +92,17 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	// In case of dry run, simply print the groups and projects that would be created or updated
 	if gitlabMirrorArgs.DryRun {
 		destinationGitlabInstance.DryRun(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
+
 		return nil
 	}
 
 	// Create groups and projects in the destination GitLab instance (Groups must be created before projects)
 	errCh <- destinationGitlabInstance.CreateGroups(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
+
 	errCh <- destinationGitlabInstance.CreateProjects(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
 
 	close(errCh)
+
 	return helpers.MergeErrors(errCh)
 }
 
@@ -103,21 +110,27 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 // It returns four maps: sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, and destinationGroupFilters.
 func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[string]struct{}, map[string]struct{}, map[string]struct{}) {
 	zap.L().Info("Checking mirror mapping filters")
+
 	sourceProjectFilters := make(map[string]struct{})
 	sourceGroupFilters := make(map[string]struct{})
 	destinationProjectFilters := make(map[string]struct{})
 	destinationGroupFilters := make(map[string]struct{})
 
 	// Initialize concurrency control
-	var mu sync.Mutex
-	var wg sync.WaitGroup
+	var (
+		mu sync.Mutex
+		wg sync.WaitGroup
+	)
+
 	wg.Add(2)
 
 	// Process group filters concurrently
 	go func() {
 		defer wg.Done()
+
 		for group, copyOptions := range filters.Groups {
 			sourceGroupFilters[group] = struct{}{}
+
 			mu.Lock()
 			destinationGroupFilters[copyOptions.DestinationPath] = struct{}{}
 			mu.Unlock()
@@ -127,9 +140,11 @@ func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[stri
 	// Process project filters concurrently
 	go func() {
 		defer wg.Done()
+
 		for project, copyOptions := range filters.Projects {
 			sourceProjectFilters[project] = struct{}{}
 			destinationProjectFilters[copyOptions.DestinationPath] = struct{}{}
+
 			destinationGroupPath := filepath.Dir(copyOptions.DestinationPath)
 			if destinationGroupPath != "" && destinationGroupPath != "." && destinationGroupPath != "/" {
 				mu.Lock()
@@ -140,6 +155,7 @@ func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[stri
 	}()
 
 	wg.Wait()
+
 	return sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters
 }
 
@@ -147,26 +163,32 @@ func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[stri
 func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *GitlabInstance, mirrorMapping *utils.MirrorMapping) []error {
 	zap.L().Info("Dry run mode enabled, will not create groups or projects")
 	zap.L().Info("Groups that will be created (or updated if they already exist):")
+
 	for sourceGroupPath, copyOptions := range mirrorMapping.Groups {
 		if sourceGroup, ok := sourceGitlabInstance.Groups[sourceGroupPath]; ok {
 			fmt.Printf("  - %s (source gitlab) -> %s (destination gitlab)\n", sourceGroup.WebURL, copyOptions.DestinationPath)
 		}
 	}
+
 	zap.L().Info("Projects that will be created (or updated if they already exist):")
+
 	for sourceProjectPath, copyOptions := range mirrorMapping.Projects {
 		if sourceProject, ok := sourceGitlabInstance.Projects[sourceProjectPath]; ok {
 			fmt.Printf("  - %s (source gitlab) -> %s (destination gitlab)\n", sourceProject.WebURL, copyOptions.DestinationPath)
 
-			if copyOptions.MirrorReleases {
-				if err := destinationGitlabInstance.DryRunReleases(sourceGitlabInstance, sourceProject, copyOptions); err != nil {
+			if helpers.Deref(copyOptions.MirrorReleases, false) {
+				err := destinationGitlabInstance.DryRunReleases(sourceGitlabInstance, sourceProject, copyOptions)
+				if err != nil {
 					zap.L().Error("Failed to dry run releases", zap.Error(err))
+
 					return []error{helpers.NewNonBlocking(err)}
 				}
 			}
 		}
-
 	}
+
 	zap.L().Info("Dry run completed")
+
 	return nil
 }
 
@@ -177,6 +199,7 @@ func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *Gi
 // IsPullMirrorAvailable checks the destination GitLab instance for version and license compatibility.
 func (g *GitlabInstance) IsPullMirrorAvailable(forcePremium bool, forceNonPremium bool) (bool, error) {
 	zap.L().Info("Checking destination GitLab instance")
+
 	thresholdOk, err := g.IsVersionGreaterThanThreshold()
 	if err != nil {
 		return false, fmt.Errorf("destination GitLab instance version check failed: %w", err)

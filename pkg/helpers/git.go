@@ -37,6 +37,7 @@ func MirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.A
 	}
 
 	zap.L().Debug("Cloning source repository", zap.String("sourceURL", sourceURL), zap.String("destinationURL", destinationURL))
+
 	srcRepo, err := git.PlainClone(tmpDir, true, pullOpts)
 	if err != nil {
 		return fmt.Errorf("failed to clone source repository locally: %w", err)
@@ -44,6 +45,7 @@ func MirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.A
 
 	// Add destination as a remote
 	zap.L().Debug("Adding destination remote", zap.String("destinationURL", destinationURL))
+
 	_, err = srcRepo.CreateRemote(&config.RemoteConfig{
 		Name: "destination",
 		URLs: []string{destinationURL},
@@ -54,6 +56,7 @@ func MirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.A
 
 	// Push *all* refs up to it
 	zap.L().Debug("Pushing to destination repository", zap.String("destinationURL", destinationURL))
+
 	pushOpts := &git.PushOptions{
 		RemoteName: "destination",
 		Force:      true,
@@ -88,6 +91,7 @@ func fixBareRepoHEAD(destinationURL string, srcRepo *git.Repository) error {
 	if err != nil {
 		return err
 	}
+
 	path := u.Path
 
 	destRepo, err := git.PlainOpen(path)
@@ -104,6 +108,7 @@ func fixBareRepoHEAD(destinationURL string, srcRepo *git.Repository) error {
 	// write a new symbolic HEAD in the bare repo
 	zap.L().Debug("Setting HEAD in destination repository", zap.String("destinationURL", destinationURL), zap.String("branch", srcHead.Name().String()))
 	sym := plumbing.NewSymbolicReference(plumbing.HEAD, srcHead.Name())
+
 	return destRepo.Storer.SetReference(sym)
 }
 
@@ -116,6 +121,7 @@ func BuildHTTPAuth(username string, token string) transport.AuthMethod {
 	if strings.TrimSpace(username) == "" {
 		username = DEFAULT_GIT_USER
 	}
+
 	return &http.BasicAuth{
 		Username: username,
 		Password: token,

@@ -7,6 +7,8 @@ import (
 
 	"gitlab-sync/internal/utils"
 	"gitlab-sync/pkg/helpers"
+
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 func TestProcessFilters(t *testing.T) {
@@ -35,15 +37,15 @@ func TestProcessFilters(t *testing.T) {
 				Projects: map[string]*utils.MirroringOptions{
 					"sourceProject": {
 						DestinationPath: "destinationGroupPath/destinationProjectPath",
-						CI_CD_Catalog:   true,
-						MirrorIssues:    true,
+						CI_CD_Catalog:   gitlab.Ptr(true),
+						MirrorIssues:    gitlab.Ptr(true),
 					},
 				},
 				Groups: map[string]*utils.MirroringOptions{
 					"sourceGroup": {
 						DestinationPath: "destinationGroupPath",
-						CI_CD_Catalog:   true,
-						MirrorIssues:    true,
+						CI_CD_Catalog:   gitlab.Ptr(true),
+						MirrorIssues:    gitlab.Ptr(true),
 					},
 				},
 			},
@@ -66,25 +68,25 @@ func TestProcessFilters(t *testing.T) {
 				Projects: map[string]*utils.MirroringOptions{
 					"sourceProject1": {
 						DestinationPath: "destinationGroupPath1/destinationProjectPath1",
-						CI_CD_Catalog:   true,
-						MirrorIssues:    true,
+						CI_CD_Catalog:   gitlab.Ptr(true),
+						MirrorIssues:    gitlab.Ptr(true),
 					},
 					"sourceProject2": {
 						DestinationPath: "destinationGroupPath2/destinationProjectPath2",
-						CI_CD_Catalog:   false,
-						MirrorIssues:    false,
+						CI_CD_Catalog:   gitlab.Ptr(false),
+						MirrorIssues:    gitlab.Ptr(false),
 					},
 				},
 				Groups: map[string]*utils.MirroringOptions{
 					"sourceGroup1": {
 						DestinationPath: "destinationGroupPath3",
-						CI_CD_Catalog:   true,
-						MirrorIssues:    true,
+						CI_CD_Catalog:   gitlab.Ptr(true),
+						MirrorIssues:    gitlab.Ptr(true),
 					},
 					"sourceGroup2": {
 						DestinationPath: "destinationGroupPath4",
-						CI_CD_Catalog:   false,
-						MirrorIssues:    false,
+						CI_CD_Catalog:   gitlab.Ptr(false),
+						MirrorIssues:    gitlab.Ptr(false),
 					},
 				},
 			},
@@ -105,6 +107,52 @@ func TestProcessFilters(t *testing.T) {
 				"destinationGroupPath2": {},
 				"destinationGroupPath3": {},
 				"destinationGroupPath4": {},
+			},
+		},
+		{
+			name: "ProjectDestinationWithoutNamespaceDoesNotCreateDestinationGroupFilter",
+			mirrorMapping: &utils.MirrorMapping{
+				Projects: map[string]*utils.MirroringOptions{
+					"sourceProject": {
+						DestinationPath: "destinationProjectPath",
+					},
+				},
+				Groups: map[string]*utils.MirroringOptions{},
+			},
+			expectedSourceProjectFilters: map[string]struct{}{
+				"sourceProject": {},
+			},
+			expectedSourceGroupFilters: map[string]struct{}{},
+			expectedDestinationProjectFilters: map[string]struct{}{
+				"destinationProjectPath": {},
+			},
+			expectedDestinationGroupFilters: map[string]struct{}{},
+		},
+		{
+			name: "DuplicateDestinationGroupFromProjectAndGroupIsDeduplicated",
+			mirrorMapping: &utils.MirrorMapping{
+				Projects: map[string]*utils.MirroringOptions{
+					"sourceProject": {
+						DestinationPath: "destinationGroupPath/destinationProjectPath",
+					},
+				},
+				Groups: map[string]*utils.MirroringOptions{
+					"sourceGroup": {
+						DestinationPath: "destinationGroupPath",
+					},
+				},
+			},
+			expectedSourceProjectFilters: map[string]struct{}{
+				"sourceProject": {},
+			},
+			expectedSourceGroupFilters: map[string]struct{}{
+				"sourceGroup": {},
+			},
+			expectedDestinationProjectFilters: map[string]struct{}{
+				"destinationGroupPath/destinationProjectPath": {},
+			},
+			expectedDestinationGroupFilters: map[string]struct{}{
+				"destinationGroupPath": {},
 			},
 		},
 	}
@@ -156,13 +204,13 @@ func TestDryRun(t *testing.T) {
 				Projects: map[string]*utils.MirroringOptions{
 					TEST_PROJECT.PathWithNamespace: {
 						DestinationPath: TEST_PROJECT.PathWithNamespace,
-						MirrorReleases:  true,
+						MirrorReleases:  gitlab.Ptr(true),
 					},
 				},
 				Groups: map[string]*utils.MirroringOptions{
 					TEST_GROUP_2.FullPath: {
 						DestinationPath: TEST_GROUP_2.FullPath,
-						MirrorReleases:  true,
+						MirrorReleases:  gitlab.Ptr(true),
 					},
 				},
 			}

@@ -2,10 +2,10 @@ package mirroring
 
 import (
 	"fmt"
-	"gitlab-sync/internal/utils"
-	"gitlab-sync/pkg/helpers"
 	"sync"
 
+	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
 )
@@ -18,9 +18,10 @@ import (
 //	      GET
 // ================
 
-// FetchProjectReleases retrieves all releases for a project and returns them
+// FetchProjectReleases retrieves all releases for a project and returns them.
 func (g *GitlabInstance) FetchProjectReleases(project *gitlab.Project) ([]*gitlab.Release, error) {
 	zap.L().Debug("Fetching releases for project", zap.String("project", project.PathWithNamespace))
+
 	fetchOpts := &gitlab.ListReleasesOptions{
 		ListOptions: gitlab.ListOptions{
 			PerPage: 100,
@@ -28,25 +29,27 @@ func (g *GitlabInstance) FetchProjectReleases(project *gitlab.Project) ([]*gitla
 		},
 	}
 
-	var releases = make([]*gitlab.Release, 0)
+	releases := make([]*gitlab.Release, 0)
 
 	for {
 		fetchedReleases, resp, err := g.Gitlab.Releases.ListReleases(project.ID, fetchOpts)
 		if err != nil {
 			return nil, err
 		}
+
 		releases = append(releases, fetchedReleases...)
 
 		if resp.CurrentPage >= resp.TotalPages {
 			break
 		}
+
 		fetchOpts.Page = resp.NextPage
 	}
 
 	return releases, nil
 }
 
-// FetchProjectReleasesTags retrieves all release tags for a project and returns them as a map
+// FetchProjectReleasesTags retrieves all release tags for a project and returns them as a map.
 func (g *GitlabInstance) FetchProjectReleasesTags(project *gitlab.Project) (map[string]struct{}, error) {
 	// Fetch existing releases from the destination project
 	releases, err := g.FetchProjectReleases(project)
@@ -56,11 +59,13 @@ func (g *GitlabInstance) FetchProjectReleasesTags(project *gitlab.Project) (map[
 
 	// Create a map of existing release tags for quick lookup
 	releasesTags := make(map[string]struct{})
+
 	for _, release := range releases {
 		if release != nil {
 			releasesTags[release.TagName] = struct{}{}
 		}
 	}
+
 	return releasesTags, nil
 }
 
@@ -70,12 +75,13 @@ func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInst
 	// Fetch releases from the source project
 	sourceReleases, err := sourceGitlabInstance.FetchProjectReleasesTags(sourceProject)
 	if err != nil {
-		return fmt.Errorf("failed to fetch releases for source project %s: %s", sourceProject.HTTPURLToRepo, err)
+		return fmt.Errorf("failed to fetch releases for source project %s: %w", sourceProject.HTTPURLToRepo, err)
 	}
 	// Print the releases that will be created in the destination project
 	for release := range sourceReleases {
 		fmt.Printf("    - Release %s will be created in %s (if it does not already exist)\n", release, destinationGitlabInstance.Gitlab.BaseURL().String()+copyOptions.DestinationPath)
 	}
+
 	return nil
 }
 
@@ -83,7 +89,7 @@ func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInst
 //	      POST
 // ================
 
-// MirrorRelease creates a release in the destination project
+// MirrorRelease creates a release in the destination project.
 func (g *GitlabInstance) MirrorRelease(project *gitlab.Project, release *gitlab.Release) error {
 	zap.L().Debug("Creating release in destination project", zap.String("release", release.TagName), zap.String(ROLE_DESTINATION, project.HTTPURLToRepo))
 
@@ -94,6 +100,7 @@ func (g *GitlabInstance) MirrorRelease(project *gitlab.Project, release *gitlab.
 		Description: &release.Description,
 		ReleasedAt:  release.ReleasedAt,
 	})
+
 	return err
 }
 
@@ -103,23 +110,24 @@ func (g *GitlabInstance) MirrorRelease(project *gitlab.Project, release *gitlab.
 
 // MirrorReleases mirrors releases from the source project to the destination project.
 // It fetches existing releases from the destination project and creates new releases for those that do not exist.
-// The function handles the API calls concurrently using goroutines
+// The function handles the API calls concurrently using goroutines.
 func (destinationGitlab *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project) []error {
 	zap.L().Info("Starting releases mirroring", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 	// Fetch existing releases from the destination project
 	existingReleasesTags, err := destinationGitlab.FetchProjectReleasesTags(destinationProject)
 	if err != nil {
-		return []error{fmt.Errorf("failed to fetch existing releases for destination project %s: %s", destinationProject.HTTPURLToRepo, err)}
+		return []error{fmt.Errorf("failed to fetch existing releases for destination project %s: %w", destinationProject.HTTPURLToRepo, err)}
 	}
 
 	// Fetch releases from the source project
 	sourceReleases, err := sourceGitlab.FetchProjectReleases(sourceProject)
 	if err != nil {
-		return []error{fmt.Errorf("failed to fetch releases for source project %s: %s", sourceProject.HTTPURLToRepo, err)}
+		return []error{fmt.Errorf("failed to fetch releases for source project %s: %w", sourceProject.HTTPURLToRepo, err)}
 	}
 
 	// Create a wait group and an error channel for handling API calls concurrently
 	var wg sync.WaitGroup
+
 	errorChan := make(chan error, len(sourceReleases))
 
 	// Iterate over each source release
@@ -127,6 +135,7 @@ func (destinationGitlab *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInst
 		// Check if the release already exists in the destination project
 		if _, exists := existingReleasesTags[release.TagName]; exists {
 			zap.L().Debug("Release already exists", zap.String("release", release.TagName), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+
 			continue
 		}
 
@@ -136,9 +145,10 @@ func (destinationGitlab *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInst
 		// Define the API call logic for creating a release
 		go func(releaseToMirror *gitlab.Release) {
 			defer wg.Done()
+
 			err := destinationGitlab.MirrorRelease(destinationProject, releaseToMirror)
 			if err != nil {
-				errorChan <- fmt.Errorf("failed to create release %s in project %s: %s", releaseToMirror.TagName, destinationProject.HTTPURLToRepo, err)
+				errorChan <- fmt.Errorf("failed to create release %s in project %s: %w", releaseToMirror.TagName, destinationProject.HTTPURLToRepo, err)
 			}
 		}(release)
 	}
@@ -148,5 +158,6 @@ func (destinationGitlab *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInst
 	close(errorChan)
 
 	zap.L().Info("Releases mirroring completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+
 	return helpers.MergeErrors(errorChan)
 }

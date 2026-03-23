@@ -4,15 +4,17 @@ import (
 	"strings"
 )
 
-// toStrings converts a []error into a []string for easy comparison
+// toStrings converts a []error into a []string for easy comparison.
 func ToStrings(errs []error) []string {
 	if errs == nil {
 		return nil
 	}
+
 	out := make([]string, len(errs))
 	for i, e := range errs {
 		out[i] = e.Error()
 	}
+
 	return out
 }
 
@@ -27,6 +29,7 @@ func MatchPathAgainstFilters(path string, allowList *map[string]struct{}, prefix
 			return "", true
 		}
 	}
+
 	if prefixList != nil {
 		for prefix := range *prefixList {
 			if strings.HasPrefix(path, prefix) {
@@ -34,5 +37,15 @@ func MatchPathAgainstFilters(path string, allowList *map[string]struct{}, prefix
 			}
 		}
 	}
+
 	return "", false
+}
+
+// Deref safely dereferences a pointer of any type, returning a default value if the pointer is nil.
+func Deref[T any](ptr *T, defaultValue T) T {
+	if ptr == nil {
+		return defaultValue
+	}
+
+	return *ptr
 }

@@ -1,13 +1,14 @@
 package mirroring
 
 import (
+	"errors"
 	"fmt"
-	"gitlab-sync/internal/utils"
-	"gitlab-sync/pkg/helpers"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
 )
@@ -33,7 +34,9 @@ func (destinationGitlab *GitlabInstance) CreateGroups(sourceGitlab *GitlabInstan
 			errorChan <- err
 		}
 	}
+
 	close(errorChan)
+
 	return helpers.MergeErrors(errorChan)
 }
 
@@ -58,12 +61,15 @@ func (destinationGitlab *GitlabInstance) CreateGroup(destinationGroupPath string
 
 	// Check if the group already exists in the destination GitLab instance
 	destinationGroup := destinationGitlab.GetGroup(destinationGroupPath)
+
 	var err error
+
 	if destinationGroup == nil {
 		zap.L().Debug("Group not found, creating new group in GitLab Instance", zap.String("group", destinationGroupPath), zap.String(ROLE, ROLE_DESTINATION))
+
 		destinationGroup, err = destinationGitlab.CreateGroupFromSource(sourceGroup, groupCreationOptions)
 		if err != nil {
-			return nil, []error{fmt.Errorf("failed to create group %s in destination GitLab instance: %s", destinationGroupPath, err)}
+			return nil, []error{fmt.Errorf("failed to create group %s in destination GitLab instance: %w", destinationGroupPath, err)}
 		} else {
 			// Copy the group avatar from the source to the destination instance
 			errArray := sourceGitlab.updateGroupFromSource(destinationGitlab, destinationGroup, sourceGroup, groupCreationOptions)
@@ -72,7 +78,9 @@ func (destinationGitlab *GitlabInstance) CreateGroup(destinationGroupPath string
 			}
 		}
 	}
+
 	zap.L().Debug("Group already exists, skipping creation", zap.String("group", destinationGroupPath))
+
 	return destinationGroup, nil
 }
 
@@ -92,6 +100,7 @@ func (g *GitlabInstance) CreateGroupFromSource(sourceGroup *gitlab.Group, copyOp
 	// Retrieve the parent namespace ID for the group
 	// This is used to set the parent ID for the group
 	zap.L().Debug("Retrieving group namespace ID", zap.String(ROLE, ROLE_DESTINATION), zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
+
 	parentGroupID, err := g.GetParentNamespaceID(copyOptions.DestinationPath)
 	if err != nil {
 		return nil, err
@@ -101,14 +110,19 @@ func (g *GitlabInstance) CreateGroupFromSource(sourceGroup *gitlab.Group, copyOp
 
 	// Create the group in the destination GitLab instance
 	zap.L().Debug("Creating group in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION), zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
+
 	destinationGroup, _, err := g.Gitlab.Groups.CreateGroup(groupCreationArgs)
 	if err == nil {
 		zap.L().Info("Group created", zap.String("group", destinationGroup.WebURL))
 		g.AddGroup(destinationGroup)
 
 		// Claim ownership of the created group
-		if err := g.ClaimOwnershipToGroup(destinationGroup); err != nil {
-			zap.L().Warn("Failed to claim ownership of group", zap.String("group", destinationGroup.FullPath), zap.Error(err))
+
+		if copyOptions.ClaimOwnership != nil && *copyOptions.ClaimOwnership {
+			err := g.ClaimOwnershipToGroup(destinationGroup)
+			if err != nil {
+				zap.L().Warn("Failed to claim ownership of group", zap.String("group", destinationGroup.FullPath), zap.Error(err))
+			}
 		}
 	}
 
@@ -125,9 +139,11 @@ func (g *GitlabInstance) CreateGroupFromSource(sourceGroup *gitlab.Group, copyOp
 // The function is run in a goroutine for each group, and a wait group is used to wait for all goroutines to finish.
 func (g *GitlabInstance) FetchAndProcessGroups(groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
 	zap.L().Debug("Fetching and processing groups from GitLab instance", zap.String(ROLE, g.Role), zap.Int("groups", len(*groupFilters)))
+
 	if !g.IsBig() {
 		return []error{g.FetchAndProcessGroupsSmallInstance(groupFilters, mirrorMapping)}
 	}
+
 	return g.FetchAndProcessGroupsLargeInstance(groupFilters, mirrorMapping)
 }
 
@@ -144,6 +160,7 @@ func (g *GitlabInstance) StoreGroup(group *gitlab.Group, parentGroupPath string,
 			groupCreationOptions, ok := mirrorMapping.Groups[parentGroupPath]
 			if !ok {
 				zap.L().Error("Group not found in mirror mapping", zap.String("group", parentGroupPath))
+
 				return
 			}
 
@@ -151,6 +168,7 @@ func (g *GitlabInstance) StoreGroup(group *gitlab.Group, parentGroupPath string,
 			relativePath, err := filepath.Rel(parentGroupPath, group.FullPath)
 			if err != nil {
 				zap.L().Error("Failed to calculate relative path for group", zap.String("group", group.FullPath), zap.String("parentGroup", parentGroupPath), zap.Error(err))
+
 				return
 			}
 
@@ -188,9 +206,10 @@ func (g *GitlabInstance) FetchAndProcessGroupsSmallInstance(groupFilters *map[st
 	return nil
 }
 
-// FetchAllGroupsSmallInstance retrieves all groups from the small GitLab instance
+// FetchAllGroupsSmallInstance retrieves all groups from the small GitLab instance.
 func (g *GitlabInstance) FetchAllGroupsSmallInstance() ([]*gitlab.Group, error) {
 	zap.L().Debug("Fetching all groups from GitLab instance", zap.String(ROLE, g.Role))
+
 	fetchOpts := &gitlab.ListGroupsOptions{
 		AllAvailable: gitlab.Ptr(true),
 		ListOptions: gitlab.ListOptions{
@@ -206,17 +225,21 @@ func (g *GitlabInstance) FetchAllGroupsSmallInstance() ([]*gitlab.Group, error) 
 		if err != nil {
 			return allGroups, err
 		}
+
 		allGroups = append(allGroups, groups...)
+
 		if resp.CurrentPage >= resp.TotalPages {
 			break
 		}
+
 		fetchOpts.Page = resp.NextPage
 	}
+
 	return allGroups, nil
 }
 
 // FetchAllGroupsSmallInstance retrieves all groups from the small GitLab instance
-// It uses pagination to fetch all groups in batches of 100. Queries all groups of the instance
+// It uses pagination to fetch all groups in batches of 100. Queries all groups of the instance.
 func (g *GitlabInstance) ProcessGroupsSmallInstance(allGroups []*gitlab.Group, groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) {
 	zap.L().Debug("Processing groups from GitLab instance", zap.String(INSTANCE_SIZE, g.InstanceSize), zap.String(ROLE, g.Role), zap.Int("groups", len(allGroups)))
 
@@ -248,6 +271,7 @@ func (g *GitlabInstance) ProcessGroupsSmallInstance(allGroups []*gitlab.Group, g
 // It uses goroutines to fetch groups and their projects concurrently.
 func (g *GitlabInstance) FetchAndProcessGroupsLargeInstance(groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
 	errChan := make(chan error)
+
 	var wg sync.WaitGroup
 	wg.Add(len(*groupFilters))
 
@@ -262,6 +286,7 @@ func (g *GitlabInstance) FetchAndProcessGroupsLargeInstance(groupFilters *map[st
 		for err := range errChan {
 			if err != nil {
 				errMu.Lock()
+
 				errs = append(errs, err)
 				errMu.Unlock()
 			}
@@ -275,6 +300,7 @@ func (g *GitlabInstance) FetchAndProcessGroupsLargeInstance(groupFilters *map[st
 	// Wait for all goroutines to finish
 	wg.Wait()
 	close(errChan)
+
 	return helpers.MergeErrors(errs)
 }
 
@@ -282,27 +308,32 @@ func (g *GitlabInstance) FetchAndProcessGroupsLargeInstance(groupFilters *map[st
 // It uses a wait group to ensure that all goroutines finish befopidpre returning
 // It sends the fetched group to the allGroupsChannel and the projects to the allProjectsChanel
 //
-// gid can be either an int, a string or a *gitlab.Group
+// gid can be either an int, a string or a *gitlab.Group.
 func (g *GitlabInstance) FetchAndProcessGroupRecursive(gid any, fetchOriginPath string, mirrorMapping *utils.MirrorMapping, errChan chan error, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	var group *gitlab.Group
-	var err error
+	var (
+		group *gitlab.Group
+		err   error
+	)
 
 	switch v := gid.(type) {
 	case int, string:
 		group, _, err = g.Gitlab.Groups.GetGroup(gid, &gitlab.GetGroupOptions{WithProjects: gitlab.Ptr(false)})
 		if err != nil {
-			errChan <- fmt.Errorf("failed to retrieve group %s: %v", gid, err)
+			errChan <- fmt.Errorf("failed to retrieve group %s: %w", gid, err)
 		}
 	case *gitlab.Group:
 		group = v
 	default:
 		errChan <- fmt.Errorf("invalid group ID type %T (%v)", gid, gid)
+
 		return
 	}
+
 	if group != nil {
 		g.StoreGroup(group, fetchOriginPath, mirrorMapping)
+
 		if g.IsSource() || g.IsBig() {
 			wg.Add(2)
 			// Fetch the projects of the group
@@ -317,6 +348,7 @@ func (g *GitlabInstance) FetchAndProcessGroupRecursive(gid any, fetchOriginPath 
 // and processes them to store in the instance cache.
 func (g *GitlabInstance) FetchAndProcessGroupSubgroups(group *gitlab.Group, fetchOriginPath string, mirrorMapping *utils.MirrorMapping, errChan chan error, wg *sync.WaitGroup) {
 	defer wg.Done()
+
 	fetchOpts := &gitlab.ListSubGroupsOptions{
 		AllAvailable: gitlab.Ptr(true),
 		ListOptions: gitlab.ListOptions{
@@ -328,19 +360,25 @@ func (g *GitlabInstance) FetchAndProcessGroupSubgroups(group *gitlab.Group, fetc
 	for {
 		subgroups, resp, err := g.Gitlab.Groups.ListSubGroups(group.ID, fetchOpts)
 		if err != nil {
-			errChan <- fmt.Errorf("failed to retrieve subgroups for group %s: %v", group.FullPath, err)
+			errChan <- fmt.Errorf("failed to retrieve subgroups for group %s: %w", group.FullPath, err)
+
 			return
 		}
+
 		for _, subgroup := range subgroups {
 			g.StoreGroup(subgroup, fetchOriginPath, mirrorMapping)
+
 			if g.IsSource() || g.IsBig() {
 				wg.Add(1)
+
 				go g.FetchAndProcessGroupRecursive(subgroup, fetchOriginPath, mirrorMapping, errChan, wg)
 			}
 		}
+
 		if resp.CurrentPage >= resp.TotalPages {
 			break
 		}
+
 		fetchOpts.Page = resp.NextPage
 	}
 }
@@ -358,7 +396,7 @@ func (destinationGitlabInstance *GitlabInstance) updateGroupFromSource(sourceGit
 	cpOpts := copyOptions
 
 	if srcGroup == nil || dstGroup == nil {
-		return []error{fmt.Errorf("source or destination group is nil")}
+		return []error{errors.New("source or destination group is nil")}
 	}
 
 	wg := sync.WaitGroup{}
@@ -368,11 +406,13 @@ func (destinationGitlabInstance *GitlabInstance) updateGroupFromSource(sourceGit
 
 	go func(sg *gitlab.Group, dg *gitlab.Group, cp *utils.MirroringOptions) {
 		defer wg.Done()
+
 		errorChan <- destinationGitlabInstance.syncGroupAttributes(sg, dg, cp)
 	}(srcGroup, dstGroup, cpOpts)
 
 	go func(sg *gitlab.Group, dg *gitlab.Group) {
 		defer wg.Done()
+
 		errorChan <- sourceGitlabInstance.copyGroupAvatar(destinationGitlabInstance, dg, sg)
 	}(srcGroup, dstGroup)
 
@@ -393,6 +433,7 @@ func (sourceGitlabInstance *GitlabInstance) copyGroupAvatar(destinationGitlabIns
 	// Check if the destination group already has an avatar
 	if destinationGroup.AvatarURL != "" {
 		zap.L().Debug("Group avatar already set", zap.String("group", destinationGroup.WebURL), zap.String("path", destinationGroup.AvatarURL))
+
 		return nil
 	}
 
@@ -401,14 +442,15 @@ func (sourceGitlabInstance *GitlabInstance) copyGroupAvatar(destinationGitlabIns
 	// Download the source group avatar
 	sourceGroupAvatar, _, err := sourceGitlabInstance.Gitlab.Groups.DownloadAvatar(sourceGroup.ID)
 	if err != nil {
-		return fmt.Errorf("failed to download avatar for group %s: %s", sourceGroup.WebURL, err)
+		return fmt.Errorf("failed to download avatar for group %s: %w", sourceGroup.WebURL, err)
 	}
 
 	// Upload the avatar to the destination group
 	filename := fmt.Sprintf("avatar-%d.png", time.Now().Unix())
+
 	_, _, err = destinationGitlabInstance.Gitlab.Groups.UploadAvatar(destinationGroup.ID, sourceGroupAvatar, filename)
 	if err != nil {
-		return fmt.Errorf("failed to upload avatar for group %s: %s", destinationGroup.WebURL, err)
+		return fmt.Errorf("failed to upload avatar for group %s: %w", destinationGroup.WebURL, err)
 	}
 
 	return nil
@@ -418,17 +460,21 @@ func (sourceGitlabInstance *GitlabInstance) copyGroupAvatar(destinationGitlabIns
 // It checks if any diverged group data exists and if so, it overwrites it.
 func (destinationGitlabInstance *GitlabInstance) syncGroupAttributes(sourceGroup *gitlab.Group, destinationGroup *gitlab.Group, copyOptions *utils.MirroringOptions) error {
 	zap.L().Debug("Checking if group requires attributes resync", zap.String(ROLE_SOURCE, sourceGroup.FullPath), zap.String(ROLE_DESTINATION, destinationGroup.FullPath))
+
 	gitlabEditOptions := &gitlab.UpdateGroupOptions{}
 	missmatched := false
+
 	if sourceGroup.Name != destinationGroup.Name {
 		gitlabEditOptions.Name = &sourceGroup.Name
 		missmatched = true
 	}
+
 	if sourceGroup.Description != destinationGroup.Description {
 		gitlabEditOptions.Description = &sourceGroup.Description
 		missmatched = true
 	}
-	if copyOptions.Visibility != string(destinationGroup.Visibility) {
+
+	if helpers.Deref(copyOptions.Visibility, string(gitlab.PublicVisibility)) != string(destinationGroup.Visibility) {
 		visibilityValue := utils.ConvertVisibility(copyOptions.Visibility)
 		gitlabEditOptions.Visibility = &visibilityValue
 		missmatched = true
@@ -437,12 +483,14 @@ func (destinationGitlabInstance *GitlabInstance) syncGroupAttributes(sourceGroup
 	if missmatched {
 		destinationGroup, _, err := destinationGitlabInstance.Gitlab.Groups.UpdateGroup(destinationGroup.ID, gitlabEditOptions)
 		if err != nil {
-			return fmt.Errorf("failed to edit group %s: %s", destinationGroup.FullPath, err)
+			return fmt.Errorf("failed to edit group %s: %w", destinationGroup.FullPath, err)
 		}
+
 		zap.L().Debug("Group attributes resync completed", zap.String(ROLE_SOURCE, sourceGroup.FullPath), zap.String(ROLE_DESTINATION, destinationGroup.FullPath))
 	} else {
 		zap.L().Debug("Group attributes are already in sync, skipping", zap.String(ROLE_SOURCE, sourceGroup.FullPath), zap.String(ROLE_DESTINATION, destinationGroup.FullPath))
 	}
+
 	return nil
 }
 
@@ -460,5 +508,6 @@ func (g *GitlabInstance) ClaimOwnershipToGroup(group *gitlab.Group) error {
 	}
 
 	zap.L().Info("Successfully claimed ownership of group", zap.String("group", group.FullPath))
+
 	return nil
 }

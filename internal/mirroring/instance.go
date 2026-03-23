@@ -2,14 +2,14 @@ package mirroring
 
 import (
 	"fmt"
-	"gitlab-sync/internal/utils"
-	"gitlab-sync/pkg/helpers"
 	"path/filepath"
 	"sync"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/hashicorp/go-retryablehttp"
+	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
 )
@@ -21,46 +21,24 @@ const (
 )
 
 type GitlabInstance struct {
-	// Gitlab is the GitLab client used to interact with the GitLab API
-	Gitlab *gitlab.Client
-	// Projects is a map of project paths to GitLab project objects, it is used to
-	// cache projects and avoid unnecessary API calls
-	Projects map[string]*gitlab.Project
-	// muProjects is a mutex used to synchronize access to the Projects map
-	// It ensures that only one goroutine can read or write to the Projects map at a time
-	muProjects sync.RWMutex
-	// Groups is a map of group paths to GitLab group objects, it is used to
-	// cache groups and avoid unnecessary API calls
-	Groups map[string]*gitlab.Group
-	// muGroups is a mutex used to synchronize access to the Groups map
-	// It ensures that only one goroutine can read or write to the Groups map at a time
-	muGroups sync.RWMutex
-	// Role is the role of the GitLab instance, it can be either "source" or "destination"
-	// It is used to determine the behavior of the mirroring process
-	Role string
-	// InstanceSize is the size of the GitLab instance, it can be either "small" or "big"
-	// It is used to determine the behavior of the fetching process
-	InstanceSize string
-	// PullMirrorAvailable is a boolean indicating whether the GitLab instance supports pull mirroring
+	GitAuth             transport.AuthMethod
+	Gitlab              *gitlab.Client
+	Projects            map[string]*gitlab.Project
+	Groups              map[string]*gitlab.Group
+	Role                string
+	InstanceSize        string
+	UserID              int64
+	muProjects          sync.RWMutex
+	muGroups            sync.RWMutex
 	PullMirrorAvailable bool
-	// GitAuth is the HTTP authentication used for GitLab git over HTTP operations (only for non premium instances)
-	GitAuth transport.AuthMethod
-	// UserID is the ID of the authenticated user
-	UserID int64
 }
 
 type GitlabInstanceOpts struct {
-	// GitlabURL is the URL of the GitLab instance
-	GitlabURL string
-	// GitlabToken is the token used to authenticate with the GitLab API
-	GitlabToken string
-	// Role is the role of the GitLab instance, it can be either "source" or "destination"
-	Role string
-	// MaxRetries is the maximum number of retries for GitLab API requests
-	MaxRetries int
-	// InstanceSize is the size of the GitLab instance, it can be either "small" or "big"
-	// It is used to determine the behavior of the fetching process
+	GitlabURL    string
+	GitlabToken  string
+	Role         string
 	InstanceSize string
+	MaxRetries   int
 }
 
 // NewGitlabInstance creates a new GitlabInstance with the provided parameters
@@ -87,6 +65,7 @@ func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to get current user: %w", err)
 		}
+
 		gitlabInstance.UserID = user.ID
 	}
 
@@ -99,6 +78,7 @@ func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 func (g *GitlabInstance) AddProject(project *gitlab.Project) {
 	g.muProjects.Lock()
 	defer g.muProjects.Unlock()
+
 	g.Projects[project.PathWithNamespace] = project
 }
 
@@ -109,6 +89,7 @@ func (g *GitlabInstance) AddProject(project *gitlab.Project) {
 func (g *GitlabInstance) GetProject(projectPath string) *gitlab.Project {
 	g.muProjects.RLock()
 	defer g.muProjects.RUnlock()
+
 	return g.Projects[projectPath]
 }
 
@@ -118,6 +99,7 @@ func (g *GitlabInstance) GetProject(projectPath string) *gitlab.Project {
 func (g *GitlabInstance) AddGroup(group *gitlab.Group) {
 	g.muGroups.Lock()
 	defer g.muGroups.Unlock()
+
 	g.Groups[group.FullPath] = group
 }
 
@@ -128,6 +110,7 @@ func (g *GitlabInstance) AddGroup(group *gitlab.Group) {
 func (g *GitlabInstance) GetGroup(groupPath string) *gitlab.Group {
 	g.muGroups.RLock()
 	defer g.muGroups.RUnlock()
+
 	return g.Groups[groupPath]
 }
 
@@ -150,12 +133,14 @@ func (g *GitlabInstance) IsVersionGreaterThanThreshold() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to get GitLab version: %w", err)
 	}
+
 	zap.L().Debug("GitLab Instance version", zap.String(ROLE, g.Role), zap.String("version", metadata.Version))
 
 	currentVer, err := semver.NewVersion(metadata.Version)
 	if err != nil {
 		return false, fmt.Errorf("failed to parse GitLab version: %w", err)
 	}
+
 	thresholdVer, err := semver.NewVersion(INSTANCE_SEMVER_THRESHOLD)
 	if err != nil {
 		return false, fmt.Errorf("failed to parse version threshold: %w", err)
@@ -171,10 +156,13 @@ func (g *GitlabInstance) IsLicensePremium() (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to get GitLab license: %w", err)
 	}
+
 	zap.L().Info("GitLab Instance license", zap.String(ROLE, g.Role), zap.String("plan", license.Plan))
+
 	if license.Plan != ULTIMATE_PLAN && license.Plan != PREMIUM_PLAN || license.Expired {
 		return false, nil
 	}
+
 	return true, nil
 }
 
@@ -182,21 +170,27 @@ func (g *GitlabInstance) IsLicensePremium() (bool, error) {
 // that match the filters and stores them in the instance cache.
 func (g *GitlabInstance) FetchAll(projectFilters map[string]struct{}, groupFilters map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
 	zap.L().Info("Fetching all projects and groups from GitLab instance", zap.String(ROLE, g.Role), zap.String(INSTANCE_SIZE, g.InstanceSize), zap.Int("projects", len(projectFilters)), zap.Int("groups", len(groupFilters)))
+
 	wg := sync.WaitGroup{}
 	errCh := make(chan []error, 2)
+
 	wg.Add(2)
+
 	go func() {
 		defer wg.Done()
+
 		if err := g.FetchAndProcessGroups(&groupFilters, mirrorMapping); err != nil {
 			errCh <- err
 		}
 	}()
 	go func() {
 		defer wg.Done()
+
 		if err := g.FetchAndProcessProjects(&projectFilters, &groupFilters, mirrorMapping); err != nil {
 			errCh <- err
 		}
 	}()
+
 	wg.Wait()
 	close(errCh)
 
@@ -210,7 +204,9 @@ func (g *GitlabInstance) FetchAll(projectFilters map[string]struct{}, groupFilte
 func (g *GitlabInstance) GetParentNamespaceID(projectOrGroupPath string) (int64, error) {
 	parentGroupID := int64(-1)
 	parentPath := filepath.Dir(projectOrGroupPath)
+
 	var err error = nil
+
 	if parentPath != "." && parentPath != "/" {
 		// Check if parent path is already in the instance groups cache
 		if parentGroup, ok := g.Groups[parentPath]; ok {
@@ -219,5 +215,6 @@ func (g *GitlabInstance) GetParentNamespaceID(projectOrGroupPath string) (int64,
 			err = fmt.Errorf("parent group not found for path: %s", parentPath)
 		}
 	}
+
 	return parentGroupID, err
 }

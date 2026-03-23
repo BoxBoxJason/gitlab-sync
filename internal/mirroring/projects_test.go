@@ -3,6 +3,8 @@ package mirroring
 import (
 	"gitlab-sync/internal/utils"
 	"testing"
+
+	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 func TestFetchAll(t *testing.T) {
@@ -213,11 +215,11 @@ func TestCreateProjectFromSource(t *testing.T) {
 			gitlabInstance.AddGroup(TEST_GROUP)
 			createdProject, err := gitlabInstance.CreateProjectFromSource(TEST_PROJECT, &utils.MirroringOptions{
 				DestinationPath:     TEST_PROJECT.PathWithNamespace,
-				MirrorIssues:        true,
-				MirrorReleases:      true,
-				MirrorTriggerBuilds: true,
-				Visibility:          "public",
-				CI_CD_Catalog:       true,
+				MirrorIssues:        gitlab.Ptr(true),
+				MirrorReleases:      gitlab.Ptr(true),
+				MirrorTriggerBuilds: gitlab.Ptr(true),
+				Visibility:          gitlab.Ptr("public"),
+				CI_CD_Catalog:       gitlab.Ptr(true),
 			})
 			if err != nil {
 				t.Errorf("Unexpected error when creating project: %v", err)
@@ -231,6 +233,24 @@ func TestCreateProjectFromSource(t *testing.T) {
 		})
 	}
 
+}
+
+func TestCreateProjectFromSourceWithMinimalOptions(t *testing.T) {
+	_, gitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	gitlabInstance.AddGroup(TEST_GROUP)
+
+	createdProject, err := gitlabInstance.CreateProjectFromSource(TEST_PROJECT, &utils.MirroringOptions{
+		DestinationPath: TEST_PROJECT.PathWithNamespace,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error when creating project with minimal options: %v", err)
+	}
+	if createdProject == nil {
+		t.Fatal("expected created project to be non-nil")
+	}
+	if createdProject.PathWithNamespace != TEST_PROJECT.PathWithNamespace {
+		t.Errorf("expected created project path to be %s, got %s", TEST_PROJECT.PathWithNamespace, createdProject.PathWithNamespace)
+	}
 }
 
 func TestCopyProjectAvatar(t *testing.T) {
@@ -256,11 +276,11 @@ func TestCreateProjects(t *testing.T) {
 			Projects: map[string]*utils.MirroringOptions{
 				TEST_PROJECT.PathWithNamespace: {
 					DestinationPath:     TEST_PROJECT.PathWithNamespace,
-					CI_CD_Catalog:       false,
-					MirrorIssues:        true,
-					MirrorTriggerBuilds: false,
-					Visibility:          "public",
-					MirrorReleases:      true,
+					CI_CD_Catalog:       gitlab.Ptr(false),
+					MirrorIssues:        gitlab.Ptr(true),
+					MirrorTriggerBuilds: gitlab.Ptr(false),
+					Visibility:          gitlab.Ptr("public"),
+					MirrorReleases:      gitlab.Ptr(true),
 				},
 			},
 		}

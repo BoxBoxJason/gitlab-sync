@@ -17,7 +17,7 @@ formatters:
     - goimports
   settings:
     goimports:
-      local-prefixes: gitlab-sync
+      local-prefixes: github.com/boxboxjason/gitlab-sync
     gofmt:
       simplify: true
 
@@ -41,7 +41,7 @@ linters:
       sections:
         - standard
         - default
-        - prefix(gitlab-sync)
+        - prefix(github.com/boxboxjason/gitlab-sync)
       skip-generated: true
     wsl_v5:
       allow-first-in-block: true

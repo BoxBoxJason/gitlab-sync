@@ -44,4 +44,4 @@ package:
 	$(DOCKER_ENGINE) build -t $(PROJECT_NAME):dev -f $(DOCKERFILE) .
 
 # Phony targets
-.PHONY: build lint dependency-check test package
+.PHONY: deps build lint dependency-check test package

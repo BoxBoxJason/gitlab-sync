@@ -1,9 +1,9 @@
 package mirroring
 
 import (
-	"gitlab-sync/internal/utils"
 	"sort"
 
+	"gitlab-sync/internal/utils"
 	"go.uber.org/zap"
 )
 
@@ -12,6 +12,7 @@ import (
 // The function also returns a sorted list of destination group paths.
 func (g *GitlabInstance) reverseGroupMirrorMap(mirrorMapping *utils.MirrorMapping) (map[string]string, []string) {
 	var reversedMirrorMap map[string]string
+
 	destinationGroupPaths := make([]string, 0, len(g.Groups))
 	if mirrorMapping != nil {
 		// Reverse the mirror mapping to get the source group path for each destination group
@@ -21,12 +22,16 @@ func (g *GitlabInstance) reverseGroupMirrorMap(mirrorMapping *utils.MirrorMappin
 		for sourceGroupPath, createOptions := range mirrorMapping.Groups {
 			if _, ok := reversedMirrorMap[createOptions.DestinationPath]; ok {
 				zap.L().Error("duplicate destination path found in mirror mapping", zap.String("destinationPath", createOptions.DestinationPath))
+
 				continue
 			}
+
 			reversedMirrorMap[createOptions.DestinationPath] = sourceGroupPath
 			destinationGroupPaths = append(destinationGroupPaths, createOptions.DestinationPath)
 		}
+
 		sort.Strings(destinationGroupPaths)
 	}
+
 	return reversedMirrorMap, destinationGroupPaths
 }

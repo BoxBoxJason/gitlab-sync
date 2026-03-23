@@ -20,19 +20,19 @@ var (
 		Projects: map[string]*MirroringOptions{
 			FAKE_VALID_PROJECT: {
 				DestinationPath:     FAKE_VALID_PROJECT,
-				CI_CD_Catalog:       true,
-				MirrorIssues:        true,
-				MirrorTriggerBuilds: false,
-				Visibility:          "private",
+				CI_CD_Catalog:       gitlab.Ptr(true),
+				MirrorIssues:        gitlab.Ptr(true),
+				MirrorTriggerBuilds: gitlab.Ptr(false),
+				Visibility:          gitlab.Ptr("private"),
 			},
 		},
 		Groups: map[string]*MirroringOptions{
 			FAKE_VALID_GROUP: {
 				DestinationPath:     FAKE_VALID_GROUP,
-				CI_CD_Catalog:       true,
-				MirrorIssues:        true,
-				MirrorTriggerBuilds: false,
-				Visibility:          "private",
+				CI_CD_Catalog:       gitlab.Ptr(true),
+				MirrorIssues:        gitlab.Ptr(true),
+				MirrorTriggerBuilds: gitlab.Ptr(false),
+				Visibility:          gitlab.Ptr("private"),
 			},
 		},
 	}
@@ -63,8 +63,8 @@ var (
 func testMirroringOptions() *MirroringOptions {
 	return &MirroringOptions{
 		DestinationPath: "project",
-		CI_CD_Catalog:   true,
-		MirrorIssues:    true,
+		CI_CD_Catalog:   gitlab.Ptr(true),
+		MirrorIssues:    gitlab.Ptr(true),
 	}
 }
 
@@ -169,19 +169,35 @@ func TestCheck(t *testing.T) {
 				Projects: map[string]*MirroringOptions{
 					FAKE_VALID_PROJECT: {
 						DestinationPath: FAKE_VALID_PROJECT,
-						CI_CD_Catalog:   true,
-						MirrorIssues:    true,
+						CI_CD_Catalog:   gitlab.Ptr(true),
+						MirrorIssues:    gitlab.Ptr(true),
 					},
 				},
 				Groups: map[string]*MirroringOptions{
 					FAKE_VALID_GROUP: {
 						DestinationPath: FAKE_VALID_GROUP,
-						CI_CD_Catalog:   true,
-						MirrorIssues:    true,
+						CI_CD_Catalog:   gitlab.Ptr(true),
+						MirrorIssues:    gitlab.Ptr(true),
 					},
 				},
 			},
 			// no errors expected
+			wantMsgs: nil,
+		},
+		{
+			name: "ValidMappingWithOptionalFieldsOmitted",
+			mapping: &MirrorMapping{
+				Projects: map[string]*MirroringOptions{
+					FAKE_VALID_PROJECT: {
+						DestinationPath: FAKE_VALID_PROJECT,
+					},
+				},
+				Groups: map[string]*MirroringOptions{
+					FAKE_VALID_GROUP: {
+						DestinationPath: FAKE_VALID_GROUP,
+					},
+				},
+			},
 			wantMsgs: nil,
 		},
 		{
@@ -314,27 +330,32 @@ func TestStringArraysMatchValues(t *testing.T) {
 func TestConvertVisibility(t *testing.T) {
 	tests := []struct {
 		name  string
-		input string
+		input *string
 		want  gitlab.VisibilityValue
 	}{
 		{
 			name:  "public visibility",
-			input: string(gitlab.PublicVisibility),
+			input: gitlab.Ptr(string(gitlab.PublicVisibility)),
 			want:  gitlab.PublicVisibility,
 		},
 		{
 			name:  "internal visibility",
-			input: string(gitlab.InternalVisibility),
+			input: gitlab.Ptr(string(gitlab.InternalVisibility)),
 			want:  gitlab.InternalVisibility,
 		},
 		{
 			name:  "private visibility",
-			input: string(gitlab.PrivateVisibility),
+			input: gitlab.Ptr(string(gitlab.PrivateVisibility)),
 			want:  gitlab.PrivateVisibility,
 		},
 		{
 			name:  "unknown defaults to public",
-			input: "something-else",
+			input: gitlab.Ptr("something-else"),
+			want:  gitlab.PublicVisibility,
+		},
+		{
+			name:  "nil defaults to public",
+			input: nil,
 			want:  gitlab.PublicVisibility,
 		},
 	}
@@ -345,7 +366,7 @@ func TestConvertVisibility(t *testing.T) {
 			t.Parallel()
 			got := ConvertVisibility(tc.input)
 			if got != tc.want {
-				t.Errorf("ConvertVisibility(%q) = %v; want %v", tc.input, got, tc.want)
+				t.Errorf("ConvertVisibility(%v) = %v; want %v", tc.input, got, tc.want)
 			}
 		})
 	}
@@ -400,19 +421,19 @@ func TestMirrorMappingGetProject(t *testing.T) {
 	// Prepare a mirror mapping with some project entries
 	opts1 := &MirroringOptions{
 		DestinationPath:     "dest1",
-		CI_CD_Catalog:       true,
-		MirrorIssues:        false,
-		MirrorTriggerBuilds: true,
-		Visibility:          "public",
-		MirrorReleases:      false,
+		CI_CD_Catalog:       gitlab.Ptr(true),
+		MirrorIssues:        gitlab.Ptr(false),
+		MirrorTriggerBuilds: gitlab.Ptr(true),
+		Visibility:          gitlab.Ptr("public"),
+		MirrorReleases:      gitlab.Ptr(false),
 	}
 	opts2 := &MirroringOptions{
 		DestinationPath:     "dest2",
-		CI_CD_Catalog:       false,
-		MirrorIssues:        true,
-		MirrorTriggerBuilds: false,
-		Visibility:          "private",
-		MirrorReleases:      true,
+		CI_CD_Catalog:       gitlab.Ptr(false),
+		MirrorIssues:        gitlab.Ptr(true),
+		MirrorTriggerBuilds: gitlab.Ptr(false),
+		Visibility:          gitlab.Ptr("private"),
+		MirrorReleases:      gitlab.Ptr(true),
 	}
 	mm := &MirrorMapping{
 		Projects: map[string]*MirroringOptions{
@@ -467,19 +488,19 @@ func TestMirrorMappingGetGroup(t *testing.T) {
 	// Prepare a mirror mapping with some group entries
 	optsA := &MirroringOptions{
 		DestinationPath:     "groupDestA",
-		CI_CD_Catalog:       true,
-		MirrorIssues:        true,
-		MirrorTriggerBuilds: false,
-		Visibility:          "internal",
-		MirrorReleases:      true,
+		CI_CD_Catalog:       gitlab.Ptr(true),
+		MirrorIssues:        gitlab.Ptr(true),
+		MirrorTriggerBuilds: gitlab.Ptr(false),
+		Visibility:          gitlab.Ptr("internal"),
+		MirrorReleases:      gitlab.Ptr(true),
 	}
 	optsB := &MirroringOptions{
 		DestinationPath:     "groupDestB",
-		CI_CD_Catalog:       false,
-		MirrorIssues:        false,
-		MirrorTriggerBuilds: true,
-		Visibility:          "private",
-		MirrorReleases:      false,
+		CI_CD_Catalog:       gitlab.Ptr(false),
+		MirrorIssues:        gitlab.Ptr(false),
+		MirrorTriggerBuilds: gitlab.Ptr(true),
+		Visibility:          gitlab.Ptr("private"),
+		MirrorReleases:      gitlab.Ptr(false),
 	}
 	mm := &MirrorMapping{
 		Projects: map[string]*MirroringOptions{},
@@ -527,5 +548,32 @@ func TestMirrorMappingGetGroup(t *testing.T) {
 				t.Errorf("GetGroup(%q) returned %+v, want %+v", tc.key, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestCheckSetsDefaultVisibilityWhenOptionalFieldsOmitted(t *testing.T) {
+	mapping := &MirrorMapping{
+		Projects: map[string]*MirroringOptions{
+			FAKE_VALID_PROJECT: {
+				DestinationPath: FAKE_VALID_PROJECT,
+			},
+		},
+		Groups: map[string]*MirroringOptions{
+			FAKE_VALID_GROUP: {
+				DestinationPath: FAKE_VALID_GROUP,
+			},
+		},
+	}
+
+	errs := mapping.check()
+	if len(errs) != 0 {
+		t.Fatalf("expected no errors, got %v", errs)
+	}
+
+	if got := helpers.Deref(mapping.Projects[FAKE_VALID_PROJECT].Visibility, ""); got != string(gitlab.PublicVisibility) {
+		t.Errorf("expected default project visibility %q, got %q", string(gitlab.PublicVisibility), got)
+	}
+	if got := helpers.Deref(mapping.Groups[FAKE_VALID_GROUP].Visibility, ""); got != string(gitlab.PublicVisibility) {
+		t.Errorf("expected default group visibility %q, got %q", string(gitlab.PublicVisibility), got)
 	}
 }

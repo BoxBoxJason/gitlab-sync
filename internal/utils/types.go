@@ -7,12 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"gitlab-sync/pkg/helpers"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"gitlab-sync/pkg/helpers"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
@@ -31,42 +31,43 @@ const (
 // - no_prompt: whether to disable prompts
 // - dry_run: whether to perform a dry run
 // - version: whether to show the version
-// - retry: the number of retries for the GitLab API requests
+// - retry: the number of retries for the GitLab API requests.
 type ParserArgs struct {
+	MirrorMapping          *MirrorMapping
 	SourceGitlabURL        string
 	SourceGitlabToken      string
-	SourceGitlabIsBig      bool
 	DestinationGitlabURL   string
 	DestinationGitlabToken string
-	DestinationGitlabIsBig bool
+	Retry                  int
 	ForcePremium           bool
 	ForceNonPremium        bool
-	MirrorMapping          *MirrorMapping
+	DestinationGitlabIsBig bool
 	Verbose                bool
 	NoPrompt               bool
 	DryRun                 bool
-	Retry                  int
+	SourceGitlabIsBig      bool
 }
 
 // ProjectMirrorOptions defines how the project should be mirrored
 // to the destination GitLab instance
 // - destination_url: the URL of the destination GitLab instance
 // - ci_cd_catalog: whether to add the project to the CI/CD catalog
-// - issues: whether to mirror the issues
+// - issues: whether to mirror the issues.
 type MirroringOptions struct {
-	DestinationPath     string `json:"destination_path"`
-	CI_CD_Catalog       bool   `json:"ci_cd_catalog"`
-	MirrorIssues        bool   `json:"mirror_issues"`
-	MirrorTriggerBuilds bool   `json:"mirror_trigger_builds"`
-	Visibility          string `json:"visibility"`
-	MirrorReleases      bool   `json:"mirror_releases"`
+	CI_CD_Catalog       *bool   `json:"ci_cd_catalog"`
+	MirrorIssues        *bool   `json:"mirror_issues"`
+	MirrorTriggerBuilds *bool   `json:"mirror_trigger_builds"`
+	Visibility          *string `json:"visibility"`
+	MirrorReleases      *bool   `json:"mirror_releases"`
+	ClaimOwnership      *bool   `json:"claim_ownership"`
+	DestinationPath     string  `json:"destination_path"`
 }
 
 // MirrorMapping defines the mapping of projects and groups
 // to the destination GitLab instance
 // It is used to parse the JSON file that contains the mapping
 // - projects: a map of project names to their mirroring options
-// - groups: a map of group names to their mirroring options
+// - groups: a map of group names to their mirroring options.
 type MirrorMapping struct {
 	Projects   map[string]*MirroringOptions `json:"projects"`
 	Groups     map[string]*MirroringOptions `json:"groups"`
@@ -76,41 +77,47 @@ type MirrorMapping struct {
 
 // AddProject adds a project to the mapping
 // It takes the project name and the mirroring options as parameters
-// It locks the projects mutex to ensure thread safety
+// It locks the projects mutex to ensure thread safety.
 func (m *MirrorMapping) AddProject(project string, options *MirroringOptions) {
 	m.muProjects.Lock()
 	defer m.muProjects.Unlock()
+
 	m.Projects[project] = options
 }
 
 // AddGroup adds a group to the mapping
 // It takes the group name and the mirroring options as parameters
-// It locks the groups mutex to ensure thread safety
+// It locks the groups mutex to ensure thread safety.
 func (m *MirrorMapping) AddGroup(group string, options *MirroringOptions) {
 	m.muGroups.Lock()
 	defer m.muGroups.Unlock()
+
 	m.Groups[group] = options
 }
 
-// GetProject retrieves the mirroring options for a project
+// GetProject retrieves the mirroring options for a project.
 func (m *MirrorMapping) GetProject(project string) (*MirroringOptions, bool) {
 	m.muProjects.RLock()
 	defer m.muProjects.RUnlock()
+
 	options, ok := m.Projects[project]
+
 	return options, ok
 }
 
-// GetGroup retrieves the mirroring options for a group
+// GetGroup retrieves the mirroring options for a group.
 func (m *MirrorMapping) GetGroup(group string) (*MirroringOptions, bool) {
 	m.muGroups.RLock()
 	defer m.muGroups.RUnlock()
+
 	options, ok := m.Groups[group]
+
 	return options, ok
 }
 
 // OpenMirrorMapping opens the JSON file that contains the mapping
 // and parses it into a MirrorMapping struct
-// It returns the mapping and an error if any
+// It returns the mapping and an error if any.
 func OpenMirrorMapping(path string) (*MirrorMapping, []error) {
 	mapping := &MirrorMapping{
 		Projects: make(map[string]*MirroringOptions),
@@ -135,7 +142,7 @@ func OpenMirrorMapping(path string) (*MirrorMapping, []error) {
 
 // check checks if the mapping is valid
 // It checks if the projects and groups are valid
-// It returns an error if any of the projects or groups are invalid
+// It returns an error if any of the projects or groups are invalid.
 func (m *MirrorMapping) check() []error {
 	errChan := make(chan error, 4*(len(m.Projects)+len(m.Groups))+1)
 	// Check if the mapping is valid
@@ -150,12 +157,13 @@ func (m *MirrorMapping) check() []error {
 	m.checkGroups(errChan)
 
 	close(errChan)
+
 	return helpers.MergeErrors(errChan)
 }
 
 // checkProjects checks if the projects are valid
 // It checks if the project names and destination paths are valid
-// It returns an error if any of the projects are invalid
+// It returns an error if any of the projects are invalid.
 func (m *MirrorMapping) checkProjects(errChan chan error) {
 	duplicateDestinationFinder := make(map[string]struct{}, len(m.Projects))
 	for project, options := range m.Projects {
@@ -169,17 +177,18 @@ func (m *MirrorMapping) checkProjects(errChan chan error) {
 		checkCopyPaths(project, options.DestinationPath, PROJECT, errChan)
 
 		// Check the visibility
-		visibilityString := strings.TrimSpace(string(options.Visibility))
-		if visibilityString != "" && !checkVisibility(visibilityString) {
-			errChan <- fmt.Errorf("invalid project visibility: %s", options.Visibility)
-			options.Visibility = string(gitlab.PublicVisibility)
+		options.Visibility = gitlab.Ptr(strings.TrimSpace(helpers.Deref(options.Visibility, string(gitlab.PublicVisibility))))
+		if options.Visibility != nil && !checkVisibility(*options.Visibility) {
+			errChan <- fmt.Errorf("invalid project visibility: %s", *options.Visibility)
+
+			options.Visibility = gitlab.Ptr(string(gitlab.PublicVisibility))
 		}
 	}
 }
 
 // checkCopyPaths checks if the source and destination paths are valid
 // It checks if the paths are not empty, do not start or end with a slash,
-// and if the destination path is in a namespace for projects
+// and if the destination path is in a namespace for projects.
 func checkCopyPaths(sourcePath string, destinationPath string, pathType string, errChan chan error) {
 	// Ensure the source project path and destination path are not empty
 	if sourcePath == "" || destinationPath == "" {
@@ -193,19 +202,21 @@ func checkCopyPaths(sourcePath string, destinationPath string, pathType string, 
 		if strings.HasPrefix(destinationPath, "/") || strings.HasSuffix(destinationPath, "/") {
 			errChan <- errors.New("invalid destination path (must not start or end with /): " + destinationPath)
 		}
+
 		if pathType == PROJECT {
 			if strings.Count(destinationPath, "/") < 1 {
 				errChan <- errors.New("invalid project destination path (must be in a namespace): " + destinationPath)
 			}
 		}
 	}
+
 	if filepath.Base(sourcePath) != filepath.Base(destinationPath) {
 		errChan <- fmt.Errorf("source and destination paths must have the same base name (ending): %s != %s", sourcePath, destinationPath)
 	}
 }
 
 // checkGroups checks if the groups are valid
-// It checks if the group names and destination paths are valid
+// It checks if the group names and destination paths are valid.
 func (m *MirrorMapping) checkGroups(errChan chan error) {
 	duplicateDestinationFinder := make(map[string]struct{}, len(m.Groups))
 	for group, options := range m.Groups {
@@ -219,18 +230,20 @@ func (m *MirrorMapping) checkGroups(errChan chan error) {
 		checkCopyPaths(group, options.DestinationPath, GROUP, errChan)
 
 		// Check the visibility
-		visibilityString := strings.TrimSpace(string(options.Visibility))
-		if visibilityString != "" && !checkVisibility(visibilityString) {
-			errChan <- fmt.Errorf("invalid group visibility: %s", string(options.Visibility))
-			options.Visibility = string(gitlab.PublicVisibility)
+		options.Visibility = gitlab.Ptr(strings.TrimSpace(helpers.Deref(options.Visibility, string(gitlab.PublicVisibility))))
+		if options.Visibility != nil && !checkVisibility(*options.Visibility) {
+			errChan <- fmt.Errorf("invalid group visibility: %s", *options.Visibility)
+
+			options.Visibility = gitlab.Ptr(string(gitlab.PublicVisibility))
 		}
 	}
 }
 
 // checkVisibility checks if the visibility string is valid
-// It checks if the visibility string is one of the valid GitLab visibility values
+// It checks if the visibility string is one of the valid GitLab visibility values.
 func checkVisibility(visibility string) bool {
 	var valid bool
+
 	switch visibility {
 	case string(gitlab.PublicVisibility):
 		valid = true
@@ -241,13 +254,18 @@ func checkVisibility(visibility string) bool {
 	default:
 		valid = false
 	}
+
 	return valid
 }
 
-// ConvertVisibility converts a visibility string to a gitlab.VisibilityValue
-// It returns the corresponding gitlab.VisibilityValue or gitlab.PublicVisibility if the string is invalid
-func ConvertVisibility(visibility string) gitlab.VisibilityValue {
-	switch visibility {
+// ConvertVisibility converts a visibility *string to a gitlab.VisibilityValue
+// It returns the corresponding gitlab.VisibilityValue or gitlab.PublicVisibility if the string is invalid.
+func ConvertVisibility(visibility *string) gitlab.VisibilityValue {
+	if visibility == nil {
+		return gitlab.PublicVisibility
+	}
+
+	switch *visibility {
 	case string(gitlab.PublicVisibility):
 		return gitlab.PublicVisibility
 	case string(gitlab.InternalVisibility):
@@ -260,19 +278,22 @@ func ConvertVisibility(visibility string) gitlab.VisibilityValue {
 }
 
 // StringArraysMatchValues checks if two string arrays match in values
-// It returns true if both arrays have the same values, regardless of order
+// It returns true if both arrays have the same values, regardless of order.
 func StringArraysMatchValues(array1 []string, array2 []string) bool {
 	if len(array1) != len(array2) {
 		return false
 	}
+
 	matchMap := make(map[string]struct{}, len(array1))
 	for _, value := range array1 {
 		matchMap[value] = struct{}{}
 	}
+
 	for _, value := range array2 {
 		if _, ok := matchMap[value]; !ok {
 			return false
 		}
 	}
+
 	return true
 }

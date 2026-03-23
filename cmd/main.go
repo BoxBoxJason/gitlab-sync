@@ -6,25 +6,24 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
 	"gitlab-sync/internal/mirroring"
 	"gitlab-sync/internal/utils"
 	"gitlab-sync/pkg/helpers"
-
-	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-var (
-	version = "dev"
-)
+var version = "dev"
 
 func main() {
-	var args utils.ParserArgs
-	var mirrorMappingPath string
-	var logFile string
+	var (
+		args              utils.ParserArgs
+		mirrorMappingPath string
+		logFile           string
+	)
 
-	var rootCmd = &cobra.Command{
+	rootCmd := &cobra.Command{
 		Use:     "gitlab-sync",
 		Version: version,
 		Short:   "Copy and enable mirroring of gitlab projects and groups",
@@ -57,23 +56,29 @@ func main() {
 			zap.L().Debug("Mirror Mapping file resolved path: " + filepath.Clean(mirrorMappingPath))
 
 			zap.L().Debug("Parsing mirror mapping file")
+
 			mapping, mappingErrors := utils.OpenMirrorMapping(mirrorMappingPath)
 			if mappingErrors != nil {
 				zap.L().Fatal("Error opening mirror mapping file", zap.Errors("errors", mappingErrors))
 			}
+
 			zap.L().Debug("Mirror mapping file parsed successfully")
+
 			args.MirrorMapping = mapping
 
 			mirroringErrors := mirroring.MirrorGitlabs(&args)
 			if mirroringErrors != nil {
 				// Determine exit code based on error severity
 				hasBlocking := false
+
 				for _, err := range mirroringErrors {
 					if helpers.SeverityOf(err) == helpers.SeverityBlocking {
 						hasBlocking = true
+
 						break
 					}
 				}
+
 				if hasBlocking {
 					zap.L().Error("Blocking errors occurred during mirroring process", zap.Errors("errors", mirroringErrors))
 					os.Exit(1)
@@ -82,6 +87,7 @@ func main() {
 					os.Exit(2)
 				}
 			}
+
 			zap.L().Info("Mirroring completed successfully")
 		},
 	}
@@ -101,7 +107,8 @@ func main() {
 	rootCmd.Flags().IntVarP(&args.Retry, "retry", "r", 3, "Number of retries for failed requests")
 	rootCmd.Flags().StringVar(&logFile, "log-file", strings.TrimSpace(os.Getenv("GITLAB_SYNC_LOG_FILE")), "Path to the log file")
 
-	if err := rootCmd.Execute(); err != nil {
+	err := rootCmd.Execute()
+	if err != nil {
 		zap.L().Error(err.Error())
 		os.Exit(1)
 	}
@@ -112,11 +119,14 @@ func main() {
 // If the input is empty, it will return an empty string.
 func promptForInput(prompt string) string {
 	var input string
+
 	fmt.Printf("%s: ", prompt)
+
 	_, err := fmt.Scanln(&input)
 	if err != nil {
 		zap.L().Fatal("Error reading input", zap.Error(err))
 	}
+
 	return strings.TrimSpace(input)
 }
 
@@ -131,6 +141,7 @@ func promptForMandatoryInput(defaultValue string, prompt string, errorMsg string
 			if input == "" {
 				zap.L().Fatal(errorMsg)
 			}
+
 			if !hideOutput {
 				zap.L().Debug(loggerMsg + ": " + input)
 			} else {
@@ -140,6 +151,7 @@ func promptForMandatoryInput(defaultValue string, prompt string, errorMsg string
 			zap.L().Fatal("Prompting is disabled")
 		}
 	}
+
 	return input
 }
 
@@ -151,6 +163,7 @@ func SetupZapLogger(verbose bool, filename string) {
 	// Set up the logger configuration
 	config := zap.NewProductionConfig()
 	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
 	if verbose {
 		config.Level.SetLevel(zapcore.DebugLevel)
@@ -160,10 +173,11 @@ func SetupZapLogger(verbose bool, filename string) {
 
 	// If a filename is specified, update the output path.
 	if filename != "" {
-		err := os.MkdirAll(filepath.Dir(filename), 0700)
+		err := os.MkdirAll(filepath.Dir(filename), 0o700)
 		if err != nil {
 			zap.L().Fatal("Failed to create log directory: " + err.Error())
 		}
+
 		config.OutputPaths = []string{filename, "stderr"}
 	}
 

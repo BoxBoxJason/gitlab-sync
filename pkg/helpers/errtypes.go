@@ -48,5 +48,6 @@ func SeverityOf(err error) Severity {
 	if errors.As(err, &mirrorErr) {
 		return mirrorErr.Severity
 	}
+
 	return SeverityNonBlocking
 }

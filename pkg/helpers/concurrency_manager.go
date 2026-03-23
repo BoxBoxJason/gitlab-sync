@@ -70,5 +70,6 @@ func MergeErrors(input any) []error {
 	if len(merged) == 0 {
 		return nil
 	}
+
 	return merged
 }

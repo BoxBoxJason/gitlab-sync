@@ -518,12 +518,13 @@ func (destinationGitlabInstance *GitlabInstance) MirrorProjectGit(sourceGitlabIn
 // It sets the source project URL, enables mirroring, and configures other options like triggering builds and overwriting diverged branches.
 func (g *GitlabInstance) EnableProjectMirrorPull(sourceProject *gitlab.Project, destinationProject *gitlab.Project, mirrorOptions *utils.MirroringOptions) error {
 	zap.L().Debug("Enabling project mirror pull", zap.String("sourceProject", sourceProject.HTTPURLToRepo), zap.String("destinationProject", destinationProject.HTTPURLToRepo))
+	desiredMirrorTriggerBuilds := helpers.Deref(mirrorOptions.MirrorTriggerBuilds, false)
 	_, _, err := g.Gitlab.Projects.ConfigureProjectPullMirror(destinationProject.ID, &gitlab.ConfigureProjectPullMirrorOptions{
 		URL:                              &sourceProject.HTTPURLToRepo,
 		OnlyMirrorProtectedBranches:      gitlab.Ptr(true),
 		Enabled:                          gitlab.Ptr(true),
 		MirrorOverwritesDivergedBranches: gitlab.Ptr(true),
-		MirrorTriggerBuilds:              mirrorOptions.MirrorTriggerBuilds,
+		MirrorTriggerBuilds:              gitlab.Ptr(desiredMirrorTriggerBuilds),
 	})
 
 	return err

@@ -2,6 +2,7 @@ package mirroring
 
 import (
 	"gitlab-sync/internal/utils"
+	"net/http"
 	"testing"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go"
@@ -120,5 +121,71 @@ func TestClaimOwnershipToGroup(t *testing.T) {
 	err := gitlabInstance.ClaimOwnershipToGroup(TEST_GROUP)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestCreateGroupFromSourceClaimOwnershipOption(t *testing.T) {
+	tests := []struct {
+		name                 string
+		claimOwnership       *bool
+		expectedMemberClaims int
+	}{
+		{
+			name:                 "claim ownership omitted defaults to no claim",
+			claimOwnership:       nil,
+			expectedMemberClaims: 0,
+		},
+		{
+			name:                 "claim ownership false does not claim",
+			claimOwnership:       gitlab.Ptr(false),
+			expectedMemberClaims: 0,
+		},
+		{
+			name:                 "claim ownership true claims ownership",
+			claimOwnership:       gitlab.Ptr(true),
+			expectedMemberClaims: 1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			memberClaims := 0
+
+			mux.HandleFunc("/api/v4/groups", func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
+				w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+				w.WriteHeader(http.StatusCreated)
+				w.Write([]byte(TEST_GROUP_2_STRING))
+			})
+
+			mux.HandleFunc("/api/v4/groups/2/members", func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
+				memberClaims++
+				w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+				w.WriteHeader(http.StatusCreated)
+				w.Write([]byte(`{"id": 1}`))
+			})
+
+			createdGroup, err := gitlabInstance.CreateGroupFromSource(TEST_GROUP_2, &utils.MirroringOptions{
+				DestinationPath: "group2",
+				ClaimOwnership:  tc.claimOwnership,
+			})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if createdGroup == nil {
+				t.Fatal("expected created group to be non-nil")
+			}
+			if memberClaims != tc.expectedMemberClaims {
+				t.Fatalf("expected %d ownership claims, got %d", tc.expectedMemberClaims, memberClaims)
+			}
+		})
 	}
 }

@@ -4,7 +4,7 @@ import (
 	"strings"
 )
 
-// toStrings converts a []error into a []string for easy comparison.
+// ToStrings converts a []error into a []string for easy comparison.
 func ToStrings(errs []error) []string {
 	if errs == nil {
 		return nil

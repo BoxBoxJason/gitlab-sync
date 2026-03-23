@@ -13,13 +13,11 @@ output:
       path: stdout
 formatters:
   enable:
-    - gci
     - gofmt
-    - gofumpt
     - goimports
   settings:
     goimports:
-      local-prefixes: github.com/boxboxjason/gitlab-sync
+      local-prefixes: gitlab-sync
     gofmt:
       simplify: true
 

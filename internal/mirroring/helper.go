@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"gitlab-sync/internal/utils"
+
 	"go.uber.org/zap"
 )
 

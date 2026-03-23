@@ -5,11 +5,13 @@ import (
 	"path/filepath"
 	"sync"
 
+	"gitlab-sync/internal/utils"
+	"gitlab-sync/pkg/helpers"
+
 	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/hashicorp/go-retryablehttp"
-	"gitlab-sync/internal/utils"
-	"gitlab-sync/pkg/helpers"
+
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
 )

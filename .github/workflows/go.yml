@@ -22,10 +22,12 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "1.25.8"
-      - run: go mod tidy
-      - run: go install gotest.tools/gotestsum@latest
-      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-      - run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+      - run: go mod download
+      - run: go install gotest.tools/gotestsum@v1.13.0
+      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
+
+      - name: build
+        run: make build
 
       - name: Lint
         run: make lint

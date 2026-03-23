@@ -8,6 +8,7 @@ import (
 
 	"gitlab-sync/internal/utils"
 	"gitlab-sync/pkg/helpers"
+
 	"go.uber.org/zap"
 )
 

@@ -9,6 +9,7 @@ import (
 
 	"gitlab-sync/internal/utils"
 	"gitlab-sync/pkg/helpers"
+
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
 )
@@ -361,6 +362,8 @@ func (g *GitlabInstance) CreateProjectFromSource(sourceProject *gitlab.Project, 
 	return destinationProject, nil
 }
 
+// enqueueOptionalProjectTasks enqueues optional tasks related to project creation, such as adding the project to the CI/CD catalog and mirroring issues.
+// It uses goroutines to perform these tasks concurrently and a wait group to wait for their completion.
 func enqueueOptionalProjectTasks(
 	destinationGitlabInstance *GitlabInstance,
 	sourceGitlabInstance *GitlabInstance,
@@ -387,11 +390,24 @@ func enqueueOptionalProjectTasks(
 			defer waitGroup.Done()
 
 			allErrors := destinationGitlabInstance.MirrorIssues(sourceGitlabInstance, sourceProj, destinationProj)
+			nonNilErrors := make([]error, 0, len(allErrors))
+
 			for _, currentErr := range allErrors {
 				if currentErr != nil {
-					errorChannel <- fmt.Errorf("failed to mirror issues from %s to %s: %w", sourceProj.HTTPURLToRepo, destinationProj.HTTPURLToRepo, currentErr)
+					nonNilErrors = append(nonNilErrors, currentErr)
 				}
 			}
+
+			if len(nonNilErrors) == 0 {
+				return
+			}
+
+			errorChannel <- fmt.Errorf(
+				"failed to mirror issues from %s to %s: %w",
+				sourceProj.HTTPURLToRepo,
+				destinationProj.HTTPURLToRepo,
+				errors.Join(nonNilErrors...),
+			)
 		}(sourceProject, destinationProject)
 	}
 }

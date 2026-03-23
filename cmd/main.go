@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"gitlab-sync/internal/mirroring"
 	"gitlab-sync/internal/utils"
 	"gitlab-sync/pkg/helpers"
+
+	"github.com/spf13/cobra"
+
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )

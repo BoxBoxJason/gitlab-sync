@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"gitlab-sync/pkg/helpers"
+
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
 )

@@ -9,6 +9,7 @@ import (
 
 	"gitlab-sync/internal/utils"
 	"gitlab-sync/pkg/helpers"
+
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
 )
@@ -286,23 +287,19 @@ func (g *GitlabInstance) FetchAndProcessGroupsLargeInstance(groupFilters *map[st
 	var recursiveGroupWaitGroup sync.WaitGroup
 	recursiveGroupWaitGroup.Add(len(*groupFilters))
 
-	var (
-		errs  []error
-		errMu sync.Mutex
-	)
+	var collectorWaitGroup sync.WaitGroup
+
+	errs := make([]error, 0)
 
 	// Start an error collector goroutine.
-	go func() {
+	collectorWaitGroup.Go(func() {
 		// This goroutine will run until errChan is closed.
 		for err := range errChan {
 			if err != nil {
-				errMu.Lock()
-
 				errs = append(errs, err)
-				errMu.Unlock()
 			}
 		}
-	}()
+	})
 
 	for groupPath := range *groupFilters {
 		go g.FetchAndProcessGroupRecursive(groupPath, groupPath, mirrorMapping, errChan, &recursiveGroupWaitGroup)
@@ -311,13 +308,14 @@ func (g *GitlabInstance) FetchAndProcessGroupsLargeInstance(groupFilters *map[st
 	// Wait for all goroutines to finish
 	recursiveGroupWaitGroup.Wait()
 	close(errChan)
+	collectorWaitGroup.Wait()
 
 	return helpers.MergeErrors(errs)
 }
 
 // FetchAndProcessGroupRecursive fetches a group and its projects recursively
 // It uses a wait group to ensure that all goroutines finish befopidpre returning
-// It sends the fetched group to the allGroupsChannel and the projects to the allProjectsChanel
+// It sends the fetched group to the allGroupsChannel and the projects to the allProjectsChannel
 //
 // gid can be either an int, a string or a *gitlab.Group.
 func (g *GitlabInstance) FetchAndProcessGroupRecursive(gid any, fetchOriginPath string, mirrorMapping *utils.MirrorMapping, errChan chan error, recursiveGroupWaitGroup *sync.WaitGroup) {

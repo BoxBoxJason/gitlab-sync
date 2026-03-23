@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"gitlab-sync/pkg/helpers"
+
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
@@ -130,12 +131,7 @@ func OpenMirrorMapping(path string) (*MirrorMapping, []error) {
 		return nil, []error{fmt.Errorf("failed to open mirror mapping file: %w", err)}
 	}
 
-	defer func() {
-		closeErr := file.Close()
-		if closeErr != nil {
-			err = errors.Join(err, fmt.Errorf("failed to close mirror mapping file: %w", closeErr))
-		}
-	}()
+	defer file.Close() //nolint:errcheck // We do not need to check if file closing returns an error
 
 	// Decode the JSON
 	decoder := json.NewDecoder(file)

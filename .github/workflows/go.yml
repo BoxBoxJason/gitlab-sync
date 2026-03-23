@@ -1,4 +1,4 @@
-name: lint-test
+name: Validation
 
 on:
   workflow_dispatch:

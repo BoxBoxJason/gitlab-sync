@@ -7,7 +7,6 @@ import (
 
 	"gitlab-sync/internal/utils"
 	"gitlab-sync/pkg/helpers"
-
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 

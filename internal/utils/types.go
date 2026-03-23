@@ -1,6 +1,4 @@
-/*
-Utility types definitions
-*/
+// Package utils contains core types and helpers shared across the application.
 package utils
 
 import (
@@ -48,7 +46,7 @@ type ParserArgs struct {
 	SourceGitlabIsBig      bool
 }
 
-// ProjectMirrorOptions defines how the project should be mirrored
+// MirroringOptions defines how a project or group should be mirrored
 // to the destination GitLab instance
 // - destination_url: the URL of the destination GitLab instance
 // - ci_cd_catalog: whether to add the project to the CI/CD catalog
@@ -125,15 +123,25 @@ func OpenMirrorMapping(path string) (*MirrorMapping, []error) {
 	}
 
 	// Read the file
-	file, err := os.Open(path)
+	cleanPath := filepath.Clean(path)
+
+	file, err := os.Open(cleanPath)
 	if err != nil {
 		return nil, []error{fmt.Errorf("failed to open mirror mapping file: %w", err)}
 	}
-	defer file.Close()
+
+	defer func() {
+		closeErr := file.Close()
+		if closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("failed to close mirror mapping file: %w", closeErr))
+		}
+	}()
 
 	// Decode the JSON
 	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(mapping); err != nil {
+
+	err = decoder.Decode(mapping)
+	if err != nil {
 		return nil, []error{fmt.Errorf("failed to decode mirror mapping file: %w", err)}
 	}
 
@@ -189,25 +197,25 @@ func (m *MirrorMapping) checkProjects(errChan chan error) {
 // checkCopyPaths checks if the source and destination paths are valid
 // It checks if the paths are not empty, do not start or end with a slash,
 // and if the destination path is in a namespace for projects.
-func checkCopyPaths(sourcePath string, destinationPath string, pathType string, errChan chan error) {
+func checkCopyPaths(sourcePath, destinationPath, pathType string, errChan chan error) {
 	// Ensure the source project path and destination path are not empty
 	if sourcePath == "" || destinationPath == "" {
 		errChan <- errors.New("invalid (empty) string in " + pathType + " mapping")
-	} else {
-		// Ensure the source project path and destination path do not start or end with a slash
-		if strings.HasPrefix(sourcePath, "/") || strings.HasSuffix(sourcePath, "/") {
-			errChan <- errors.New("invalid " + pathType + " mapping (must not start or end with /): " + sourcePath)
-		}
-		// Ensure the destination path does not start or end with a slash
-		if strings.HasPrefix(destinationPath, "/") || strings.HasSuffix(destinationPath, "/") {
-			errChan <- errors.New("invalid destination path (must not start or end with /): " + destinationPath)
-		}
 
-		if pathType == PROJECT {
-			if strings.Count(destinationPath, "/") < 1 {
-				errChan <- errors.New("invalid project destination path (must be in a namespace): " + destinationPath)
-			}
-		}
+		return
+	}
+
+	// Ensure the source project path and destination path do not start or end with a slash
+	if strings.HasPrefix(sourcePath, "/") || strings.HasSuffix(sourcePath, "/") {
+		errChan <- errors.New("invalid " + pathType + " mapping (must not start or end with /): " + sourcePath)
+	}
+	// Ensure the destination path does not start or end with a slash
+	if strings.HasPrefix(destinationPath, "/") || strings.HasSuffix(destinationPath, "/") {
+		errChan <- errors.New("invalid destination path (must not start or end with /): " + destinationPath)
+	}
+
+	if pathType == PROJECT && strings.Count(destinationPath, "/") < 1 {
+		errChan <- errors.New("invalid project destination path (must be in a namespace): " + destinationPath)
 	}
 
 	if filepath.Base(sourcePath) != filepath.Base(destinationPath) {
@@ -279,7 +287,7 @@ func ConvertVisibility(visibility *string) gitlab.VisibilityValue {
 
 // StringArraysMatchValues checks if two string arrays match in values
 // It returns true if both arrays have the same values, regardless of order.
-func StringArraysMatchValues(array1 []string, array2 []string) bool {
+func StringArraysMatchValues(array1, array2 []string) bool {
 	if len(array1) != len(array2) {
 		return false
 	}

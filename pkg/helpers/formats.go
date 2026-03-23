@@ -23,7 +23,7 @@ func ToStrings(errs []error) []string {
 //   - Returns true if the path has a prefix matching any entry in the prefixList, and returns the matching prefix.
 //
 // If a prefix match is found, the matching prefix is returned. Otherwise, an empty string is returned.
-func MatchPathAgainstFilters(path string, allowList *map[string]struct{}, prefixList *map[string]struct{}) (string, bool) {
+func MatchPathAgainstFilters(path string, allowList, prefixList *map[string]struct{}) (string, bool) {
 	if allowList != nil {
 		if _, ok := (*allowList)[path]; ok {
 			return "", true

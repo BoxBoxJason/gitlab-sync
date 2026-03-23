@@ -4,6 +4,90 @@ import (
 	"fmt"
 )
 
+func appendNonNilErrors(existing, errorsToAppend []error) []error {
+	for _, currentErr := range errorsToAppend {
+		if currentErr != nil {
+			existing = append(existing, currentErr)
+		}
+	}
+
+	return existing
+}
+
+func finalizeMergedErrors(merged []error) []error {
+	if len(merged) == 0 {
+		return nil
+	}
+
+	return merged
+}
+
+func mergeFromChannelInput(input any) ([]error, bool) {
+	merged := []error{}
+
+	errorsChannel, channelAssertionOk := input.(chan []error)
+	if channelAssertionOk {
+		for errorsFromChannel := range errorsChannel {
+			merged = appendNonNilErrors(merged, errorsFromChannel)
+		}
+
+		return merged, true
+	}
+
+	errorChannel, errorChannelAssertionOk := input.(chan error)
+	if errorChannelAssertionOk {
+		for currentErr := range errorChannel {
+			if currentErr != nil {
+				merged = append(merged, currentErr)
+			}
+		}
+
+		return merged, true
+	}
+
+	return nil, false
+}
+
+func mergeFromSliceInput(input any) ([]error, bool) {
+	errorsList, listAssertionOk := input.([]error)
+	if listAssertionOk {
+		return appendNonNilErrors(nil, errorsList), true
+	}
+
+	errorsPointer, pointerAssertionOk := input.(*[]error)
+	if pointerAssertionOk {
+		if errorsPointer == nil {
+			return nil, true
+		}
+
+		return appendNonNilErrors(nil, *errorsPointer), true
+	}
+
+	return nil, false
+}
+
+func mergeFromSingleErrorInput(input any) ([]error, bool) {
+	singleError, singleErrorAssertionOk := input.(error)
+	if singleErrorAssertionOk {
+		if singleError == nil {
+			return nil, true
+		}
+
+		return []error{singleError}, true
+	}
+
+	errorPointer, errorPointerAssertionOk := input.(*error)
+	if errorPointerAssertionOk {
+		if errorPointer == nil || *errorPointer == nil {
+			return nil, true
+		}
+
+		return []error{*errorPointer}, true
+	}
+
+	return nil, false
+}
+
 // MergeErrors collects any number of errors from various inputs:
 //   - chan error         (must be closed by sender)
 //   - chan []error       (must be closed by sender)
@@ -14,62 +98,24 @@ import (
 //
 // Returns nil if there are no non-nil errors.
 func MergeErrors(input any) []error {
-	var merged []error
-
-	switch v := input.(type) {
-	case nil:
-		return nil
-
-	case chan []error:
-		for errs := range v {
-			for _, err := range errs {
-				if err != nil {
-					merged = append(merged, err)
-				}
-			}
-		}
-
-	case chan error:
-		for err := range v {
-			if err != nil {
-				merged = append(merged, err)
-			}
-		}
-
-	case []error:
-		for _, err := range v {
-			if err != nil {
-				merged = append(merged, err)
-			}
-		}
-
-	case *[]error:
-		if v != nil {
-			for _, err := range *v {
-				if err != nil {
-					merged = append(merged, err)
-				}
-			}
-		}
-
-	case error:
-		if v != nil {
-			merged = append(merged, v)
-		}
-
-	case *error:
-		if v != nil && *v != nil {
-			merged = append(merged, *v)
-		}
-
-	default:
-		// unsupported type
-		return []error{fmt.Errorf("invalid input type in MergeErrors: %T", v)}
-	}
-
-	if len(merged) == 0 {
+	if input == nil {
 		return nil
 	}
 
-	return merged
+	merged, handled := mergeFromChannelInput(input)
+	if handled {
+		return finalizeMergedErrors(merged)
+	}
+
+	merged, handled = mergeFromSliceInput(input)
+	if handled {
+		return finalizeMergedErrors(merged)
+	}
+
+	merged, handled = mergeFromSingleErrorInput(input)
+	if handled {
+		return finalizeMergedErrors(merged)
+	}
+
+	return []error{fmt.Errorf("invalid input type in MergeErrors: %T", input)}
 }

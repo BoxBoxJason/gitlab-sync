@@ -18,15 +18,22 @@ const (
 	DEFAULT_GIT_USER = "git"
 )
 
+func cleanupTempDir(path string) {
+	removeErr := os.RemoveAll(path)
+	if removeErr != nil {
+		zap.L().Warn("failed to remove temporary directory", zap.String("path", path), zap.Error(removeErr))
+	}
+}
+
 // MirrorRepo clones the source remote as a bare repo and pushes all refs
 // (branches, tags, and then fixes the bare-repo HEAD) to the destination.
 func MirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.AuthMethod) error {
-	// Clone source into a temp bare repo:
 	tmpDir, err := os.MkdirTemp("", "bare-mirror-*")
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create temporary directory: %w", err)
 	}
-	defer os.RemoveAll(tmpDir)
+
+	defer cleanupTempDir(tmpDir)
 
 	pullOpts := &git.CloneOptions{
 		URL:    sourceURL,
@@ -43,7 +50,6 @@ func MirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.A
 		return fmt.Errorf("failed to clone source repository locally: %w", err)
 	}
 
-	// Add destination as a remote
 	zap.L().Debug("Adding destination remote", zap.String("destinationURL", destinationURL))
 
 	_, err = srcRepo.CreateRemote(&config.RemoteConfig{
@@ -54,7 +60,6 @@ func MirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.A
 		return fmt.Errorf("failed to create remote for destination: %w", err)
 	}
 
-	// Push *all* refs up to it
 	zap.L().Debug("Pushing to destination repository", zap.String("destinationURL", destinationURL))
 
 	pushOpts := &git.PushOptions{
@@ -69,12 +74,13 @@ func MirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.A
 		pushOpts.Auth = pushAuth
 	}
 
-	if err := srcRepo.Push(pushOpts); err != nil {
+	err = srcRepo.Push(pushOpts)
+	if err != nil {
 		return fmt.Errorf("failed to push to destination repository: %w", err)
 	}
 
-	// Finally, repair the bare-repo HEAD to point at the right branch
-	if err := fixBareRepoHEAD(destinationURL, srcRepo); err != nil {
+	err = fixBareRepoHEAD(destinationURL, srcRepo)
+	if err != nil {
 		return fmt.Errorf("failed to set destination HEAD: %w", err)
 	}
 
@@ -89,31 +95,36 @@ func MirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.A
 func fixBareRepoHEAD(destinationURL string, srcRepo *git.Repository) error {
 	u, err := url.Parse(destinationURL)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to parse destination URL: %w", err)
 	}
 
 	path := u.Path
 
 	destRepo, err := git.PlainOpen(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open destination repository at %s: %w", path, err)
 	}
 
 	// figure out what branch the source HEAD was on
 	srcHead, err := srcRepo.Head()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read source repository HEAD: %w", err)
 	}
 
 	// write a new symbolic HEAD in the bare repo
 	zap.L().Debug("Setting HEAD in destination repository", zap.String("destinationURL", destinationURL), zap.String("branch", srcHead.Name().String()))
 	sym := plumbing.NewSymbolicReference(plumbing.HEAD, srcHead.Name())
 
-	return destRepo.Storer.SetReference(sym)
+	err = destRepo.Storer.SetReference(sym)
+	if err != nil {
+		return fmt.Errorf("failed to set destination repository HEAD reference: %w", err)
+	}
+
+	return nil
 }
 
 // BuildHTTPAuth creates an HTTP BasicAuth object using a username and token.
-func BuildHTTPAuth(username string, token string) transport.AuthMethod {
+func BuildHTTPAuth(username, token string) transport.AuthMethod {
 	if token == "" && username == "" {
 		return nil
 	}

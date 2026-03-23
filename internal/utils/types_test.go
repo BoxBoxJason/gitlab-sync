@@ -2,11 +2,11 @@ package utils
 
 import (
 	"fmt"
-	"gitlab-sync/pkg/helpers"
 	"os"
 	"reflect"
 	"testing"
 
+	"gitlab-sync/pkg/helpers"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
@@ -106,7 +106,6 @@ func TestAddGroup(t *testing.T) {
 
 // TestOpenMirrorMapping tests opening and parsing a JSON file into a MirrorMapping
 func TestOpenMirrorMapping(t *testing.T) {
-
 	file := createTempTestFile(FAKE_VALID_MAPPING_RAW, t)
 	defer os.Remove(file.Name())
 

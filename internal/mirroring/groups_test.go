@@ -1,10 +1,10 @@
 package mirroring
 
 import (
-	"gitlab-sync/internal/utils"
 	"net/http"
 	"testing"
 
+	"gitlab-sync/internal/utils"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 

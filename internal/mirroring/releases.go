@@ -2,13 +2,15 @@ package mirroring
 
 import (
 	"fmt"
-	"sync"
+	"os"
 
 	"gitlab-sync/internal/utils"
-	"gitlab-sync/pkg/helpers"
+
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
 )
+
+const releasesPerPage = 100
 
 // ===========================================================================
 //                   	RELEASES MIRRORING FUNCTIONS                        //
@@ -24,7 +26,7 @@ func (g *GitlabInstance) FetchProjectReleases(project *gitlab.Project) ([]*gitla
 
 	fetchOpts := &gitlab.ListReleasesOptions{
 		ListOptions: gitlab.ListOptions{
-			PerPage: 100,
+			PerPage: releasesPerPage,
 			Page:    1,
 		},
 	}
@@ -34,7 +36,7 @@ func (g *GitlabInstance) FetchProjectReleases(project *gitlab.Project) ([]*gitla
 	for {
 		fetchedReleases, resp, err := g.Gitlab.Releases.ListReleases(project.ID, fetchOpts)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to list releases for project %s: %w", project.PathWithNamespace, err)
 		}
 
 		releases = append(releases, fetchedReleases...)
@@ -79,7 +81,10 @@ func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInst
 	}
 	// Print the releases that will be created in the destination project
 	for release := range sourceReleases {
-		fmt.Printf("    - Release %s will be created in %s (if it does not already exist)\n", release, destinationGitlabInstance.Gitlab.BaseURL().String()+copyOptions.DestinationPath)
+		_, err = fmt.Fprintf(os.Stdout, "    - Release %s will be created in %s (if it does not already exist)\n", release, destinationGitlabInstance.Gitlab.BaseURL().String()+copyOptions.DestinationPath)
+		if err != nil {
+			return fmt.Errorf("failed to print dry-run release output: %w", err)
+		}
 	}
 
 	return nil
@@ -100,8 +105,11 @@ func (g *GitlabInstance) MirrorRelease(project *gitlab.Project, release *gitlab.
 		Description: &release.Description,
 		ReleasedAt:  release.ReleasedAt,
 	})
+	if err != nil {
+		return fmt.Errorf("failed to create release %s in project %s: %w", release.TagName, project.PathWithNamespace, err)
+	}
 
-	return err
+	return nil
 }
 
 // ================
@@ -111,53 +119,18 @@ func (g *GitlabInstance) MirrorRelease(project *gitlab.Project, release *gitlab.
 // MirrorReleases mirrors releases from the source project to the destination project.
 // It fetches existing releases from the destination project and creates new releases for those that do not exist.
 // The function handles the API calls concurrently using goroutines.
-func (destinationGitlab *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInstance, sourceProject *gitlab.Project, destinationProject *gitlab.Project) []error {
-	zap.L().Info("Starting releases mirroring", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
-	// Fetch existing releases from the destination project
-	existingReleasesTags, err := destinationGitlab.FetchProjectReleasesTags(destinationProject)
-	if err != nil {
-		return []error{fmt.Errorf("failed to fetch existing releases for destination project %s: %w", destinationProject.HTTPURLToRepo, err)}
-	}
-
-	// Fetch releases from the source project
-	sourceReleases, err := sourceGitlab.FetchProjectReleases(sourceProject)
-	if err != nil {
-		return []error{fmt.Errorf("failed to fetch releases for source project %s: %w", sourceProject.HTTPURLToRepo, err)}
-	}
-
-	// Create a wait group and an error channel for handling API calls concurrently
-	var wg sync.WaitGroup
-
-	errorChan := make(chan error, len(sourceReleases))
-
-	// Iterate over each source release
-	for _, release := range sourceReleases {
-		// Check if the release already exists in the destination project
-		if _, exists := existingReleasesTags[release.TagName]; exists {
-			zap.L().Debug("Release already exists", zap.String("release", release.TagName), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
-
-			continue
-		}
-
-		// Increment the wait group counter
-		wg.Add(1)
-
-		// Define the API call logic for creating a release
-		go func(releaseToMirror *gitlab.Release) {
-			defer wg.Done()
-
-			err := destinationGitlab.MirrorRelease(destinationProject, releaseToMirror)
-			if err != nil {
-				errorChan <- fmt.Errorf("failed to create release %s in project %s: %w", releaseToMirror.TagName, destinationProject.HTTPURLToRepo, err)
-			}
-		}(release)
-	}
-
-	// Wait for all goroutines to finish
-	wg.Wait()
-	close(errorChan)
-
-	zap.L().Info("Releases mirroring completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
-
-	return helpers.MergeErrors(errorChan)
+func (destinationGitlab *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project) []error {
+	return mirrorProjectEntities(
+		"release",
+		sourceProject,
+		destinationProject,
+		destinationGitlab.FetchProjectReleasesTags,
+		sourceGitlab.FetchProjectReleases,
+		func(release *gitlab.Release) string {
+			return release.TagName
+		},
+		func(project *gitlab.Project, release *gitlab.Release) error {
+			return destinationGitlab.MirrorRelease(project, release)
+		},
+	)
 }

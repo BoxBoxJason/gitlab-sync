@@ -1,0 +1,12 @@
+.github/
+README.md
+assets/
+bin/
+codequality/
+.dockerignore
+.gitignore
+.golangci.yml
+cliff.toml
+Containerfile
+CONTRIBUTING.md
+renovate.json

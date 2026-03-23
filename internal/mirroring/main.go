@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"gitlab-sync/internal/utils"
-	"gitlab-sync/pkg/helpers"
+	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	"go.uber.org/zap"
 )

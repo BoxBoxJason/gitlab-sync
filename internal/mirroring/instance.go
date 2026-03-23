@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"gitlab-sync/internal/utils"
-	"gitlab-sync/pkg/helpers"
+	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5/plumbing/transport"

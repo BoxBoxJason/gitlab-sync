@@ -1,19 +1,14 @@
 FROM docker.io/golang:1.25.8-alpine AS build
 
-ARG VERSION="dev"
-
 WORKDIR /app
 
-COPY go.mod .
-COPY ./cmd/ ./cmd/
-COPY ./pkg/ ./pkg/
-COPY ./internal/ ./internal/
+COPY . .
 
 ENV GO111MODULE=on \
     CGO_ENABLED=0
 
-RUN go mod tidy && \
-    go build -ldflags "-X 'main.version=${VERSION}'" -o /app/bin/gitlab-sync ./cmd/main.go
+RUN apk add --no-cache make git && \
+  make build
 
 FROM alpine:3.23.3 AS security_provider
 

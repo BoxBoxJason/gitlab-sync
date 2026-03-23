@@ -11,29 +11,84 @@ permissions:
   contents: read
 
 jobs:
-  lint-test:
-    name: Lint and Unit Test
+  build:
+    name: Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - uses: actions/setup-go@v6
         with:
           go-version: "1.25.8"
-      - run: go mod download
-      - run: go install gotest.tools/gotestsum@v1.13.0
-      - run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4
+          cache: true
 
-      - name: build
+      - name: Run Build (Makefile)
         run: make build
 
-      - name: Verify go install
+  install:
+    name: Check install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.8"
+          cache: true
+
+      - name: Go Install
         run: go install .
 
-      - name: Lint
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.8"
+          cache: true
+
+      - name: Cache Go tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/go/bin
+          key: ${{ runner.os }}-go-tools-${{ hashFiles('Makefile') }}-lint
+          restore-keys: |
+            ${{ runner.os }}-go-tools-
+
+      - name: Run Lint (Makefile)
         run: make lint
 
-      - name: Unit-Test
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25.8"
+          cache: true
+
+      - name: Cache Go tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            /home/runner/go/bin
+          key: ${{ runner.os }}-go-tools-${{ hashFiles('Makefile') }}-test
+          restore-keys: |
+            ${{ runner.os }}-go-tools-
+
+      - name: Run Test (Makefile)
         run: make test

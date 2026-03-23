@@ -22,6 +22,7 @@ build: deps
 
 # Lint target
 lint: deps
+	@command -v golangci-lint >/dev/null 2>&1 || { echo "Installing golangci-lint..."; go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.11.4; }
 	@echo "Running golangci-lint..."
 	golangci-lint run ./...
 
@@ -31,8 +32,11 @@ dependency-check:
 
 # Test target
 test: deps
-	@echo "Running tests with coverage..."
-	gotestsum --format-icons octicons -- -covermode=atomic ./...
+	@command -v gotestsum >/dev/null 2>&1 || { echo "Installing gotestsum..."; go install gotest.tools/gotestsum@v1.13.0; }
+	@mkdir -p codequality
+	gotestsum --junitfile codequality/unit-tests.xml --format-icons octicons -- -coverprofile=codequality/coverage.out -covermode=atomic ./...
+	@echo "Coverage report generated: codequality/coverage.html"
+
 
 # Docker target
 package:

@@ -20,19 +20,19 @@ var (
 		Projects: map[string]*MirroringOptions{
 			FAKE_VALID_PROJECT: {
 				DestinationPath:     FAKE_VALID_PROJECT,
-				CI_CD_Catalog:       gitlab.Ptr(true),
-				MirrorIssues:        gitlab.Ptr(true),
-				MirrorTriggerBuilds: gitlab.Ptr(false),
-				Visibility:          gitlab.Ptr("private"),
+				CI_CD_Catalog:       new(true),
+				MirrorIssues:        new(true),
+				MirrorTriggerBuilds: new(false),
+				Visibility:          new("private"),
 			},
 		},
 		Groups: map[string]*MirroringOptions{
 			FAKE_VALID_GROUP: {
 				DestinationPath:     FAKE_VALID_GROUP,
-				CI_CD_Catalog:       gitlab.Ptr(true),
-				MirrorIssues:        gitlab.Ptr(true),
-				MirrorTriggerBuilds: gitlab.Ptr(false),
-				Visibility:          gitlab.Ptr("private"),
+				CI_CD_Catalog:       new(true),
+				MirrorIssues:        new(true),
+				MirrorTriggerBuilds: new(false),
+				Visibility:          new("private"),
 			},
 		},
 	}
@@ -63,8 +63,8 @@ var (
 func testMirroringOptions() *MirroringOptions {
 	return &MirroringOptions{
 		DestinationPath: "project",
-		CI_CD_Catalog:   gitlab.Ptr(true),
-		MirrorIssues:    gitlab.Ptr(true),
+		CI_CD_Catalog:   new(true),
+		MirrorIssues:    new(true),
 	}
 }
 
@@ -168,15 +168,15 @@ func TestCheck(t *testing.T) {
 				Projects: map[string]*MirroringOptions{
 					FAKE_VALID_PROJECT: {
 						DestinationPath: FAKE_VALID_PROJECT,
-						CI_CD_Catalog:   gitlab.Ptr(true),
-						MirrorIssues:    gitlab.Ptr(true),
+						CI_CD_Catalog:   new(true),
+						MirrorIssues:    new(true),
 					},
 				},
 				Groups: map[string]*MirroringOptions{
 					FAKE_VALID_GROUP: {
 						DestinationPath: FAKE_VALID_GROUP,
-						CI_CD_Catalog:   gitlab.Ptr(true),
-						MirrorIssues:    gitlab.Ptr(true),
+						CI_CD_Catalog:   new(true),
+						MirrorIssues:    new(true),
 					},
 				},
 			},
@@ -334,22 +334,22 @@ func TestConvertVisibility(t *testing.T) {
 	}{
 		{
 			name:  "public visibility",
-			input: gitlab.Ptr(string(gitlab.PublicVisibility)),
+			input: new(string(gitlab.PublicVisibility)),
 			want:  gitlab.PublicVisibility,
 		},
 		{
 			name:  "internal visibility",
-			input: gitlab.Ptr(string(gitlab.InternalVisibility)),
+			input: new(string(gitlab.InternalVisibility)),
 			want:  gitlab.InternalVisibility,
 		},
 		{
 			name:  "private visibility",
-			input: gitlab.Ptr(string(gitlab.PrivateVisibility)),
+			input: new(string(gitlab.PrivateVisibility)),
 			want:  gitlab.PrivateVisibility,
 		},
 		{
 			name:  "unknown defaults to public",
-			input: gitlab.Ptr("something-else"),
+			input: new("something-else"),
 			want:  gitlab.PublicVisibility,
 		},
 		{
@@ -420,19 +420,19 @@ func TestMirrorMappingGetProject(t *testing.T) {
 	// Prepare a mirror mapping with some project entries
 	opts1 := &MirroringOptions{
 		DestinationPath:     "dest1",
-		CI_CD_Catalog:       gitlab.Ptr(true),
-		MirrorIssues:        gitlab.Ptr(false),
-		MirrorTriggerBuilds: gitlab.Ptr(true),
-		Visibility:          gitlab.Ptr("public"),
-		MirrorReleases:      gitlab.Ptr(false),
+		CI_CD_Catalog:       new(true),
+		MirrorIssues:        new(false),
+		MirrorTriggerBuilds: new(true),
+		Visibility:          new("public"),
+		MirrorReleases:      new(false),
 	}
 	opts2 := &MirroringOptions{
 		DestinationPath:     "dest2",
-		CI_CD_Catalog:       gitlab.Ptr(false),
-		MirrorIssues:        gitlab.Ptr(true),
-		MirrorTriggerBuilds: gitlab.Ptr(false),
-		Visibility:          gitlab.Ptr("private"),
-		MirrorReleases:      gitlab.Ptr(true),
+		CI_CD_Catalog:       new(false),
+		MirrorIssues:        new(true),
+		MirrorTriggerBuilds: new(false),
+		Visibility:          new("private"),
+		MirrorReleases:      new(true),
 	}
 	mm := &MirrorMapping{
 		Projects: map[string]*MirroringOptions{
@@ -487,19 +487,19 @@ func TestMirrorMappingGetGroup(t *testing.T) {
 	// Prepare a mirror mapping with some group entries
 	optsA := &MirroringOptions{
 		DestinationPath:     "groupDestA",
-		CI_CD_Catalog:       gitlab.Ptr(true),
-		MirrorIssues:        gitlab.Ptr(true),
-		MirrorTriggerBuilds: gitlab.Ptr(false),
-		Visibility:          gitlab.Ptr("internal"),
-		MirrorReleases:      gitlab.Ptr(true),
+		CI_CD_Catalog:       new(true),
+		MirrorIssues:        new(true),
+		MirrorTriggerBuilds: new(false),
+		Visibility:          new("internal"),
+		MirrorReleases:      new(true),
 	}
 	optsB := &MirroringOptions{
 		DestinationPath:     "groupDestB",
-		CI_CD_Catalog:       gitlab.Ptr(false),
-		MirrorIssues:        gitlab.Ptr(false),
-		MirrorTriggerBuilds: gitlab.Ptr(true),
-		Visibility:          gitlab.Ptr("private"),
-		MirrorReleases:      gitlab.Ptr(false),
+		CI_CD_Catalog:       new(false),
+		MirrorIssues:        new(false),
+		MirrorTriggerBuilds: new(true),
+		Visibility:          new("private"),
+		MirrorReleases:      new(false),
 	}
 	mm := &MirrorMapping{
 		Projects: map[string]*MirroringOptions{},

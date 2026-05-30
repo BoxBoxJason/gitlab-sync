@@ -7,7 +7,6 @@ import (
 
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 func TestProcessFilters(t *testing.T) {
@@ -36,15 +35,15 @@ func TestProcessFilters(t *testing.T) {
 				Projects: map[string]*utils.MirroringOptions{
 					"sourceProject": {
 						DestinationPath: "destinationGroupPath/destinationProjectPath",
-						CI_CD_Catalog:   gitlab.Ptr(true),
-						MirrorIssues:    gitlab.Ptr(true),
+						CI_CD_Catalog:   new(true),
+						MirrorIssues:    new(true),
 					},
 				},
 				Groups: map[string]*utils.MirroringOptions{
 					"sourceGroup": {
 						DestinationPath: "destinationGroupPath",
-						CI_CD_Catalog:   gitlab.Ptr(true),
-						MirrorIssues:    gitlab.Ptr(true),
+						CI_CD_Catalog:   new(true),
+						MirrorIssues:    new(true),
 					},
 				},
 			},
@@ -67,25 +66,25 @@ func TestProcessFilters(t *testing.T) {
 				Projects: map[string]*utils.MirroringOptions{
 					"sourceProject1": {
 						DestinationPath: "destinationGroupPath1/destinationProjectPath1",
-						CI_CD_Catalog:   gitlab.Ptr(true),
-						MirrorIssues:    gitlab.Ptr(true),
+						CI_CD_Catalog:   new(true),
+						MirrorIssues:    new(true),
 					},
 					"sourceProject2": {
 						DestinationPath: "destinationGroupPath2/destinationProjectPath2",
-						CI_CD_Catalog:   gitlab.Ptr(false),
-						MirrorIssues:    gitlab.Ptr(false),
+						CI_CD_Catalog:   new(false),
+						MirrorIssues:    new(false),
 					},
 				},
 				Groups: map[string]*utils.MirroringOptions{
 					"sourceGroup1": {
 						DestinationPath: "destinationGroupPath3",
-						CI_CD_Catalog:   gitlab.Ptr(true),
-						MirrorIssues:    gitlab.Ptr(true),
+						CI_CD_Catalog:   new(true),
+						MirrorIssues:    new(true),
 					},
 					"sourceGroup2": {
 						DestinationPath: "destinationGroupPath4",
-						CI_CD_Catalog:   gitlab.Ptr(false),
-						MirrorIssues:    gitlab.Ptr(false),
+						CI_CD_Catalog:   new(false),
+						MirrorIssues:    new(false),
 					},
 				},
 			},
@@ -203,13 +202,13 @@ func TestDryRun(t *testing.T) {
 				Projects: map[string]*utils.MirroringOptions{
 					TEST_PROJECT.PathWithNamespace: {
 						DestinationPath: TEST_PROJECT.PathWithNamespace,
-						MirrorReleases:  gitlab.Ptr(true),
+						MirrorReleases:  new(true),
 					},
 				},
 				Groups: map[string]*utils.MirroringOptions{
 					TEST_GROUP_2.FullPath: {
 						DestinationPath: TEST_GROUP_2.FullPath,
-						MirrorReleases:  gitlab.Ptr(true),
+						MirrorReleases:  new(true),
 					},
 				},
 			}

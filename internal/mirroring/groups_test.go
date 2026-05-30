@@ -137,12 +137,12 @@ func TestCreateGroupFromSourceClaimOwnershipOption(t *testing.T) {
 		},
 		{
 			name:                 "claim ownership false does not claim",
-			claimOwnership:       gitlab.Ptr(false),
+			claimOwnership:       new(false),
 			expectedMemberClaims: 0,
 		},
 		{
 			name:                 "claim ownership true claims ownership",
-			claimOwnership:       gitlab.Ptr(true),
+			claimOwnership:       new(true),
 			expectedMemberClaims: 1,
 		},
 	}

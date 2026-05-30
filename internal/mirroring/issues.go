@@ -104,7 +104,7 @@ func (g *GitlabInstance) CloseIssue(project *gitlab.Project, issue *gitlab.Issue
 	zap.L().Debug("Closing issue in destination project", zap.String("issue", issue.Title), zap.String(ROLE_DESTINATION, project.HTTPURLToRepo))
 
 	_, _, err := g.Gitlab.Issues.UpdateIssue(project.ID, issue.IID, &gitlab.UpdateIssueOptions{
-		StateEvent: gitlab.Ptr(closeStateEvent),
+		StateEvent: new(closeStateEvent),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to close issue %d in project %s: %w", issue.IID, project.PathWithNamespace, err)

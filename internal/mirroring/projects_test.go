@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
 )
 
 func TestFetchAll(t *testing.T) {
@@ -84,12 +83,17 @@ func TestFetchAll(t *testing.T) {
 }
 
 func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
+	const customDestination = "custom/destination/project"
+
 	tests := []struct {
 		name             string
 		role             string
 		projectFilters   map[string]struct{}
 		expectedProjects map[string]struct{}
 		expectError      bool
+		// When non-empty, assert that TEST_PROJECT's destination path in the
+		// mirror mapping equals this value after the call.
+		expectedMappingDestination string
 	}{
 		{
 			name: "Test with source role, 1 project only, no error",
@@ -100,6 +104,7 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 			expectedProjects: map[string]struct{}{
 				TEST_PROJECT.PathWithNamespace: {},
 			},
+			expectedMappingDestination: customDestination,
 		},
 		{
 			name: "Test with destination role, 1 project only, no error",
@@ -122,6 +127,7 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 				TEST_PROJECT.PathWithNamespace:   {},
 				TEST_PROJECT_2.PathWithNamespace: {},
 			},
+			expectedMappingDestination: customDestination,
 		},
 		{
 			name: "Test with destination role, 2 projects, no error",
@@ -145,7 +151,8 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 			expectedProjects: map[string]struct{}{
 				TEST_PROJECT.PathWithNamespace: {},
 			},
-			expectError: true,
+			expectError:                true,
+			expectedMappingDestination: customDestination,
 		},
 	}
 
@@ -156,7 +163,7 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 			gitlabMirrorArgs := &utils.MirrorMapping{
 				Projects: map[string]*utils.MirroringOptions{
 					TEST_PROJECT.PathWithNamespace: {
-						DestinationPath: TEST_PROJECT.PathWithNamespace,
+						DestinationPath: customDestination,
 					},
 				},
 			}
@@ -213,11 +220,11 @@ func TestCreateProjectFromSource(t *testing.T) {
 			gitlabInstance.AddGroup(TEST_GROUP)
 			createdProject, err := gitlabInstance.CreateProjectFromSource(TEST_PROJECT, &utils.MirroringOptions{
 				DestinationPath:     TEST_PROJECT.PathWithNamespace,
-				MirrorIssues:        gitlab.Ptr(true),
-				MirrorReleases:      gitlab.Ptr(true),
-				MirrorTriggerBuilds: gitlab.Ptr(true),
-				Visibility:          gitlab.Ptr("public"),
-				CI_CD_Catalog:       gitlab.Ptr(true),
+				MirrorIssues:        new(true),
+				MirrorReleases:      new(true),
+				MirrorTriggerBuilds: new(true),
+				Visibility:          new("public"),
+				CI_CD_Catalog:       new(true),
 			})
 			if err != nil {
 				t.Errorf("Unexpected error when creating project: %v", err)
@@ -273,11 +280,11 @@ func TestCreateProjects(t *testing.T) {
 			Projects: map[string]*utils.MirroringOptions{
 				TEST_PROJECT.PathWithNamespace: {
 					DestinationPath:     TEST_PROJECT.PathWithNamespace,
-					CI_CD_Catalog:       gitlab.Ptr(false),
-					MirrorIssues:        gitlab.Ptr(true),
-					MirrorTriggerBuilds: gitlab.Ptr(false),
-					Visibility:          gitlab.Ptr("public"),
-					MirrorReleases:      gitlab.Ptr(true),
+					CI_CD_Catalog:       new(false),
+					MirrorIssues:        new(true),
+					MirrorTriggerBuilds: new(false),
+					Visibility:          new("public"),
+					MirrorReleases:      new(true),
 				},
 			},
 		}
@@ -323,12 +330,12 @@ func TestCreateProjectFromSourceClaimOwnershipOption(t *testing.T) {
 		},
 		{
 			name:                 "claim ownership false does not claim",
-			claimOwnership:       gitlab.Ptr(false),
+			claimOwnership:       new(false),
 			expectedMemberClaims: 0,
 		},
 		{
 			name:                 "claim ownership true claims ownership",
-			claimOwnership:       gitlab.Ptr(true),
+			claimOwnership:       new(true),
 			expectedMemberClaims: 1,
 		},
 	}

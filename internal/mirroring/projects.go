@@ -103,9 +103,9 @@ func (g *GitlabInstance) FetchAllProjectsSmallInstance() ([]*gitlab.Project, err
 	zap.L().Debug("Fetching all projects from GitLab instance", zap.String(ROLE, g.Role))
 
 	fetchOpts := &gitlab.ListProjectsOptions{
-		Archived:             gitlab.Ptr(false),
-		IncludeHidden:        gitlab.Ptr(false),
-		IncludePendingDelete: gitlab.Ptr(false),
+		Archived:             new(false),
+		IncludeHidden:        new(false),
+		IncludePendingDelete: new(false),
 		ListOptions: gitlab.ListOptions{
 			PerPage: projectsPerPage,
 			Page:    1,
@@ -209,7 +209,7 @@ func (g *GitlabInstance) FetchAndProcessGroupProjects(group *gitlab.Group, fetch
 	if group != nil {
 		// Retrieve all projects in the group
 		opt := &gitlab.ListGroupProjectsOptions{
-			Archived: gitlab.Ptr(false),
+			Archived: new(false),
 			ListOptions: gitlab.ListOptions{
 				PerPage: projectsPerPage,
 				Page:    1,
@@ -323,8 +323,8 @@ func (g *GitlabInstance) CreateProjectFromSource(sourceProject *gitlab.Project, 
 		DefaultBranch:       &sourceProject.DefaultBranch,
 		Description:         &sourceProject.Description,
 		MirrorTriggerBuilds: copyOptions.MirrorTriggerBuilds,
-		Mirror:              gitlab.Ptr(true),
-		Visibility:          gitlab.Ptr(gitlab.VisibilityValue(helpers.Deref(copyOptions.Visibility, string(gitlab.PublicVisibility)))),
+		Mirror:              new(true),
+		Visibility:          new(gitlab.VisibilityValue(helpers.Deref(copyOptions.Visibility, string(gitlab.PublicVisibility)))),
 	}
 
 	zap.L().Debug("Retrieving project namespace ID", zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
@@ -514,17 +514,17 @@ func syncMirrorProjectAttributes(destinationProject *gitlab.Project, copyOptions
 
 	desiredMirrorTriggerBuilds := helpers.Deref(copyOptions.MirrorTriggerBuilds, false)
 	if desiredMirrorTriggerBuilds != destinationProject.MirrorTriggerBuilds {
-		gitlabEditOptions.MirrorTriggerBuilds = gitlab.Ptr(desiredMirrorTriggerBuilds)
+		gitlabEditOptions.MirrorTriggerBuilds = new(desiredMirrorTriggerBuilds)
 		mismatch = true
 	}
 
 	if !destinationProject.MirrorOverwritesDivergedBranches {
-		gitlabEditOptions.MirrorOverwritesDivergedBranches = gitlab.Ptr(true)
+		gitlabEditOptions.MirrorOverwritesDivergedBranches = new(true)
 		mismatch = true
 	}
 
 	if !destinationProject.Mirror {
-		gitlabEditOptions.Mirror = gitlab.Ptr(true)
+		gitlabEditOptions.Mirror = new(true)
 		mismatch = true
 	}
 
@@ -541,7 +541,7 @@ func (destinationGitlabInstance *GitlabInstance) SyncProjectAttributes(sourcePro
 		missmatched = true
 	}
 
-	if copyOptions.Visibility != gitlab.Ptr(string(destinationProject.Visibility)) {
+	if copyOptions.Visibility != new(string(destinationProject.Visibility)) {
 		visibilityValue := utils.ConvertVisibility(copyOptions.Visibility)
 		gitlabEditOptions.Visibility = &visibilityValue
 		missmatched = true
@@ -583,10 +583,10 @@ func (g *GitlabInstance) EnableProjectMirrorPull(sourceProject, destinationProje
 
 	_, _, err := g.Gitlab.Projects.ConfigureProjectPullMirror(destinationProject.ID, &gitlab.ConfigureProjectPullMirrorOptions{
 		URL:                              &sourceProject.HTTPURLToRepo,
-		OnlyMirrorProtectedBranches:      gitlab.Ptr(true),
-		Enabled:                          gitlab.Ptr(true),
-		MirrorOverwritesDivergedBranches: gitlab.Ptr(true),
-		MirrorTriggerBuilds:              gitlab.Ptr(desiredMirrorTriggerBuilds),
+		OnlyMirrorProtectedBranches:      new(true),
+		Enabled:                          new(true),
+		MirrorOverwritesDivergedBranches: new(true),
+		MirrorTriggerBuilds:              new(desiredMirrorTriggerBuilds),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to configure pull mirror for project %s: %w", destinationProject.PathWithNamespace, err)

@@ -181,11 +181,11 @@ func (m *MirrorMapping) checkProjects(errChan chan error) {
 		checkCopyPaths(project, options.DestinationPath, PROJECT, errChan)
 
 		// Check the visibility
-		options.Visibility = gitlab.Ptr(strings.TrimSpace(helpers.Deref(options.Visibility, string(gitlab.PublicVisibility))))
+		options.Visibility = new(strings.TrimSpace(helpers.Deref(options.Visibility, string(gitlab.PublicVisibility))))
 		if options.Visibility != nil && !checkVisibility(*options.Visibility) {
 			errChan <- fmt.Errorf("invalid project visibility: %s", *options.Visibility)
 
-			options.Visibility = gitlab.Ptr(string(gitlab.PublicVisibility))
+			options.Visibility = new(string(gitlab.PublicVisibility))
 		}
 	}
 }
@@ -234,11 +234,11 @@ func (m *MirrorMapping) checkGroups(errChan chan error) {
 		checkCopyPaths(group, options.DestinationPath, GROUP, errChan)
 
 		// Check the visibility
-		options.Visibility = gitlab.Ptr(strings.TrimSpace(helpers.Deref(options.Visibility, string(gitlab.PublicVisibility))))
+		options.Visibility = new(strings.TrimSpace(helpers.Deref(options.Visibility, string(gitlab.PublicVisibility))))
 		if options.Visibility != nil && !checkVisibility(*options.Visibility) {
 			errChan <- fmt.Errorf("invalid group visibility: %s", *options.Visibility)
 
-			options.Visibility = gitlab.Ptr(string(gitlab.PublicVisibility))
+			options.Visibility = new(string(gitlab.PublicVisibility))
 		}
 	}
 }

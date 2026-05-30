@@ -223,7 +223,7 @@ func (g *GitlabInstance) FetchAllGroupsSmallInstance() ([]*gitlab.Group, error) 
 	zap.L().Debug("Fetching all groups from GitLab instance", zap.String(ROLE, g.Role))
 
 	fetchOpts := &gitlab.ListGroupsOptions{
-		AllAvailable: gitlab.Ptr(true),
+		AllAvailable: new(true),
 		ListOptions: gitlab.ListOptions{
 			PerPage: groupsPerPage,
 			Page:    1,
@@ -328,7 +328,7 @@ func (g *GitlabInstance) FetchAndProcessGroupRecursive(gid any, fetchOriginPath 
 
 	switch groupIdentifier := gid.(type) {
 	case int, string:
-		group, _, err = g.Gitlab.Groups.GetGroup(gid, &gitlab.GetGroupOptions{WithProjects: gitlab.Ptr(false)})
+		group, _, err = g.Gitlab.Groups.GetGroup(gid, &gitlab.GetGroupOptions{WithProjects: new(false)})
 		if err != nil {
 			errChan <- fmt.Errorf("failed to retrieve group %s: %w", gid, err)
 		}
@@ -359,7 +359,7 @@ func (g *GitlabInstance) FetchAndProcessGroupSubgroups(group *gitlab.Group, fetc
 	defer recursiveGroupWaitGroup.Done()
 
 	fetchOpts := &gitlab.ListSubGroupsOptions{
-		AllAvailable: gitlab.Ptr(true),
+		AllAvailable: new(true),
 		ListOptions: gitlab.ListOptions{
 			PerPage: groupsPerPage,
 			Page:    1,
@@ -512,7 +512,7 @@ func (g *GitlabInstance) ClaimOwnershipToGroup(group *gitlab.Group) error {
 
 	_, _, err := g.Gitlab.GroupMembers.AddGroupMember(group.ID, &gitlab.AddGroupMemberOptions{
 		UserID:      &g.UserID,
-		AccessLevel: gitlab.Ptr(gitlab.AccessLevelValue(ownerAccessLevel)),
+		AccessLevel: new(gitlab.AccessLevelValue(ownerAccessLevel)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add user as owner to group %s: %w", group.FullPath, err)

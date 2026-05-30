@@ -46,6 +46,12 @@ func (g *GitlabInstance) storeProject(project *gitlab.Project, parentGroupPath s
 	g.AddProject(project)
 
 	if g.Role == ROLE_SOURCE {
+		// If the project is directly listed in the mirror mapping config,
+		// its options are already set from the JSON; no group lookup needed.
+		if _, ok := mirrorMapping.GetProject(project.PathWithNamespace); ok {
+			return
+		}
+
 		zap.L().Debug("Storing project in mirror mapping", zap.String("project", project.HTTPURLToRepo), zap.String("group", parentGroupPath))
 		// Retrieve the corresponding group creation options from the mirror mapping
 		groupCreationOptions, ok := mirrorMapping.GetGroup(parentGroupPath)
@@ -196,7 +202,7 @@ func (g *GitlabInstance) FetchAndProcessProjectsBigInstance(projectFilters *map[
 	close(projectsChan)
 
 	for project := range projectsChan {
-		g.storeProject(project, project.PathWithNamespace, mirrorMapping)
+		g.storeProject(project, filepath.Dir(project.PathWithNamespace), mirrorMapping)
 	}
 
 	return helpers.MergeErrors(errCh)
@@ -663,7 +669,7 @@ func (g *GitlabInstance) ClaimOwnershipToProject(project *gitlab.Project) error 
 
 	_, _, err := g.Gitlab.ProjectMembers.AddProjectMember(project.ID, &gitlab.AddProjectMemberOptions{
 		UserID:      &g.UserID,
-		AccessLevel: gitlab.Ptr(gitlab.AccessLevelValue(projectOwnerAccessLevel)),
+		AccessLevel: new(gitlab.AccessLevelValue(projectOwnerAccessLevel)),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to add user as owner to project %s: %w", project.PathWithNamespace, err)

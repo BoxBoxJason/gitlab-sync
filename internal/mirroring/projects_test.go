@@ -182,6 +182,208 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 					t.Errorf("Expected project %s to be in the cache", project)
 				}
 			}
+
+			// For source-role cases the configured destination path must not be overwritten.
+			if test.expectedMappingDestination != "" {
+				opts, ok := gitlabMirrorArgs.GetProject(TEST_PROJECT.PathWithNamespace)
+				if !ok {
+					t.Fatalf("expected %q to remain in mirror mapping after FetchAndProcessProjectsBigInstance", TEST_PROJECT.PathWithNamespace)
+				}
+				if opts.DestinationPath != test.expectedMappingDestination {
+					t.Errorf("mirror mapping destination path: got %q, want %q", opts.DestinationPath, test.expectedMappingDestination)
+				}
+			}
+		})
+	}
+}
+
+// TestFetchAndProcessProjectsSmallInstance verifies that projects listed directly
+// in the mirror-mapping config are mirrored correctly in small-instance mode,
+// i.e. without requiring a matching group entry (the same root-cause as the big
+// instance bug but triggered via MatchPathAgainstFilters returning "" as the
+// parent group path for an exact allowList hit).
+func TestFetchAndProcessProjectsSmallInstance(t *testing.T) {
+	const customDestination = "custom/destination/project"
+
+	tests := []struct {
+		name                       string
+		role                       string
+		projectFilters             map[string]struct{}
+		groupFilters               map[string]struct{}
+		mirrorMapping              *utils.MirrorMapping
+		expectedProjects           map[string]struct{}
+		expectedMappingDestination string
+	}{
+		{
+			name: "source role, project-only config (no groups), preserves destination path",
+			role: ROLE_SOURCE,
+			projectFilters: map[string]struct{}{
+				TEST_PROJECT.PathWithNamespace: {},
+			},
+			groupFilters: map[string]struct{}{},
+			mirrorMapping: &utils.MirrorMapping{
+				Projects: map[string]*utils.MirroringOptions{
+					TEST_PROJECT.PathWithNamespace: {DestinationPath: customDestination},
+				},
+				Groups: map[string]*utils.MirroringOptions{},
+			},
+			expectedProjects: map[string]struct{}{
+				TEST_PROJECT.PathWithNamespace: {},
+			},
+			expectedMappingDestination: customDestination,
+		},
+		{
+			name:           "source role, group-only config, derives destination path from group",
+			role:           ROLE_SOURCE,
+			projectFilters: map[string]struct{}{},
+			groupFilters: map[string]struct{}{
+				TEST_GROUP.FullPath: {},
+			},
+			mirrorMapping: &utils.MirrorMapping{
+				Projects: map[string]*utils.MirroringOptions{},
+				Groups: map[string]*utils.MirroringOptions{
+					TEST_GROUP.FullPath: {DestinationPath: "mirror-group"},
+				},
+			},
+			// TEST_PROJECT.PathWithNamespace is "test/group/project"; relative to
+			// TEST_GROUP.FullPath ("test/group") that is "project", so the expected
+			// destination is "mirror-group/project".
+			expectedProjects: map[string]struct{}{
+				TEST_PROJECT.PathWithNamespace: {},
+			},
+			expectedMappingDestination: "mirror-group/project",
+		},
+		{
+			name: "destination role, project-only config, project in cache, mapping unchanged",
+			role: ROLE_DESTINATION,
+			projectFilters: map[string]struct{}{
+				TEST_PROJECT.PathWithNamespace: {},
+			},
+			groupFilters: map[string]struct{}{},
+			mirrorMapping: &utils.MirrorMapping{
+				Projects: map[string]*utils.MirroringOptions{},
+				Groups:   map[string]*utils.MirroringOptions{},
+			},
+			expectedProjects: map[string]struct{}{
+				TEST_PROJECT.PathWithNamespace: {},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, gitlabInstance := setupTestServer(t, tt.role, INSTANCE_SIZE_SMALL)
+
+			errs := gitlabInstance.FetchAndProcessProjectsSmallInstance(&tt.projectFilters, &tt.groupFilters, tt.mirrorMapping)
+			if len(errs) > 0 {
+				t.Fatalf("unexpected errors: %v", errs)
+			}
+
+			for project := range tt.expectedProjects {
+				if _, ok := gitlabInstance.Projects[project]; !ok {
+					t.Errorf("expected project %q in instance cache", project)
+				}
+			}
+
+			if tt.expectedMappingDestination != "" {
+				opts, ok := tt.mirrorMapping.GetProject(TEST_PROJECT.PathWithNamespace)
+				if !ok {
+					t.Fatalf("expected %q in mirror mapping after FetchAndProcessProjectsSmallInstance", TEST_PROJECT.PathWithNamespace)
+				}
+				if opts.DestinationPath != tt.expectedMappingDestination {
+					t.Errorf("mirror mapping destination path: got %q, want %q", opts.DestinationPath, tt.expectedMappingDestination)
+				}
+			}
+		})
+	}
+}
+
+func TestStoreProject(t *testing.T) {
+	tests := []struct {
+		name                    string
+		role                    string
+		parentGroupPath         string
+		mirrorMapping           *utils.MirrorMapping
+		expectedDestinationPath string // empty means no entry expected in mirrorMapping.Projects
+	}{
+		{
+			// Core bug fix: a project listed directly in the config must not require
+			// a group entry and must preserve its configured destination path.
+			name:            "source role, project directly in mirror mapping, preserves destination without group",
+			role:            ROLE_SOURCE,
+			parentGroupPath: "",
+			mirrorMapping: &utils.MirrorMapping{
+				Projects: map[string]*utils.MirroringOptions{
+					TEST_PROJECT.PathWithNamespace: {DestinationPath: "custom/dest/project"},
+				},
+				Groups: map[string]*utils.MirroringOptions{},
+			},
+			expectedDestinationPath: "custom/dest/project",
+		},
+		{
+			// Existing group-derived behaviour must still work.
+			name:            "source role, project matched via parent group, derives destination path",
+			role:            ROLE_SOURCE,
+			parentGroupPath: TEST_GROUP.FullPath,
+			mirrorMapping: &utils.MirrorMapping{
+				Projects: map[string]*utils.MirroringOptions{},
+				Groups: map[string]*utils.MirroringOptions{
+					TEST_GROUP.FullPath: {DestinationPath: "mirror-group"},
+				},
+			},
+			// filepath.Join("mirror-group", filepath.Rel("test/group", "test/group/project")) == "mirror-group/project"
+			expectedDestinationPath: "mirror-group/project",
+		},
+		{
+			// Project not in mapping and no matching group: project enters the instance
+			// cache but is not added to the mirror mapping.
+			name:            "source role, no project or group entry, not added to mirror mapping",
+			role:            ROLE_SOURCE,
+			parentGroupPath: "nonexistent/group",
+			mirrorMapping: &utils.MirrorMapping{
+				Projects: map[string]*utils.MirroringOptions{},
+				Groups:   map[string]*utils.MirroringOptions{},
+			},
+			expectedDestinationPath: "",
+		},
+		{
+			// Destination role never touches the mirror mapping.
+			name:            "destination role, project stored in cache, mirror mapping unchanged",
+			role:            ROLE_DESTINATION,
+			parentGroupPath: "",
+			mirrorMapping: &utils.MirrorMapping{
+				Projects: map[string]*utils.MirroringOptions{},
+				Groups:   map[string]*utils.MirroringOptions{},
+			},
+			expectedDestinationPath: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			_, gitlabInstance := setupTestServer(t, tt.role, INSTANCE_SIZE_BIG)
+
+			gitlabInstance.storeProject(TEST_PROJECT, tt.parentGroupPath, tt.mirrorMapping)
+
+			if _, ok := gitlabInstance.Projects[TEST_PROJECT.PathWithNamespace]; !ok {
+				t.Errorf("expected project %q in instance cache after storeProject", TEST_PROJECT.PathWithNamespace)
+			}
+
+			opts, inMapping := tt.mirrorMapping.GetProject(TEST_PROJECT.PathWithNamespace)
+			if tt.expectedDestinationPath == "" {
+				if inMapping && opts != nil && opts.DestinationPath != "" {
+					t.Errorf("expected no mirror-mapping entry for project, but got destination path %q", opts.DestinationPath)
+				}
+			} else {
+				if !inMapping {
+					t.Fatalf("expected project to be in mirror mapping with destination %q, but it was absent", tt.expectedDestinationPath)
+				}
+				if opts.DestinationPath != tt.expectedDestinationPath {
+					t.Errorf("expected destination path %q, got %q", tt.expectedDestinationPath, opts.DestinationPath)
+				}
+			}
 		})
 	}
 }

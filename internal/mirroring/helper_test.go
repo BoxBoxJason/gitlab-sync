@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
-	gitlab "gitlab.com/gitlab-org/api/client-go"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 )
 
 const (

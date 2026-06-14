@@ -12,7 +12,7 @@ import (
 
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
-	gitlab "gitlab.com/gitlab-org/api/client-go"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 )
 
 const (

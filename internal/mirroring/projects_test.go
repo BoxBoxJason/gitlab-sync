@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
+
+	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 )
 
 func TestFetchAll(t *testing.T) {
@@ -507,6 +509,22 @@ func TestAddProjectToCICDCatalog(t *testing.T) {
 		err := gitlabInstance.AddProjectToCICDCatalog(TEST_PROJECT)
 		if err != nil {
 			t.Errorf("Unexpected error when adding project to CI/CD catalog: %v", err)
+		}
+	})
+
+	t.Run("Skip Add Project to CI/CD Catalog when already enabled", func(t *testing.T) {
+		// This project ID has no registered endpoint on the test server, so an
+		// unexpected error here would reveal that the skip check failed to
+		// prevent the API call.
+		alreadyEnabledProject := &gitlab.Project{
+			ID:                 999999,
+			PathWithNamespace:  "test/group/unregistered-project",
+			CICDCatalogEnabled: true,
+		}
+
+		err := gitlabInstance.AddProjectToCICDCatalog(alreadyEnabledProject)
+		if err != nil {
+			t.Errorf("Unexpected error when project is already in the CI/CD catalog: %v", err)
 		}
 	})
 }

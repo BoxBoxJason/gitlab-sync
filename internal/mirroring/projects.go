@@ -642,28 +642,19 @@ func (sourceGitlabInstance *GitlabInstance) CopyProjectAvatar(destinationGitlabI
 	return nil
 }
 
-// AddProjectToCICDCatalog adds a project to the CI/CD catalog in the destination GitLab instance.
-// It uses a GraphQL mutation to create the catalog resource for the project.
+// AddProjectToCICDCatalog enables the CI/CD catalog resource for the project in the destination GitLab instance.
+// It skips the API call if the project is already registered as a CI/CD catalog resource.
+// Requires GitLab 19.3+ on the destination instance, since it relies on the "cicd_catalog_enabled" project API field introduced in that version.
 func (g *GitlabInstance) AddProjectToCICDCatalog(project *gitlab.Project) error {
-	zap.L().Debug("Adding project to CI/CD catalog", zap.String("project", project.HTTPURLToRepo))
+	if project.CICDCatalogEnabled {
+		zap.L().Debug("Project is already part of the CI/CD catalog, skipping", zap.String("project", project.HTTPURLToRepo))
 
-	mutation := `
-    mutation {
-        catalogResourcesCreate(input: { projectPath: "%s" }) {
-            errors
-        }
-    }`
-	query := fmt.Sprintf(mutation, project.PathWithNamespace)
-
-	var response struct {
-		Data struct {
-			CatalogResourcesCreate struct {
-				Errors []string `json:"errors"`
-			} `json:"catalogResourcesCreate"`
-		} `json:"data"`
+		return nil
 	}
 
-	_, err := g.Gitlab.GraphQL.Do(gitlab.GraphQLQuery{Query: query}, &response)
+	zap.L().Debug("Adding project to CI/CD catalog", zap.String("project", project.HTTPURLToRepo))
+
+	_, _, err := g.Gitlab.Projects.EditProject(project.ID, &gitlab.EditProjectOptions{CICDCatalogEnabled: new(true)})
 	if err != nil {
 		return fmt.Errorf("failed to add project %s to CI/CD catalog: %w", project.PathWithNamespace, err)
 	}

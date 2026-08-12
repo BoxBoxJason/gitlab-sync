@@ -18,7 +18,7 @@ It is designed to be used in a CI/CD pipeline to automate the process of keeping
 - Recreates your git repository content in another location:
   - Enable Pull Mirroring for projects (requires GitLab Premium)
   - Clone the repository content from the source GitLab instance to the destination GitLab instance (on GitLab Free)
-- Can add projects to CI/CD catalog
+- Can add projects to CI/CD catalog (requires GitLab 19.3+ on the destination instance)
 - Full copy of the project (description, icon, topics,...). Can also copy issues
 
 ## Installation
@@ -157,7 +157,7 @@ Allowed options are:
 | Option | Description |
 |--------|-------------|
 | `destination_path` | The path to the project / group on the destination GitLab instance. |
-| `ci_cd_catalog` | Whether to add the project to the CI/CD catalog. |
+| `ci_cd_catalog` | Whether to add the project to the CI/CD catalog. ⚠️ Requires GitLab 19.3+ on the destination instance, since it relies on the `cicd_catalog_enabled` project API field introduced in that version. |
 | `mirror_issues` | Whether to copy issues from the source project to the destination project. |
 | `visibility` | The visibility level of the project on the destination GitLab instance. Can be `public`, `internal`, or `private`. |
 | `mirror_trigger_builds` | Whether to trigger builds on the destination project when a push is made to the source project. |

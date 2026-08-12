@@ -51,7 +51,7 @@ type ParserArgs struct {
 // MirroringOptions defines how a project or group should be mirrored
 // to the destination GitLab instance
 // - destination_url: the URL of the destination GitLab instance
-// - ci_cd_catalog: whether to add the project to the CI/CD catalog
+// - ci_cd_catalog: whether to add the project to the CI/CD catalog. Requires GitLab 19.3+ on the destination instance.
 // - issues: whether to mirror the issues.
 type MirroringOptions struct {
 	CI_CD_Catalog       *bool   `json:"ci_cd_catalog"`

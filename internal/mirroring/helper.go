@@ -14,13 +14,15 @@ import (
 func (g *GitlabInstance) reverseGroupMirrorMap(mirrorMapping *utils.MirrorMapping) (map[string]string, []string) {
 	var reversedMirrorMap map[string]string
 
-	destinationGroupPaths := make([]string, 0, len(g.Groups))
+	destinationGroupPaths := make([]string, 0, g.GroupsLen())
+
 	if mirrorMapping != nil {
 		// Reverse the mirror mapping to get the source group path for each destination group
-		reversedMirrorMap = make(map[string]string, len(mirrorMapping.Groups))
+		groupsSnapshot := mirrorMapping.GroupsSnapshot()
+		reversedMirrorMap = make(map[string]string, len(groupsSnapshot))
 		// Extract the keys (group paths) and sort them
 		// This ensures that the parent groups are created before their children
-		for sourceGroupPath, createOptions := range mirrorMapping.Groups {
+		for sourceGroupPath, createOptions := range groupsSnapshot {
 			if _, ok := reversedMirrorMap[createOptions.DestinationPath]; ok {
 				zap.L().Error("duplicate destination path found in mirror mapping", zap.String("destinationPath", createOptions.DestinationPath))
 

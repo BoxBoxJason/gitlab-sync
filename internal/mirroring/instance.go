@@ -117,6 +117,24 @@ func (g *GitlabInstance) GetGroup(groupPath string) *gitlab.Group {
 	return g.Groups[groupPath]
 }
 
+// GroupsLen returns the number of groups currently cached in the GitLabInstance.
+// It uses a read lock to ensure thread-safe access to the Groups map.
+func (g *GitlabInstance) GroupsLen() int {
+	g.muGroups.RLock()
+	defer g.muGroups.RUnlock()
+
+	return len(g.Groups)
+}
+
+// ProjectsLen returns the number of projects currently cached in the GitLabInstance.
+// It uses a read lock to ensure thread-safe access to the Projects map.
+func (g *GitlabInstance) ProjectsLen() int {
+	g.muProjects.RLock()
+	defer g.muProjects.RUnlock()
+
+	return len(g.Projects)
+}
+
 // IsBig checks if the GitLab instance is of size "big".
 // It returns true if the InstanceSize is "big", otherwise false.
 func (g *GitlabInstance) IsBig() bool {
@@ -212,7 +230,7 @@ func (g *GitlabInstance) GetParentNamespaceID(projectOrGroupPath string) (int64,
 
 	if parentPath != "." && parentPath != "/" {
 		// Check if parent path is already in the instance groups cache
-		if parentGroup, ok := g.Groups[parentPath]; ok {
+		if parentGroup := g.GetGroup(parentPath); parentGroup != nil {
 			parentGroupID = parentGroup.ID
 		} else {
 			err = fmt.Errorf("parent group not found for path: %s", parentPath)

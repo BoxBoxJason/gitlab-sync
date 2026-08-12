@@ -433,9 +433,6 @@ func setupTestServer(t *testing.T, role, instanceSize string) (*http.ServeMux, *
 	setupTestProjects(mux)
 	setupTestGroups(mux)
 
-	// Add test handlers for the GraphQL endpoint.
-	setupTestGraphQL(mux)
-
 	// Add test handler for current user
 	mux.HandleFunc("/api/v4/user", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -540,29 +537,6 @@ func setupTestGroup(mux *http.ServeMux, group *gitlab.Group, stringResponse stri
 		w.WriteHeader(http.StatusCreated)
 		// Return a mock member response
 		fmt.Fprint(w, `{"id": 1, "username": "testuser", "name": "Test User", "state": "active", "access_level": 50}`)
-	})
-}
-
-func setupTestGraphQL(mux *http.ServeMux) {
-	// Setup the GraphQL endpoint to return a mock response.
-	mux.HandleFunc("/api/graphql", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodPost:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			// Set response status to 200 OK
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, `{
-				"data": {
-					"catalogResourcesCreate": {
-					"errors": []
-					}
-				},
-				"correlationId": "4a5a7b18e94ae6770b3933913989ef40"
-				}`)
-		default:
-			// Set response status to 405 Method Not Allowed
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
 	})
 }
 

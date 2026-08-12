@@ -310,6 +310,16 @@ func (destinationGitlab *GitlabInstance) CreateProject(sourceProjectPath string,
 		}
 	}
 
+	// Reassert ownership on every run, not just when the project is first created.
+	// GitLab's pull mirror endpoint requires the calling user to have Maintainer+ access to
+	// reassign the mirror to itself, so re-claiming ownership here is what allows changing
+	// the user running the script on an already-mirrored project.
+	if helpers.Deref(projectCreationOptions.ClaimOwnership, false) {
+		if ownershipErr := destinationGitlab.ClaimOwnershipToProject(destinationProject); ownershipErr != nil {
+			zap.L().Warn("Failed to claim ownership of project", zap.String("project", destinationProject.PathWithNamespace), zap.Error(ownershipErr))
+		}
+	}
+
 	// If the project already exists, update it with the source project details
 	mergedError := destinationGitlab.UpdateProjectFromSource(sourceGitlab, sourceProject, destinationProject, projectCreationOptions)
 
@@ -357,14 +367,6 @@ func (g *GitlabInstance) CreateProjectFromSource(sourceProject *gitlab.Project, 
 
 	zap.L().Info("Project created", zap.String("project", destinationProject.HTTPURLToRepo))
 	g.AddProject(destinationProject)
-
-	// Claim ownership of the created project
-	if helpers.Deref(copyOptions.ClaimOwnership, false) {
-		ownershipErr := g.ClaimOwnershipToProject(destinationProject)
-		if ownershipErr != nil {
-			zap.L().Warn("Failed to claim ownership of project", zap.String("project", destinationProject.PathWithNamespace), zap.Error(ownershipErr))
-		}
-	}
 
 	return destinationProject, nil
 }
@@ -581,10 +583,16 @@ func (destinationGitlabInstance *GitlabInstance) MirrorProjectGit(sourceGitlabIn
 	return nil
 }
 
-// EnableProjectMirrorPull enables the pull mirror for a project in the destination GitLab instance.
+// EnableProjectMirrorPull (re)configures the pull mirror for a project in the destination GitLab instance.
 // It sets the source project URL, enables mirroring, and configures other options like triggering builds and overwriting diverged branches.
+//
+// This is called on every run, for every project (not just newly created ones): GitLab's pull
+// mirror update endpoint unconditionally reassigns the mirror's "running user" to whichever user
+// makes this call, so calling it every time is what allows changing the user running the script.
+// That reassignment only takes effect if the calling user has Maintainer+ access on the
+// destination project, which is why ClaimOwnershipToProject also needs to run on every run.
 func (g *GitlabInstance) EnableProjectMirrorPull(sourceProject, destinationProject *gitlab.Project, mirrorOptions *utils.MirroringOptions) error {
-	zap.L().Debug("Enabling project mirror pull", zap.String("sourceProject", sourceProject.HTTPURLToRepo), zap.String("destinationProject", destinationProject.HTTPURLToRepo))
+	zap.L().Debug("Reapplying project mirror pull", zap.String("sourceProject", sourceProject.HTTPURLToRepo), zap.String("destinationProject", destinationProject.HTTPURLToRepo))
 
 	desiredMirrorTriggerBuilds := helpers.Deref(mirrorOptions.MirrorTriggerBuilds, false)
 
@@ -663,17 +671,30 @@ func (g *GitlabInstance) AddProjectToCICDCatalog(project *gitlab.Project) error 
 	return nil
 }
 
-// ClaimOwnershipToProject adds the authenticated user as an owner to the specified project.
-// It uses the GitLab API to add the user as a project member with owner access level.
+// ClaimOwnershipToProject ensures the authenticated user is a direct owner of the specified project.
+//
+// It is called on every run, so it must actively reassert ownership rather than silently
+// no-op: AddProjectMember does not change the access level of a user who is already a
+// member, so a user added at a lower level (or by a previous run under a different account)
+// would otherwise never be promoted to Owner. It tries EditProjectMember first to upgrade an
+// existing direct membership, falling back to AddProjectMember when the user isn't a direct
+// member yet.
 func (g *GitlabInstance) ClaimOwnershipToProject(project *gitlab.Project) error {
 	zap.L().Debug("Claiming ownership of project", zap.String("project", project.PathWithNamespace), zap.Int64("userID", g.UserID))
 
-	_, _, err := g.Gitlab.ProjectMembers.AddProjectMember(project.ID, &gitlab.AddProjectMemberOptions{
-		UserID:      &g.UserID,
-		AccessLevel: new(gitlab.AccessLevelValue(projectOwnerAccessLevel)),
+	ownerAccessLevel := new(gitlab.AccessLevelValue(projectOwnerAccessLevel))
+
+	_, _, editErr := g.Gitlab.ProjectMembers.EditProjectMember(project.ID, g.UserID, &gitlab.EditProjectMemberOptions{
+		AccessLevel: ownerAccessLevel,
 	})
-	if err != nil {
-		return fmt.Errorf("failed to add user as owner to project %s: %w", project.PathWithNamespace, err)
+	if editErr != nil {
+		_, _, addErr := g.Gitlab.ProjectMembers.AddProjectMember(project.ID, &gitlab.AddProjectMemberOptions{
+			UserID:      &g.UserID,
+			AccessLevel: ownerAccessLevel,
+		})
+		if addErr != nil {
+			return fmt.Errorf("failed to add or promote user as owner of project %s: %w", project.PathWithNamespace, errors.Join(editErr, addErr))
+		}
 	}
 
 	zap.L().Info("Successfully claimed ownership of project", zap.String("project", project.PathWithNamespace))

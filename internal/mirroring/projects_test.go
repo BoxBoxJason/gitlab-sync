@@ -1,6 +1,7 @@
 package mirroring
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -519,10 +520,11 @@ func TestClaimOwnershipToProject(t *testing.T) {
 	}
 }
 
-func TestCreateProjectFromSourceClaimOwnershipOption(t *testing.T) {
+func TestCreateProjectClaimOwnershipOption(t *testing.T) {
 	tests := []struct {
 		name                 string
 		claimOwnership       *bool
+		preExisting          bool
 		expectedMemberClaims int
 	}{
 		{
@@ -536,15 +538,27 @@ func TestCreateProjectFromSourceClaimOwnershipOption(t *testing.T) {
 			expectedMemberClaims: 0,
 		},
 		{
-			name:                 "claim ownership true claims ownership",
+			name:                 "claim ownership true claims ownership when the project is created",
 			claimOwnership:       new(true),
+			expectedMemberClaims: 1,
+		},
+		{
+			name:                 "claim ownership true reclaims ownership on an already existing project",
+			claimOwnership:       new(true),
+			preExisting:          true,
 			expectedMemberClaims: 1,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
+			sourceGitlabInstance.AddProject(TEST_PROJECT_2)
+
+			mux, destinationGitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			destinationGitlabInstance.PullMirrorAvailable = true
+			destinationGitlabInstance.AddGroup(TEST_GROUP_2)
+
 			memberClaims := 0
 
 			mux.HandleFunc("/api/v4/projects", func(w http.ResponseWriter, r *http.Request) {
@@ -552,28 +566,44 @@ func TestCreateProjectFromSourceClaimOwnershipOption(t *testing.T) {
 					w.WriteHeader(http.StatusMethodNotAllowed)
 					return
 				}
-				w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-				w.WriteHeader(http.StatusCreated)
-				w.Write([]byte(TEST_PROJECT_2_STRING))
+				writeJSONResponse(w, http.StatusCreated, TEST_PROJECT_2_STRING)
 			})
-
-			mux.HandleFunc("/api/v4/projects/2/members", func(w http.ResponseWriter, r *http.Request) {
+			mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%d", TEST_PROJECT_2.ID), func(w http.ResponseWriter, r *http.Request) {
+				switch r.Method {
+				case http.MethodGet, http.MethodPut:
+					writeJSONResponse(w, http.StatusOK, TEST_PROJECT_2_STRING)
+				default:
+					writeMethodNotAllowed(w)
+				}
+			})
+			mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%d/mirror/pull", TEST_PROJECT_2.ID), func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPut {
+					writeMethodNotAllowed(w)
+					return
+				}
+				writeJSONResponse(w, http.StatusOK, "{}")
+			})
+			// The edit-member endpoint is intentionally left unregistered so ClaimOwnershipToProject's
+			// EditProjectMember attempt 404s and falls back to AddProjectMember below.
+			mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%d/members", TEST_PROJECT_2.ID), func(w http.ResponseWriter, r *http.Request) {
 				if r.Method != http.MethodPost {
-					w.WriteHeader(http.StatusMethodNotAllowed)
+					writeMethodNotAllowed(w)
 					return
 				}
 				memberClaims++
-				w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-				w.WriteHeader(http.StatusCreated)
-				w.Write([]byte(`{"id": 1}`))
+				writeJSONResponse(w, http.StatusCreated, `{"id": 1, "access_level": 50}`)
 			})
 
-			createdProject, err := gitlabInstance.CreateProjectFromSource(TEST_PROJECT_2, &utils.MirroringOptions{
-				DestinationPath: "project2",
+			if tc.preExisting {
+				destinationGitlabInstance.AddProject(TEST_PROJECT_2)
+			}
+
+			createdProject, errs := destinationGitlabInstance.CreateProject(TEST_PROJECT_2.PathWithNamespace, &utils.MirroringOptions{
+				DestinationPath: TEST_PROJECT_2.PathWithNamespace,
 				ClaimOwnership:  tc.claimOwnership,
-			})
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			}, sourceGitlabInstance)
+			if len(errs) > 0 {
+				t.Fatalf("unexpected error: %v", errs)
 			}
 			if createdProject == nil {
 				t.Fatal("expected created project to be non-nil")

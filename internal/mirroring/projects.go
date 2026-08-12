@@ -315,7 +315,8 @@ func (destinationGitlab *GitlabInstance) CreateProject(sourceProjectPath string,
 	// reassign the mirror to itself, so re-claiming ownership here is what allows changing
 	// the user running the script on an already-mirrored project.
 	if helpers.Deref(projectCreationOptions.ClaimOwnership, false) {
-		if ownershipErr := destinationGitlab.ClaimOwnershipToProject(destinationProject); ownershipErr != nil {
+		ownershipErr := destinationGitlab.ClaimOwnershipToProject(destinationProject)
+		if ownershipErr != nil {
 			zap.L().Warn("Failed to claim ownership of project", zap.String("project", destinationProject.PathWithNamespace), zap.Error(ownershipErr))
 		}
 	}

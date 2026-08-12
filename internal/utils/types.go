@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -112,6 +113,32 @@ func (m *MirrorMapping) GetGroup(group string) (*MirroringOptions, bool) {
 	options, ok := m.Groups[group]
 
 	return options, ok
+}
+
+// ProjectsSnapshot returns a shallow copy of the projects map.
+// It locks the projects mutex to ensure thread-safe access, allowing callers
+// to iterate over the result without holding the lock or racing with concurrent writers.
+func (m *MirrorMapping) ProjectsSnapshot() map[string]*MirroringOptions {
+	m.muProjects.RLock()
+	defer m.muProjects.RUnlock()
+
+	snapshot := make(map[string]*MirroringOptions, len(m.Projects))
+	maps.Copy(snapshot, m.Projects)
+
+	return snapshot
+}
+
+// GroupsSnapshot returns a shallow copy of the groups map.
+// It locks the groups mutex to ensure thread-safe access, allowing callers
+// to iterate over the result without holding the lock or racing with concurrent writers.
+func (m *MirrorMapping) GroupsSnapshot() map[string]*MirroringOptions {
+	m.muGroups.RLock()
+	defer m.muGroups.RUnlock()
+
+	snapshot := make(map[string]*MirroringOptions, len(m.Groups))
+	maps.Copy(snapshot, m.Groups)
+
+	return snapshot
 }
 
 // OpenMirrorMapping opens the JSON file that contains the mapping

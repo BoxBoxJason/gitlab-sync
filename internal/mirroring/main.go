@@ -170,7 +170,7 @@ func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[stri
 	go func() {
 		defer filterWaitGroup.Done()
 
-		for group, copyOptions := range filters.Groups {
+		for group, copyOptions := range filters.GroupsSnapshot() {
 			sourceGroupFilters[group] = struct{}{}
 
 			mappingMutex.Lock()
@@ -183,7 +183,7 @@ func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[stri
 	go func() {
 		defer filterWaitGroup.Done()
 
-		for project, copyOptions := range filters.Projects {
+		for project, copyOptions := range filters.ProjectsSnapshot() {
 			sourceProjectFilters[project] = struct{}{}
 			destinationProjectFilters[copyOptions.DestinationPath] = struct{}{}
 
@@ -206,8 +206,8 @@ func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *Gi
 	zap.L().Info("Dry run mode enabled, will not create groups or projects")
 	zap.L().Info("Groups that will be created (or updated if they already exist):")
 
-	for sourceGroupPath, copyOptions := range mirrorMapping.Groups {
-		if sourceGroup, ok := sourceGitlabInstance.Groups[sourceGroupPath]; ok {
+	for sourceGroupPath, copyOptions := range mirrorMapping.GroupsSnapshot() {
+		if sourceGroup := sourceGitlabInstance.GetGroup(sourceGroupPath); sourceGroup != nil {
 			_, err := fmt.Fprintf(os.Stdout, "  - %s (source gitlab) -> %s (destination gitlab)\n", sourceGroup.WebURL, copyOptions.DestinationPath)
 			if err != nil {
 				return []error{helpers.NewNonBlocking(fmt.Errorf("failed to print group dry-run output: %w", err))}
@@ -217,8 +217,8 @@ func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *Gi
 
 	zap.L().Info("Projects that will be created (or updated if they already exist):")
 
-	for sourceProjectPath, copyOptions := range mirrorMapping.Projects {
-		if sourceProject, ok := sourceGitlabInstance.Projects[sourceProjectPath]; ok {
+	for sourceProjectPath, copyOptions := range mirrorMapping.ProjectsSnapshot() {
+		if sourceProject := sourceGitlabInstance.GetProject(sourceProjectPath); sourceProject != nil {
 			_, err := fmt.Fprintf(os.Stdout, "  - %s (source gitlab) -> %s (destination gitlab)\n", sourceProject.WebURL, copyOptions.DestinationPath)
 			if err != nil {
 				return []error{helpers.NewNonBlocking(fmt.Errorf("failed to print project dry-run output: %w", err))}

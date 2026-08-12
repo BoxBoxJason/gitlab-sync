@@ -55,7 +55,7 @@ func (destinationGitlab *GitlabInstance) CreateGroup(destinationGroupPath string
 	sourceGroupPath := (*reversedMirrorMap)[destinationGroupPath]
 	zap.L().Debug("Mirroring group", zap.String(ROLE_SOURCE, sourceGroupPath), zap.String(ROLE_DESTINATION, destinationGroupPath))
 
-	sourceGroup := sourceGitlab.Groups[sourceGroupPath]
+	sourceGroup := sourceGitlab.GetGroup(sourceGroupPath)
 	if sourceGroup == nil {
 		return nil, []error{fmt.Errorf("group %s not found in destination GitLab instance (internal error, please review script)", sourceGroupPath)}
 	}
@@ -172,7 +172,7 @@ func (g *GitlabInstance) StoreGroup(group *gitlab.Group, parentGroupPath string,
 	if g.Role == ROLE_SOURCE {
 		zap.L().Debug("Storing group in mirror mapping", zap.String("group", group.FullPath), zap.String("parentGroup", parentGroupPath))
 		// Retrieve the corresponding group creation options from the mirror mapping
-		groupCreationOptions, ok := mirrorMapping.Groups[parentGroupPath]
+		groupCreationOptions, ok := mirrorMapping.GetGroup(parentGroupPath)
 		if !ok {
 			zap.L().Error("Group not found in mirror mapping", zap.String("group", parentGroupPath))
 
@@ -213,7 +213,7 @@ func (g *GitlabInstance) FetchAndProcessGroupsSmallInstance(groupFilters *map[st
 
 	g.ProcessGroupsSmallInstance(allGroups, groupFilters, mirrorMapping)
 
-	zap.L().Debug("Found matching groups in the GitLab instance", zap.String(ROLE, g.Role), zap.Int("groups", len(g.Groups)))
+	zap.L().Debug("Found matching groups in the GitLab instance", zap.String(ROLE, g.Role), zap.Int("groups", g.GroupsLen()))
 
 	return nil
 }

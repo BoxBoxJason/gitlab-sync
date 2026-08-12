@@ -99,7 +99,7 @@ func (g *GitlabInstance) FetchAndProcessProjectsSmallInstance(projectFilters, gr
 	}
 
 	g.processProjectsSmallInstance(allProjects, projectFilters, groupFilters, mirrorMapping)
-	zap.L().Debug("Found matching projects in the GitLab instance", zap.String(ROLE, g.Role), zap.Int("projects", len(g.Projects)))
+	zap.L().Debug("Found matching projects in the GitLab instance", zap.String(ROLE, g.Role), zap.Int("projects", g.ProjectsLen()))
 
 	return nil
 }
@@ -254,12 +254,13 @@ func (destinationGitlab *GitlabInstance) CreateProjects(sourceGitlab *GitlabInst
 	var creationWaitGroup sync.WaitGroup
 
 	// Create a channel to collect errors
-	errorChan := make(chan error, len(mirrorMapping.Projects))
+	projectsSnapshot := mirrorMapping.ProjectsSnapshot()
+	errorChan := make(chan error, len(projectsSnapshot))
 
-	for sourceProjectPath, destinationProjectOptions := range mirrorMapping.Projects {
+	for sourceProjectPath, destinationProjectOptions := range projectsSnapshot {
 		zap.L().Debug("Mirroring project", zap.String(ROLE_SOURCE, sourceProjectPath), zap.String(ROLE_DESTINATION, destinationProjectOptions.DestinationPath))
 		// Retrieve the corresponding source project path
-		sourceProject := sourceGitlab.Projects[sourceProjectPath]
+		sourceProject := sourceGitlab.GetProject(sourceProjectPath)
 		if sourceProject == nil {
 			errorChan <- fmt.Errorf("project %s not found in source GitLab instance (internal error, please review script)", sourceProjectPath)
 
@@ -295,7 +296,7 @@ func (destinationGitlab *GitlabInstance) CreateProject(sourceProjectPath string,
 
 	var err error
 
-	sourceProject := sourceGitlab.Projects[sourceProjectPath]
+	sourceProject := sourceGitlab.GetProject(sourceProjectPath)
 	if sourceProject == nil {
 		return nil, []error{fmt.Errorf("project %s not found in source GitLab instance (internal error, please review script)", sourceProjectPath)}
 	}

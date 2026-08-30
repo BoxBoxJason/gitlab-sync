@@ -328,7 +328,7 @@ func (g *GitlabInstance) FetchAndProcessGroupRecursive(gid any, fetchOriginPath 
 
 	switch groupIdentifier := gid.(type) {
 	case int, string:
-		group, _, err = g.Gitlab.Groups.GetGroup(gid, &gitlab.GetGroupOptions{WithProjects: new(false)})
+		group, _, err = g.Gitlab.Groups.GetGroup(gid, &gitlab.GetGroupOptions{})
 		if err != nil {
 			errChan <- fmt.Errorf("failed to retrieve group %s: %w", gid, err)
 		}

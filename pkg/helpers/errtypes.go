@@ -44,8 +44,7 @@ func (e MirrorError) Unwrap() error {
 // If the error is a MirrorError, it returns its severity.
 // Otherwise, it defaults to SeverityNonBlocking.
 func SeverityOf(err error) Severity {
-	var mirrorErr MirrorError
-	if errors.As(err, &mirrorErr) {
+	if mirrorErr, ok := errors.AsType[MirrorError](err); ok {
 		return mirrorErr.Severity
 	}
 

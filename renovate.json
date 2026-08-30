@@ -39,6 +39,20 @@
     "source::bot"
   ],
   "postUpdateOptions": [
+    "gomodUpdateImportPaths",
     "gomodTidy"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update versions pinned as `<name> := <value>` variables in the Makefile, annotated with a `# renovate: datasource=... depName=... [versioning=...]` comment (SonarQube Docker images, `go install` tool versions).",
+      "managerFilePatterns": [
+        "/(^|/)Makefile$/"
+      ],
+      "matchStrings": [
+        "# renovate:\\s*datasource=(?<datasource>\\S+)\\s+depName=(?<depName>\\S+)(?:\\s+versioning=(?<versioning>\\S+))?\\s*\\n\\s*[A-Za-z0-9_]+\\s*:?=\\s*(?<currentValue>[^\\s#]+)"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{/if}}"
+    }
   ]
 }

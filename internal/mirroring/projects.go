@@ -573,7 +573,7 @@ func (destinationGitlabInstance *GitlabInstance) MirrorProjectGit(sourceGitlabIn
 		return err
 	}
 
-	err = helpers.MirrorRepo(sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, destinationGitlabInstance.GitAuth)
+	err = helpers.MirrorRepo(destinationGitlabInstance.GitCache, sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, destinationGitlabInstance.GitAuth)
 	if err != nil {
 		return fmt.Errorf("failed to mirror repository from %s to %s: %w", sourceProject.PathWithNamespace, destinationProject.PathWithNamespace, err)
 	}

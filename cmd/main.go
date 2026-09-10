@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/boxboxjason/gitlab-sync/internal/mirroring"
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
@@ -20,6 +21,9 @@ import (
 const (
 	defaultRetryCount = 3
 	logDirPermission  = 0o700
+	// defaultCacheMaxAge is how long a cached repository survives without being
+	// synced. It only applies when --cache-dir is set.
+	defaultCacheMaxAge = 7 * 24 * time.Hour
 )
 
 // version and buildTime can optionally be set at build time via -ldflags.
@@ -75,12 +79,35 @@ func buildRootCmd(args *utils.ParserArgs, mirrorMappingPath, logFile *string) *c
 	rootCmd.Flags().BoolVar(&args.DryRun, "dry-run", false, "Perform a dry run without making any changes")
 	rootCmd.Flags().IntVarP(&args.Retry, "retry", "r", defaultRetryCount, "Number of retries for failed requests")
 	rootCmd.Flags().StringVar(logFile, "log-file", strings.TrimSpace(os.Getenv("GITLAB_SYNC_LOG_FILE")), "Path to the log file")
+	rootCmd.Flags().StringVar(&args.CacheDir, "cache-dir", strings.TrimSpace(os.Getenv("GITLAB_SYNC_CACHE_DIR")), "Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, empty disables caching)")
+	rootCmd.Flags().DurationVar(&args.CacheMaxAge, "cache-max-age", envDuration("GITLAB_SYNC_CACHE_MAX_AGE", defaultCacheMaxAge), "Delete the cached repositories that have not been synchronized for that long (0 keeps them forever)")
 	_ = rootCmd.MarkFlagFilename("mirror-mapping", "json")
 	_ = rootCmd.MarkFlagFilename("log-file", "log", "txt")
+	_ = rootCmd.MarkFlagDirname("cache-dir")
 
 	addCompletionCommand(rootCmd)
 
 	return rootCmd
+}
+
+// envDuration reads a Go duration (for example "720h" or "45m") from the
+// environment, falling back to defaultValue when the variable is unset or does
+// not parse. An unparsable value is reported rather than silently ignored, but
+// it does not stop the run: the flag can still override it.
+func envDuration(name string, defaultValue time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return defaultValue
+	}
+
+	parsed, err := time.ParseDuration(raw)
+	if err != nil {
+		zap.L().Warn("Ignoring an invalid duration in the environment", zap.String("variable", name), zap.String("value", raw), zap.Error(err))
+
+		return defaultValue
+	}
+
+	return parsed
 }
 
 func addCompletionCommand(rootCmd *cobra.Command) {

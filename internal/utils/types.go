@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
@@ -31,13 +32,17 @@ const (
 // - no_prompt: whether to disable prompts
 // - dry_run: whether to perform a dry run
 // - version: whether to show the version
-// - retry: the number of retries for the GitLab API requests.
+// - retry: the number of retries for the GitLab API requests
+// - cache_dir: where to keep the bare git clones between runs (empty disables caching)
+// - cache_max_age: how long an unused cached repository is kept.
 type ParserArgs struct {
 	MirrorMapping          *MirrorMapping
 	SourceGitlabURL        string
 	SourceGitlabToken      string
 	DestinationGitlabURL   string
 	DestinationGitlabToken string
+	CacheDir               string
+	CacheMaxAge            time.Duration
 	Retry                  int
 	ForcePremium           bool
 	ForceNonPremium        bool

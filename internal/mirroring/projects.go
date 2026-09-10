@@ -16,7 +16,7 @@ import (
 
 const (
 	projectsPerPage         = 100
-	updateProjectBaseTasks  = 3
+	updateProjectBaseTasks  = 2
 	updateProjectErrorLimit = 5
 	projectOwnerAccessLevel = 50
 )
@@ -272,9 +272,9 @@ func (destinationGitlab *GitlabInstance) CreateProjects(sourceGitlab *GitlabInst
 		go func(sourcePath string, destinationCopyOptions *utils.MirroringOptions) {
 			defer creationWaitGroup.Done()
 
-			_, err := destinationGitlab.CreateProject(sourcePath, destinationCopyOptions, sourceGitlab)
-			if err != nil {
-				errorChan <- fmt.Errorf("failed to create project %s in destination GitLab instance: %v", destinationCopyOptions.DestinationPath, err)
+			_, creationErrors := destinationGitlab.CreateProject(sourcePath, destinationCopyOptions, sourceGitlab)
+			if len(creationErrors) > 0 {
+				errorChan <- fmt.Errorf("failed to create project %s in destination GitLab instance: %w", destinationCopyOptions.DestinationPath, errors.Join(creationErrors...))
 			}
 		}(sourceProjectPath, destinationProjectOptions)
 	}
@@ -334,15 +334,22 @@ func (destinationGitlab *GitlabInstance) CreateProject(sourceProjectPath string,
 // The function also handles the setting of the namespace ID for the project.
 // It returns the created project or an error if the creation fails.
 func (g *GitlabInstance) CreateProjectFromSource(sourceProject *gitlab.Project, copyOptions *utils.MirroringOptions) (*gitlab.Project, error) {
-	// Define the API call logic
+	// Define the API call logic.
+	//
+	// Mirror is deliberately not set here: GitLab only accepts `mirror=true`
+	// together with an import URL and a mirror user, neither of which exists yet at
+	// creation time. Pull mirroring is configured right after by
+	// EnableProjectMirrorPull, and only when the destination supports it.
 	projectCreationArgs := &gitlab.CreateProjectOptions{
-		Name:                &sourceProject.Name,
-		Path:                &sourceProject.Path,
-		DefaultBranch:       &sourceProject.DefaultBranch,
-		Description:         &sourceProject.Description,
-		MirrorTriggerBuilds: copyOptions.MirrorTriggerBuilds,
-		Mirror:              new(true),
-		Visibility:          new(gitlab.VisibilityValue(helpers.Deref(copyOptions.Visibility, string(gitlab.PublicVisibility)))),
+		Name:          &sourceProject.Name,
+		Path:          &sourceProject.Path,
+		DefaultBranch: &sourceProject.DefaultBranch,
+		Description:   &sourceProject.Description,
+		Visibility:    new(gitlab.VisibilityValue(helpers.Deref(copyOptions.Visibility, string(gitlab.PublicVisibility)))),
+	}
+
+	if g.PullMirrorAvailable {
+		projectCreationArgs.MirrorTriggerBuilds = copyOptions.MirrorTriggerBuilds
 	}
 
 	zap.L().Debug("Retrieving project namespace ID", zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
@@ -444,16 +451,12 @@ func (destinationGitlabInstance *GitlabInstance) UpdateProjectFromSource(sourceG
 
 	errorChannel := make(chan error, updateProjectErrorLimit)
 
+	destinationGitlabInstance.mirrorProjectGitFirst(sourceGitlabInstance, srcProj, dstProj, copyOptions, errorChannel)
+
 	go func(sourceProj, destinationProj *gitlab.Project) {
 		defer waitGroup.Done()
 
 		errorChannel <- destinationGitlabInstance.SyncProjectAttributes(sourceProj, destinationProj, copyOptions)
-	}(srcProj, dstProj)
-
-	go func(sourceProj, destinationProj *gitlab.Project) {
-		defer waitGroup.Done()
-
-		errorChannel <- destinationGitlabInstance.MirrorProjectGit(sourceGitlabInstance, sourceProj, destinationProj, copyOptions)
 	}(srcProj, dstProj)
 
 	go func(sourceProj, destinationProj *gitlab.Project) {
@@ -488,7 +491,38 @@ func (destinationGitlabInstance *GitlabInstance) UpdateProjectFromSource(sourceG
 		}
 	}
 
+	// Returning an empty (but non-nil) slice would read as a failure at the call
+	// sites, which report it as an error carrying no message at all.
+	if len(allErrors) == 0 {
+		return nil
+	}
+
 	return allErrors
+}
+
+// mirrorProjectGitFirst runs the git side of the mirroring before any project
+// attribute is touched, pushing any failure onto errorChannel.
+//
+// The ordering matters: on a freshly created project the repository is still empty
+// and GitLab refuses a default_branch pointing at a branch that does not exist yet.
+// On a premium destination it also guarantees the pull mirror (and with it the
+// import URL) is configured before SyncProjectAttributes asserts mirror=true, which
+// GitLab rejects while the import URL is missing.
+func (destinationGitlabInstance *GitlabInstance) mirrorProjectGitFirst(
+	sourceGitlabInstance *GitlabInstance,
+	sourceProject *gitlab.Project,
+	destinationProject *gitlab.Project,
+	copyOptions *utils.MirroringOptions,
+	errorChannel chan error,
+) {
+	err := destinationGitlabInstance.MirrorProjectGit(sourceGitlabInstance, sourceProject, destinationProject, copyOptions)
+	if err == nil {
+		return
+	}
+
+	zap.L().Error("Failed to mirror project repository", zap.String(ROLE_SOURCE, sourceProject.PathWithNamespace), zap.String(ROLE_DESTINATION, destinationProject.PathWithNamespace), zap.Error(err))
+
+	errorChannel <- err
 }
 
 // SyncProjectAttributes updates the destination project with settings from the source project.
@@ -519,7 +553,19 @@ func syncStandardProjectAttributes(sourceProject, destinationProject *gitlab.Pro
 	return mismatch
 }
 
-func syncMirrorProjectAttributes(destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions, gitlabEditOptions *gitlab.EditProjectOptions) bool {
+// syncMirrorProjectAttributes aligns the destination project's pull mirror settings.
+//
+// Pull mirroring is a Premium feature and GitLab rejects `mirror=true` unless the
+// project also carries an import URL and a mirror user (see the `if: :mirror?`
+// validations on the EE Project model). When pull mirroring is unavailable - either
+// the destination is a Free instance or --destination-force-freemium was passed -
+// gitlab-sync clones and pushes the repository itself, so the mirror attributes are
+// left untouched here; MirrorProjectGit is what turns an existing pull mirror off.
+func syncMirrorProjectAttributes(pullMirrorAvailable bool, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions, gitlabEditOptions *gitlab.EditProjectOptions) bool {
+	if !pullMirrorAvailable {
+		return false
+	}
+
 	mismatch := false
 
 	desiredMirrorTriggerBuilds := helpers.Deref(copyOptions.MirrorTriggerBuilds, false)
@@ -547,7 +593,7 @@ func (destinationGitlabInstance *GitlabInstance) SyncProjectAttributes(sourcePro
 	gitlabEditOptions := &gitlab.EditProjectOptions{}
 
 	missmatched := syncStandardProjectAttributes(sourceProject, destinationProject, gitlabEditOptions)
-	if syncMirrorProjectAttributes(destinationProject, copyOptions, gitlabEditOptions) {
+	if syncMirrorProjectAttributes(destinationGitlabInstance.PullMirrorAvailable, destinationProject, copyOptions, gitlabEditOptions) {
 		missmatched = true
 	}
 
@@ -576,9 +622,42 @@ func (destinationGitlabInstance *GitlabInstance) MirrorProjectGit(sourceGitlabIn
 		return destinationGitlabInstance.EnableProjectMirrorPull(sourceProject, destinationProject, mirrorOptions)
 	}
 
-	err := helpers.MirrorRepo(sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, destinationGitlabInstance.GitAuth)
+	err := destinationGitlabInstance.DisableProjectMirrorPull(destinationProject)
+	if err != nil {
+		return err
+	}
+
+	err = helpers.MirrorRepo(sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, destinationGitlabInstance.GitAuth)
 	if err != nil {
 		return fmt.Errorf("failed to mirror repository from %s to %s: %w", sourceProject.PathWithNamespace, destinationProject.PathWithNamespace, err)
+	}
+
+	return nil
+}
+
+// DisableProjectMirrorPull turns off pull mirroring on a destination project.
+//
+// GitLab keeps a pull-mirrored repository read-only, so a project left over from an
+// earlier premium run (or a premium/ultimate destination now driven with
+// --destination-force-freemium) would reject the clone/push mirroring that follows.
+func (g *GitlabInstance) DisableProjectMirrorPull(destinationProject *gitlab.Project) error {
+	if !destinationProject.Mirror {
+		return nil
+	}
+
+	zap.L().Info("Disabling pull mirror on destination project before pushing", zap.String("project", destinationProject.PathWithNamespace))
+
+	updatedProject, _, err := g.Gitlab.Projects.EditProject(destinationProject.ID, &gitlab.EditProjectOptions{
+		Mirror: new(false),
+	})
+	if err != nil {
+		return fmt.Errorf("failed to disable pull mirror for project %s: %w", destinationProject.PathWithNamespace, err)
+	}
+
+	destinationProject.Mirror = false
+
+	if updatedProject != nil {
+		g.AddProject(updatedProject)
 	}
 
 	return nil
@@ -622,6 +701,15 @@ func (sourceGitlabInstance *GitlabInstance) CopyProjectAvatar(destinationGitlabI
 	// Check if the destination project already has an avatar
 	if destinationProject.AvatarURL != "" {
 		zap.L().Debug("Project already has an avatar set, skipping.", zap.String("project", destinationProject.HTTPURLToRepo), zap.String("path", destinationProject.AvatarURL))
+
+		return nil
+	}
+
+	// Nothing to copy when the source project has no avatar: DownloadAvatar would
+	// answer 404 and report a failure for every single avatar-less project, drowning
+	// out the errors that actually matter.
+	if sourceProject.AvatarURL == "" {
+		zap.L().Debug("Source project has no avatar, skipping.", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo))
 
 		return nil
 	}

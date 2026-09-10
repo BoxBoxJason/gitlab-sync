@@ -137,6 +137,20 @@ If mandatory arguments are not provided, the program will prompt for them.
 | `--retry` or `-r` | N/A | No | Number of retries for failed GitLab API requests (default: 3) |
 | `--log-file` |  `GITLAB_SYNC_LOG_FILE` | No | Path to a log file for output logs (default: `none`, only outputs logs to stderr) |
 
+### Freemium (non-premium) destinations
+
+Pull mirroring requires GitLab Premium. When the destination instance is not premium
+- or when `--destination-force-freemium` is passed to deliberately avoid pull mirrors on
+a premium/ultimate instance - gitlab-sync clones each source repository and pushes it to
+the destination itself. In that mode:
+
+- The destination token needs to be able to push over HTTP; an `api` scoped token is enough.
+- No mirror setting is written on the destination projects, and any pull mirror left over
+  from a previous premium run is turned off first (GitLab keeps pull-mirrored repositories
+  read-only, which would otherwise reject the push).
+- Repositories are cloned into a temporary directory, so the container needs a writable
+  `/tmp` (provided by the published image).
+
 ### Example
 
 ```bash

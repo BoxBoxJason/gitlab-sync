@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 const (
@@ -260,10 +264,23 @@ func TestCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			errs := tt.mapping.check() // now returns []error
-			got := helpers.ToStrings(errs)
+			// check() logs every problem as it finds it; capture those logs.
+			core, recorded := observer.New(zapcore.ErrorLevel)
+			restore := zap.ReplaceGlobals(zap.New(core))
+			defer restore()
+
+			problems := tt.mapping.check()
+
+			var got []string
+			for _, entry := range recorded.All() {
+				got = append(got, strings.TrimPrefix(entry.Message, "invalid mirror mapping: "))
+			}
+
+			if problems != len(tt.wantMsgs) {
+				t.Errorf("check() problems = %d, want %d", problems, len(tt.wantMsgs))
+			}
 			if !reflect.DeepEqual(got, tt.wantMsgs) {
-				t.Errorf("check() = %v, want %v", got, tt.wantMsgs)
+				t.Errorf("check() logged = %v, want %v", got, tt.wantMsgs)
 			}
 		})
 	}
@@ -564,9 +581,8 @@ func TestCheckSetsDefaultVisibilityWhenOptionalFieldsOmitted(t *testing.T) {
 		},
 	}
 
-	errs := mapping.check()
-	if len(errs) != 0 {
-		t.Fatalf("expected no errors, got %v", errs)
+	if problems := mapping.check(); problems != 0 {
+		t.Fatalf("expected no problems, got %d", problems)
 	}
 
 	if got := helpers.Deref(mapping.Projects[FAKE_VALID_PROJECT].Visibility, ""); got != string(gitlab.PublicVisibility) {

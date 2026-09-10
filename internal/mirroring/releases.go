@@ -119,8 +119,8 @@ func (g *GitlabInstance) MirrorRelease(project *gitlab.Project, release *gitlab.
 // MirrorReleases mirrors releases from the source project to the destination project.
 // It fetches existing releases from the destination project and creates new releases for those that do not exist.
 // The function handles the API calls concurrently using goroutines.
-func (destinationGitlab *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project) []error {
-	return mirrorProjectEntities(
+func (destinationGitlab *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project) {
+	mirrorProjectEntities(
 		"release",
 		sourceProject,
 		destinationProject,

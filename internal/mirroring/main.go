@@ -13,9 +13,8 @@ import (
 )
 
 const (
-	initialFetchWorkers        = 2
-	initialFetchErrorBufferLen = 4
-	processFilterWorkers       = 2
+	initialFetchWorkers  = 2
+	processFilterWorkers = 2
 )
 
 func createMirroringInstances(gitlabMirrorArgs *utils.ParserArgs) (*GitlabInstance, *GitlabInstance, error) {
@@ -79,7 +78,6 @@ func fetchInitialData(
 	sourceGroupFilters map[string]struct{},
 	destinationProjectFilters map[string]struct{},
 	destinationGroupFilters map[string]struct{},
-	errChannel chan []error,
 ) {
 	var waitGroup sync.WaitGroup
 	waitGroup.Add(initialFetchWorkers)
@@ -87,12 +85,12 @@ func fetchInitialData(
 	go func() {
 		defer waitGroup.Done()
 
-		errChannel <- sourceGitlabInstance.FetchAll(sourceProjectFilters, sourceGroupFilters, gitlabMirrorArgs.MirrorMapping)
+		sourceGitlabInstance.FetchAll(sourceProjectFilters, sourceGroupFilters, gitlabMirrorArgs.MirrorMapping)
 	}()
 	go func() {
 		defer waitGroup.Done()
 
-		errChannel <- destinationGitlabInstance.FetchAll(destinationProjectFilters, destinationGroupFilters, gitlabMirrorArgs.MirrorMapping)
+		destinationGitlabInstance.FetchAll(destinationProjectFilters, destinationGroupFilters, gitlabMirrorArgs.MirrorMapping)
 	}()
 
 	waitGroup.Wait()
@@ -103,21 +101,27 @@ func fetchInitialData(
 // It creates two GitLab instances (source and destination) and fetches the groups and projects from both instances.
 // It then processes the filters for groups and projects, and finally creates the groups and projects in the destination GitLab instance.
 // If the dry run flag is set, it will only print the groups and projects that would be created or updated.
-func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
+//
+// Errors are logged the moment they happen (via helpers.Report); callers read
+// the aggregate outcome through helpers.ExitCode.
+func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) {
 	zap.L().Info("Starting GitLab mirroring process", zap.String(ROLE_SOURCE, gitlabMirrorArgs.SourceGitlabURL), zap.String(ROLE_DESTINATION, gitlabMirrorArgs.DestinationGitlabURL))
 
 	sourceGitlabInstance, destinationGitlabInstance, err := createMirroringInstances(gitlabMirrorArgs)
 	if err != nil {
-		return []error{helpers.NewBlocking(err)}
+		helpers.ReportBlocking(err)
+
+		return
 	}
 
 	err = setPullMirrorAvailability(destinationGitlabInstance, gitlabMirrorArgs)
 	if err != nil {
-		return []error{helpers.NewBlocking(err)}
+		helpers.ReportBlocking(err)
+
+		return
 	}
 
 	sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters := processFilters(gitlabMirrorArgs.MirrorMapping)
-	errCh := make(chan []error, initialFetchErrorBufferLen)
 	fetchInitialData(
 		sourceGitlabInstance,
 		destinationGitlabInstance,
@@ -126,7 +130,6 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 		sourceGroupFilters,
 		destinationProjectFilters,
 		destinationGroupFilters,
-		errCh,
 	)
 
 	zap.L().Debug("Fully Computed Mirror Mapping", zap.Any("MirrorMapping", gitlabMirrorArgs.MirrorMapping))
@@ -135,17 +138,13 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) []error {
 	if gitlabMirrorArgs.DryRun {
 		destinationGitlabInstance.DryRun(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
 
-		return nil
+		return
 	}
 
 	// Create groups and projects in the destination GitLab instance (Groups must be created before projects)
-	errCh <- destinationGitlabInstance.CreateGroups(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
+	destinationGitlabInstance.CreateGroups(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
 
-	errCh <- destinationGitlabInstance.CreateProjects(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
-
-	close(errCh)
-
-	return helpers.MergeErrors(errCh)
+	destinationGitlabInstance.CreateProjects(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
 }
 
 // processFilters processes the filters for groups and projects.
@@ -202,7 +201,7 @@ func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[stri
 }
 
 // DryRun prints the groups and projects that would be created or updated in dry run mode.
-func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *GitlabInstance, mirrorMapping *utils.MirrorMapping) []error {
+func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *GitlabInstance, mirrorMapping *utils.MirrorMapping) {
 	zap.L().Info("Dry run mode enabled, will not create groups or projects")
 	zap.L().Info("Groups that will be created (or updated if they already exist):")
 
@@ -210,7 +209,9 @@ func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *Gi
 		if sourceGroup := sourceGitlabInstance.GetGroup(sourceGroupPath); sourceGroup != nil {
 			_, err := fmt.Fprintf(os.Stdout, "  - %s (source gitlab) -> %s (destination gitlab)\n", sourceGroup.WebURL, copyOptions.DestinationPath)
 			if err != nil {
-				return []error{helpers.NewNonBlocking(fmt.Errorf("failed to print group dry-run output: %w", err))}
+				helpers.ReportNonBlocking(fmt.Errorf("failed to print group dry-run output: %w", err))
+
+				return
 			}
 		}
 	}
@@ -221,23 +222,23 @@ func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *Gi
 		if sourceProject := sourceGitlabInstance.GetProject(sourceProjectPath); sourceProject != nil {
 			_, err := fmt.Fprintf(os.Stdout, "  - %s (source gitlab) -> %s (destination gitlab)\n", sourceProject.WebURL, copyOptions.DestinationPath)
 			if err != nil {
-				return []error{helpers.NewNonBlocking(fmt.Errorf("failed to print project dry-run output: %w", err))}
+				helpers.ReportNonBlocking(fmt.Errorf("failed to print project dry-run output: %w", err))
+
+				return
 			}
 
 			if helpers.Deref(copyOptions.MirrorReleases, false) {
-				err := destinationGitlabInstance.DryRunReleases(sourceGitlabInstance, sourceProject, copyOptions)
+				err = destinationGitlabInstance.DryRunReleases(sourceGitlabInstance, sourceProject, copyOptions)
 				if err != nil {
-					zap.L().Error("Failed to dry run releases", zap.Error(err))
+					helpers.ReportNonBlocking(fmt.Errorf("failed to dry run releases: %w", err))
 
-					return []error{helpers.NewNonBlocking(err)}
+					return
 				}
 			}
 		}
 	}
 
 	zap.L().Info("Dry run completed")
-
-	return nil
 }
 
 // ===========================================================================

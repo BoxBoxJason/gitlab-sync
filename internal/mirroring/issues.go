@@ -119,8 +119,8 @@ func (g *GitlabInstance) CloseIssue(project *gitlab.Project, issue *gitlab.Issue
 
 // MirrorIssues mirrors issues from the source project to the destination project.
 // It fetches existing issues from the destination project and creates new issues for those that do not.
-func (destinationGitlab *GitlabInstance) MirrorIssues(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project) []error {
-	return mirrorProjectEntities(
+func (destinationGitlab *GitlabInstance) MirrorIssues(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project) {
+	mirrorProjectEntities(
 		"issue",
 		sourceProject,
 		destinationProject,

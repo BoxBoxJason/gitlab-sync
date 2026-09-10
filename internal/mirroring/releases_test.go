@@ -3,6 +3,8 @@ package mirroring
 import (
 	"testing"
 
+	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
+
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 )
 
@@ -10,9 +12,12 @@ func TestMirrorReleases(t *testing.T) {
 	_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
 	_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
 	t.Run("Mirror Releases", func(t *testing.T) {
-		err := destinationGitlabInstance.MirrorReleases(sourceGitlabInstance, TEST_PROJECT, TEST_PROJECT_2)
-		if err != nil {
-			t.Errorf("Unexpected error when mirroring releases: %v", err)
+		helpers.ResetReported()
+		t.Cleanup(helpers.ResetReported)
+
+		destinationGitlabInstance.MirrorReleases(sourceGitlabInstance, TEST_PROJECT, TEST_PROJECT_2)
+		if got := helpers.ExitCode(); got != 0 {
+			t.Errorf("Unexpected error when mirroring releases: exit code %d", got)
 		}
 	})
 }

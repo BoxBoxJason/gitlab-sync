@@ -315,8 +315,11 @@ func TestIsPullMirrorAvailable(t *testing.T) {
 	}
 }
 
-func TestMirrorGitlabsErrorWrapping(t *testing.T) {
-	// Test that blocking errors are wrapped correctly
+func TestMirrorGitlabsReportsBlockingError(t *testing.T) {
+	// A bad source URL must surface as a blocking error, i.e. exit code 1.
+	helpers.ResetReported()
+	t.Cleanup(helpers.ResetReported)
+
 	args := &utils.ParserArgs{
 		SourceGitlabURL:        "invalid-url",
 		SourceGitlabToken:      "token",
@@ -326,13 +329,9 @@ func TestMirrorGitlabsErrorWrapping(t *testing.T) {
 		Retry:                  1,
 	}
 
-	errors := MirrorGitlabs(args)
-	if len(errors) == 0 {
-		t.Fatal("Expected errors, got none")
-	}
+	MirrorGitlabs(args)
 
-	// Check that the first error is blocking
-	if severity := helpers.SeverityOf(errors[0]); severity != helpers.SeverityBlocking {
-		t.Errorf("Expected blocking error, got %v", severity)
+	if got := helpers.ExitCode(); got != 1 {
+		t.Errorf("Expected blocking exit code 1, got %d", got)
 	}
 }

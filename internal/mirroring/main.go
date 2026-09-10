@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
@@ -70,6 +71,36 @@ func setPullMirrorAvailability(destinationGitlabInstance *GitlabInstance, gitlab
 	return nil
 }
 
+// setupGitCache attaches the on-disk repository cache to the destination
+// instance and expires the entries that went unused for too long.
+//
+// The cache only ever backs the clone/push path, so it is skipped entirely on a
+// premium destination: pull mirroring never touches a local clone, and creating
+// the directory there would only leave an empty tree behind.
+func setupGitCache(destinationGitlabInstance *GitlabInstance, gitlabMirrorArgs *utils.ParserArgs) error {
+	cacheDir := strings.TrimSpace(gitlabMirrorArgs.CacheDir)
+	if cacheDir == "" {
+		return nil
+	}
+
+	if destinationGitlabInstance.PullMirrorAvailable {
+		zap.L().Debug("Ignoring the git repository cache: the destination uses pull mirroring", zap.String("path", cacheDir))
+
+		return nil
+	}
+
+	cache, err := helpers.NewGitCache(cacheDir, gitlabMirrorArgs.CacheMaxAge)
+	if err != nil {
+		return fmt.Errorf("failed to set up the git repository cache: %w", err)
+	}
+
+	cache.Prune()
+
+	destinationGitlabInstance.GitCache = cache
+
+	return nil
+}
+
 func fetchInitialData(
 	sourceGitlabInstance *GitlabInstance,
 	destinationGitlabInstance *GitlabInstance,
@@ -119,6 +150,17 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) {
 		helpers.ReportBlocking(err)
 
 		return
+	}
+
+	// Done before the (long) initial fetch so an unusable cache directory is
+	// reported straight away. A dry run writes nothing, so it needs no cache.
+	if !gitlabMirrorArgs.DryRun {
+		err = setupGitCache(destinationGitlabInstance, gitlabMirrorArgs)
+		if err != nil {
+			helpers.ReportBlocking(err)
+
+			return
+		}
 	}
 
 	sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters := processFilters(gitlabMirrorArgs.MirrorMapping)

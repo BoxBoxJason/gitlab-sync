@@ -60,7 +60,7 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatalf("failed to initialize bare repository at destination: %v", err)
 		}
 
-		if err := MirrorRepo(githubHTTPURL, FILE_SCHEME+destDir, nil, nil); err != nil {
+		if err := MirrorRepo(nil, githubHTTPURL, FILE_SCHEME+destDir, nil, nil); err != nil {
 			t.Fatalf("MirrorRepo(HTTPS) failed: %v", err)
 		}
 
@@ -118,15 +118,102 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatalf("failed to initialize bare repository at destination: %v", err)
 		}
 
-		if err := MirrorRepo(FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil); err != nil {
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil); err != nil {
 			t.Fatalf("first MirrorRepo failed: %v", err)
 		}
 
 		// A second run has nothing to push; go-git signals that with
 		// git.NoErrAlreadyUpToDate, which must not surface as a failure.
-		if err := MirrorRepo(FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil); err != nil {
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil); err != nil {
 			t.Fatalf("second MirrorRepo failed: %v", err)
 		}
+	})
+
+	t.Run("refs dropped by the source are deleted at the destination", func(t *testing.T) {
+		t.Parallel()
+
+		srcDir := filepath.Join(t.TempDir(), "srcrepo.git")
+		seedBareRepo(t, srcDir)
+
+		srcRepo, err := git.PlainOpen(srcDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		head, err := srcRepo.Head()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		setRef(t, srcRepo, "refs/heads/feature", head.Hash())
+		setRef(t, srcRepo, "refs/tags/v1.0.0", head.Hash())
+
+		destDir := filepath.Join(t.TempDir(), "destrepo.git")
+		if _, err := git.PlainInit(destDir, true); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil); err != nil {
+			t.Fatalf("first MirrorRepo failed: %v", err)
+		}
+
+		assertRef(t, destDir, "refs/heads/feature", true)
+		assertRef(t, destDir, "refs/tags/v1.0.0", true)
+
+		removeRef(t, srcRepo, "refs/heads/feature")
+		removeRef(t, srcRepo, "refs/tags/v1.0.0")
+
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil); err != nil {
+			t.Fatalf("second MirrorRepo failed: %v", err)
+		}
+
+		assertRef(t, destDir, "refs/heads/feature", false)
+		assertRef(t, destDir, "refs/tags/v1.0.0", false)
+	})
+
+	// A server refuses to delete the branch its HEAD points at, so the mirroring
+	// must leave that one in place instead of failing the whole push.
+	t.Run("the destination default branch is never deleted", func(t *testing.T) {
+		t.Parallel()
+
+		srcDir := filepath.Join(t.TempDir(), "srcrepo.git")
+		seedBareRepo(t, srcDir)
+
+		srcRepo, err := git.PlainOpen(srcDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		head, err := srcRepo.Head()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		destDir := filepath.Join(t.TempDir(), "destrepo.git")
+		if _, err := git.PlainInit(destDir, true); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil); err != nil {
+			t.Fatalf("first MirrorRepo failed: %v", err)
+		}
+
+		// The source renames its only branch: the destination now holds a branch
+		// the source lost, and that branch is the one its HEAD points at.
+		setRef(t, srcRepo, "refs/heads/renamed", head.Hash())
+
+		if err := srcRepo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, "refs/heads/renamed")); err != nil {
+			t.Fatal(err)
+		}
+
+		removeRef(t, srcRepo, head.Name().String())
+
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil); err != nil {
+			t.Fatalf("second MirrorRepo failed: %v", err)
+		}
+
+		assertRef(t, destDir, "refs/heads/renamed", true)
+		assertRef(t, destDir, head.Name().String(), true)
 	})
 
 	t.Run("error on invalid source", func(t *testing.T) {
@@ -143,7 +230,7 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatalf("failed to initialize bare repository at destination: %v", err)
 		}
 
-		err = MirrorRepo("file:///no/such/path", FILE_SCHEME+destDir, nil, nil)
+		err = MirrorRepo(nil, "file:///no/such/path", FILE_SCHEME+destDir, nil, nil)
 		if err == nil {
 			t.Error("expected error for invalid source URL, got nil")
 		}

@@ -16,11 +16,14 @@ FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6ee
 # when the destination instance is not premium (or --destination-force-freemium is
 # used), repositories are mirrored by cloning them into a temporary directory and
 # pushing them to the destination.
+#
+# /staging/cache is the counterpart for --cache-dir (GITLAB_SYNC_CACHE_DIR): it gives
+# the image a writable mount point for the volume that keeps the clones between runs.
 RUN apk add --no-cache ca-certificates \
     && addgroup -S gitlab-sync \
     && adduser -S gitlab-sync -G gitlab-sync \
-    && mkdir -p /staging/tmp \
-    && chmod 1777 /staging/tmp
+    && mkdir -p /staging/tmp /staging/cache \
+    && chmod 1777 /staging/tmp /staging/cache
 
 FROM scratch
 
@@ -28,7 +31,12 @@ COPY --from=security_provider /etc/passwd /etc/passwd
 COPY --from=security_provider /etc/group /etc/group
 # Required to talk to HTTPS GitLab instances and to clone/push over HTTPS.
 COPY --from=security_provider /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=security_provider --chmod=1777 /staging/tmp /tmp
+# The whole staging tree is copied at once, on purpose: COPY applies --chmod to the
+# files it copies, never to the destination directory itself, so copying /staging/tmp
+# onto /tmp would leave /tmp owned by root with the default 0755 and unwritable by the
+# unprivileged user below. Copying the parent instead recreates tmp/ and cache/ as
+# entries of the tree, which keeps the 1777 they were staged with.
+COPY --from=security_provider /staging/ /
 
 USER gitlab-sync
 

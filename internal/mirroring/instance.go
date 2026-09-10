@@ -26,6 +26,7 @@ const (
 type GitlabInstance struct {
 	GitAuth             transport.AuthMethod
 	Gitlab              *gitlab.Client
+	GitCache            *helpers.GitCache
 	Projects            map[string]*gitlab.Project
 	Groups              map[string]*gitlab.Group
 	Role                string

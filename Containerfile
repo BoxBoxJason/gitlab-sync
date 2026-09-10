@@ -12,12 +12,23 @@ RUN apk add --no-cache make git && \
 
 FROM alpine:3.24.1@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS security_provider
 
-RUN addgroup -S gitlab-sync \
-    && adduser -S gitlab-sync -G gitlab-sync
+# /staging/tmp is staged here so the scratch image below gets a writable /tmp:
+# when the destination instance is not premium (or --destination-force-freemium is
+# used), repositories are mirrored by cloning them into a temporary directory and
+# pushing them to the destination.
+RUN apk add --no-cache ca-certificates \
+    && addgroup -S gitlab-sync \
+    && adduser -S gitlab-sync -G gitlab-sync \
+    && mkdir -p /staging/tmp \
+    && chmod 1777 /staging/tmp
 
 FROM scratch
 
 COPY --from=security_provider /etc/passwd /etc/passwd
+COPY --from=security_provider /etc/group /etc/group
+# Required to talk to HTTPS GitLab instances and to clone/push over HTTPS.
+COPY --from=security_provider /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY --from=security_provider --chmod=1777 /staging/tmp /tmp
 
 USER gitlab-sync
 

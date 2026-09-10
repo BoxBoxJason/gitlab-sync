@@ -120,7 +120,7 @@ The mirroring configuration can be passed by either command line arguments or en
 If mandatory arguments are not provided, the program will prompt for them.
 
 | Argument | Environment Variable equivalent | Mandatory | Description |
-|----------|-------------------------------|-----------|-------------|
+| ---------- | ------------------------------- | ----------- | ------------- |
 | `--help` or `-h` | N/A | No | Show help message and exit |
 | `--version` | N/A | No | Show version information and exit |
 | `--verbose` or `-v` | N/A | No | Enable verbose output |
@@ -135,7 +135,17 @@ If mandatory arguments are not provided, the program will prompt for them.
 | `--destination-big` | `DESTINATION_GITLAB_BIG` | No | Specify if the destination GitLab instance is a big instance (default: false) |
 | `--mirror-mapping` | `MIRROR_MAPPING` | Yes | Path to a JSON file containing the mirror mapping |
 | `--retry` or `-r` | N/A | No | Number of retries for failed GitLab API requests (default: 3) |
-| `--log-file` |  `GITLAB_SYNC_LOG_FILE` | No | Path to a log file for output logs (default: `none`, only outputs logs to stderr) |
+| `--log-file` | `GITLAB_SYNC_LOG_FILE` | No | Path to a log file for output logs (default: `none`, only outputs logs to stderr) |
+
+### Freemium (non-premium) destinations
+
+Pull mirroring requires GitLab Premium. When the destination instance is not premium
+
+- or when `--destination-force-freemium` is passed to deliberately avoid pull mirrors on a premium/ultimate instance - gitlab-sync clones each source repository and pushes it to the destination itself. In that mode:
+
+- The destination token needs to be able to push over HTTP; an `api` scoped token is enough.
+- No mirror setting is written on the destination projects, and any pull mirror left over from a previous premium run is turned off first (GitLab keeps pull-mirrored repositories read-only, which would otherwise reject the push).
+- Repositories are cloned into a temporary directory, so the container needs a writable `/tmp` (provided by the published image).
 
 ### Example
 
@@ -155,7 +165,7 @@ The JSON mapping file is used to define the projects and groups to be synchroniz
 Allowed options are:
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `destination_path` | The path to the project / group on the destination GitLab instance. |
 | `ci_cd_catalog` | Whether to add the project to the CI/CD catalog. ⚠️ Requires GitLab 19.3+ on the destination instance, since it relies on the `cicd_catalog_enabled` project API field introduced in that version. |
 | `mirror_issues` | Whether to copy issues from the source project to the destination project. |

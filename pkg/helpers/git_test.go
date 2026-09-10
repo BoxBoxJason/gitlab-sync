@@ -2,10 +2,13 @@ package helpers
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 )
@@ -65,21 +68,64 @@ func TestMirrorRepo(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		headRef, err := destRepo.Head()
-		if err != nil {
-			t.Fatalf("dest HEAD error: %v", err)
-		}
-		if headRef.Hash().IsZero() {
-			t.Error("dest HEAD hash is zero")
-		}
+
+		// MirrorRepo intentionally leaves the destination HEAD alone (it cannot be
+		// set over the git transport); only the refs themselves must have landed.
 		branches, _ := destRepo.Branches()
 		found := false
 		_ = branches.ForEach(func(r *plumbing.Reference) error {
+			if r.Hash().IsZero() {
+				t.Errorf("branch %s has a zero hash", r.Name())
+			}
 			found = true
+
 			return storer.ErrStop
 		})
 		if !found {
 			t.Error("no branches found in mirrored repo")
+		}
+
+		tags, _ := destRepo.Tags()
+		foundTag := false
+		_ = tags.ForEach(func(r *plumbing.Reference) error {
+			foundTag = true
+
+			return storer.ErrStop
+		})
+		if !foundTag {
+			t.Error("no tags found in mirrored repo")
+		}
+	})
+
+	t.Run("mirroring an already up to date destination is not an error", func(t *testing.T) {
+		t.Parallel()
+
+		srcDir, err := os.MkdirTemp("", "srcrepo-*.git")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(srcDir)
+
+		destDir, err := os.MkdirTemp("", "destrepo-uptodate-*.git")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.RemoveAll(destDir)
+
+		seedBareRepo(t, srcDir)
+
+		if _, err := git.PlainInit(destDir, true); err != nil {
+			t.Fatalf("failed to initialize bare repository at destination: %v", err)
+		}
+
+		if err := MirrorRepo(FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil); err != nil {
+			t.Fatalf("first MirrorRepo failed: %v", err)
+		}
+
+		// A second run has nothing to push; go-git signals that with
+		// git.NoErrAlreadyUpToDate, which must not surface as a failure.
+		if err := MirrorRepo(FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil); err != nil {
+			t.Fatalf("second MirrorRepo failed: %v", err)
 		}
 	})
 
@@ -102,4 +148,41 @@ func TestMirrorRepo(t *testing.T) {
 			t.Error("expected error for invalid source URL, got nil")
 		}
 	})
+}
+
+// seedBareRepo creates a bare repository at path holding a single commit on the
+// repository's initial branch.
+func seedBareRepo(t *testing.T, path string) {
+	t.Helper()
+
+	worktreeDir := t.TempDir()
+
+	repo, err := git.PlainInit(worktreeDir, false)
+	if err != nil {
+		t.Fatalf("failed to init source worktree: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(worktreeDir, "file.txt"), []byte("content"), 0o600); err != nil {
+		t.Fatalf("failed to write source file: %v", err)
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("failed to open source worktree: %v", err)
+	}
+
+	if _, err := worktree.Add("file.txt"); err != nil {
+		t.Fatalf("failed to stage source file: %v", err)
+	}
+
+	_, err = worktree.Commit("initial commit", &git.CommitOptions{
+		Author: &object.Signature{Name: "tester", Email: "tester@example.com", When: time.Now()},
+	})
+	if err != nil {
+		t.Fatalf("failed to commit in source repository: %v", err)
+	}
+
+	if _, err := git.PlainClone(path, true, &git.CloneOptions{URL: FILE_SCHEME + worktreeDir, Mirror: true}); err != nil {
+		t.Fatalf("failed to create bare source repository: %v", err)
+	}
 }

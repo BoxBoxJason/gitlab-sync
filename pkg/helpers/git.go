@@ -1,14 +1,13 @@
 package helpers
 
 import (
+	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"strings"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"go.uber.org/zap"
@@ -25,8 +24,12 @@ func cleanupTempDir(path string) {
 	}
 }
 
-// MirrorRepo clones the source remote as a bare repo and pushes all refs
-// (branches, tags, and then fixes the bare-repo HEAD) to the destination.
+// MirrorRepo clones the source remote as a bare repo and force-pushes all refs
+// (branches and tags) to the destination.
+//
+// The destination HEAD (its default branch) is not touched here: it cannot be set
+// over the git transport, and the caller aligns it through the GitLab API when it
+// syncs the project attributes.
 func MirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.AuthMethod) error {
 	tmpDir, err := os.MkdirTemp("", "bare-mirror-*")
 	if err != nil {
@@ -75,49 +78,8 @@ func MirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.A
 	}
 
 	err = srcRepo.Push(pushOpts)
-	if err != nil {
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		return fmt.Errorf("failed to push to destination repository: %w", err)
-	}
-
-	err = fixBareRepoHEAD(destinationURL, srcRepo)
-	if err != nil {
-		return fmt.Errorf("failed to set destination HEAD: %w", err)
-	}
-
-	return nil
-}
-
-// fixBareRepoHEAD will open the bare repo on disk (via file:// URL),
-// read the srcRepo’s HEAD symbolic name (e.g. refs/heads/main), and then
-// rewrite the bare repo’s HEAD to point there.
-// (This is necessary because bare repos do not have a working tree,
-// so they cannot automatically determine the HEAD branch.)
-func fixBareRepoHEAD(destinationURL string, srcRepo *git.Repository) error {
-	u, err := url.Parse(destinationURL)
-	if err != nil {
-		return fmt.Errorf("failed to parse destination URL: %w", err)
-	}
-
-	path := u.Path
-
-	destRepo, err := git.PlainOpen(path)
-	if err != nil {
-		return fmt.Errorf("failed to open destination repository at %s: %w", path, err)
-	}
-
-	// figure out what branch the source HEAD was on
-	srcHead, err := srcRepo.Head()
-	if err != nil {
-		return fmt.Errorf("failed to read source repository HEAD: %w", err)
-	}
-
-	// write a new symbolic HEAD in the bare repo
-	zap.L().Debug("Setting HEAD in destination repository", zap.String("destinationURL", destinationURL), zap.String("branch", srcHead.Name().String()))
-	sym := plumbing.NewSymbolicReference(plumbing.HEAD, srcHead.Name())
-
-	err = destRepo.Storer.SetReference(sym)
-	if err != nil {
-		return fmt.Errorf("failed to set destination repository HEAD reference: %w", err)
 	}
 
 	return nil

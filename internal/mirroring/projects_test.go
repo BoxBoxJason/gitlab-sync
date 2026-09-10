@@ -1,6 +1,7 @@
 package mirroring
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
@@ -465,10 +466,25 @@ func TestCreateProjectFromSourceWithMinimalOptions(t *testing.T) {
 func TestCopyProjectAvatar(t *testing.T) {
 	_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
 	_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+
 	t.Run("Copy Project Avatar", func(t *testing.T) {
-		err := sourceGitlabInstance.CopyProjectAvatar(destinationGitlabInstance, TEST_PROJECT, TEST_PROJECT_2)
+		sourceProject := *TEST_PROJECT_2
+		sourceProject.AvatarURL = "http://gitlab.example.com/uploads/avatar.png"
+
+		err := sourceGitlabInstance.CopyProjectAvatar(destinationGitlabInstance, TEST_PROJECT, &sourceProject)
 		if err != nil {
 			t.Errorf("Unexpected error when copying project avatar: %v", err)
+		}
+	})
+
+	t.Run("Source project without an avatar is skipped", func(t *testing.T) {
+		// The avatar endpoint answers 404 for avatar-less projects, so the download
+		// must not even be attempted.
+		_, isolatedSource := setupEmptyTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
+
+		err := isolatedSource.CopyProjectAvatar(destinationGitlabInstance, TEST_PROJECT, TEST_PROJECT_2)
+		if err != nil {
+			t.Errorf("Unexpected error when skipping avatar copy: %v", err)
 		}
 	})
 }
@@ -631,4 +647,170 @@ func TestCreateProjectClaimOwnershipOption(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSyncMirrorProjectAttributes(t *testing.T) {
+	tests := []struct {
+		name                     string
+		pullMirrorAvailable      bool
+		destinationProject       *gitlab.Project
+		copyOptions              *utils.MirroringOptions
+		expectedMismatch         bool
+		expectedMirror           *bool
+		expectMirrorTriggerBuild bool
+	}{
+		{
+			// Pull mirroring is a Premium feature and GitLab refuses mirror=true
+			// without an import URL and a mirror user, so a freemium destination must
+			// be left untouched: gitlab-sync pushes the repository itself instead.
+			name:                "freemium destination leaves the mirror attributes alone",
+			pullMirrorAvailable: false,
+			destinationProject:  &gitlab.Project{ID: 1, Mirror: false, MirrorTriggerBuilds: false},
+			copyOptions:         &utils.MirroringOptions{MirrorTriggerBuilds: new(true)},
+			expectedMismatch:    false,
+			expectedMirror:      nil,
+		},
+		{
+			name:                "freemium destination does not re-enable an existing pull mirror",
+			pullMirrorAvailable: false,
+			destinationProject:  &gitlab.Project{ID: 1, Mirror: true, MirrorOverwritesDivergedBranches: true},
+			copyOptions:         &utils.MirroringOptions{},
+			expectedMismatch:    false,
+			expectedMirror:      nil,
+		},
+		{
+			name:                     "premium destination enables the pull mirror",
+			pullMirrorAvailable:      true,
+			destinationProject:       &gitlab.Project{ID: 1, Mirror: false},
+			copyOptions:              &utils.MirroringOptions{MirrorTriggerBuilds: new(true)},
+			expectedMismatch:         true,
+			expectedMirror:           new(true),
+			expectMirrorTriggerBuild: true,
+		},
+		{
+			name:                "premium destination already in sync",
+			pullMirrorAvailable: true,
+			destinationProject:  &gitlab.Project{ID: 1, Mirror: true, MirrorOverwritesDivergedBranches: true},
+			copyOptions:         &utils.MirroringOptions{},
+			expectedMismatch:    false,
+			expectedMirror:      nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			editOptions := &gitlab.EditProjectOptions{}
+
+			mismatch := syncMirrorProjectAttributes(tt.pullMirrorAvailable, tt.destinationProject, tt.copyOptions, editOptions)
+			if mismatch != tt.expectedMismatch {
+				t.Errorf("expected mismatch %v, got %v", tt.expectedMismatch, mismatch)
+			}
+
+			switch {
+			case tt.expectedMirror == nil && editOptions.Mirror != nil:
+				t.Errorf("expected Mirror to be left unset, got %v", *editOptions.Mirror)
+			case tt.expectedMirror != nil && editOptions.Mirror == nil:
+				t.Errorf("expected Mirror to be set to %v, got nil", *tt.expectedMirror)
+			case tt.expectedMirror != nil && *editOptions.Mirror != *tt.expectedMirror:
+				t.Errorf("expected Mirror %v, got %v", *tt.expectedMirror, *editOptions.Mirror)
+			}
+
+			if !tt.expectMirrorTriggerBuild && editOptions.MirrorTriggerBuilds != nil {
+				t.Errorf("expected MirrorTriggerBuilds to be left unset, got %v", *editOptions.MirrorTriggerBuilds)
+			}
+		})
+	}
+}
+
+func TestCreateProjectFromSourceDoesNotRequestMirror(t *testing.T) {
+	// GitLab validates mirror=true against the presence of an import URL and a
+	// mirror user, neither of which exists when the project is being created.
+	for _, pullMirrorAvailable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("pullMirrorAvailable=%v", pullMirrorAvailable), func(t *testing.T) {
+			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			gitlabInstance.PullMirrorAvailable = pullMirrorAvailable
+			gitlabInstance.AddGroup(TEST_GROUP)
+
+			var createBody map[string]any
+
+			mux.HandleFunc("/api/v4/projects", func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodPost {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+
+					return
+				}
+
+				if err := json.NewDecoder(r.Body).Decode(&createBody); err != nil {
+					t.Errorf("failed to decode project creation body: %v", err)
+				}
+
+				w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+				w.WriteHeader(http.StatusCreated)
+				fmt.Fprint(w, TEST_PROJECT_STRING)
+			})
+
+			_, err := gitlabInstance.CreateProjectFromSource(TEST_PROJECT, &utils.MirroringOptions{
+				DestinationPath:     TEST_PROJECT.PathWithNamespace,
+				MirrorTriggerBuilds: new(true),
+			})
+			if err != nil {
+				t.Fatalf("unexpected error when creating project: %v", err)
+			}
+
+			if _, ok := createBody["mirror"]; ok {
+				t.Errorf("project creation must not send the mirror attribute, got %v", createBody["mirror"])
+			}
+
+			_, sentTriggerBuilds := createBody["mirror_trigger_builds"]
+			if sentTriggerBuilds != pullMirrorAvailable {
+				t.Errorf("expected mirror_trigger_builds to be sent = %v, got %v", pullMirrorAvailable, sentTriggerBuilds)
+			}
+		})
+	}
+}
+
+func TestDisableProjectMirrorPull(t *testing.T) {
+	t.Run("no call when the project is not a pull mirror", func(t *testing.T) {
+		_, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+
+		project := &gitlab.Project{ID: 1, PathWithNamespace: TEST_PROJECT.PathWithNamespace, Mirror: false}
+		if err := gitlabInstance.DisableProjectMirrorPull(project); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("turns an existing pull mirror off before pushing", func(t *testing.T) {
+		mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+
+		var editBody map[string]any
+
+		mux.HandleFunc("/api/v4/projects/1", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPut {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+
+				return
+			}
+
+			if err := json.NewDecoder(r.Body).Decode(&editBody); err != nil {
+				t.Errorf("failed to decode project edit body: %v", err)
+			}
+
+			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, TEST_PROJECT_STRING)
+		})
+
+		project := &gitlab.Project{ID: 1, PathWithNamespace: TEST_PROJECT.PathWithNamespace, Mirror: true}
+		if err := gitlabInstance.DisableProjectMirrorPull(project); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if mirror, ok := editBody["mirror"].(bool); !ok || mirror {
+			t.Errorf("expected the edit request to set mirror=false, got %v", editBody["mirror"])
+		}
+
+		if project.Mirror {
+			t.Error("expected the cached project to no longer be flagged as a mirror")
+		}
+	})
 }

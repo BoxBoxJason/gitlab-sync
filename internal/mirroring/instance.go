@@ -189,33 +189,25 @@ func (g *GitlabInstance) IsLicensePremium() (bool, error) {
 
 // FetchAll retrieves all projects and groups from the GitLab instance
 // that match the filters and stores them in the instance cache.
-func (g *GitlabInstance) FetchAll(projectFilters, groupFilters map[string]struct{}, mirrorMapping *utils.MirrorMapping) []error {
+// Failures are logged as they happen (via helpers.Report).
+func (g *GitlabInstance) FetchAll(projectFilters, groupFilters map[string]struct{}, mirrorMapping *utils.MirrorMapping) {
 	zap.L().Info("Fetching all projects and groups from GitLab instance", zap.String(ROLE, g.Role), zap.String(INSTANCE_SIZE, g.InstanceSize), zap.Int("projects", len(projectFilters)), zap.Int("groups", len(groupFilters)))
 
 	waitGroup := sync.WaitGroup{}
-	errCh := make(chan []error, fetchWorkerCount)
-
 	waitGroup.Add(fetchWorkerCount)
 
 	go func() {
 		defer waitGroup.Done()
 
-		if err := g.FetchAndProcessGroups(&groupFilters, mirrorMapping); err != nil {
-			errCh <- err
-		}
+		g.FetchAndProcessGroups(&groupFilters, mirrorMapping)
 	}()
 	go func() {
 		defer waitGroup.Done()
 
-		if err := g.FetchAndProcessProjects(&projectFilters, &groupFilters, mirrorMapping); err != nil {
-			errCh <- err
-		}
+		g.FetchAndProcessProjects(&projectFilters, &groupFilters, mirrorMapping)
 	}()
 
 	waitGroup.Wait()
-	close(errCh)
-
-	return helpers.MergeErrors(errCh)
 }
 
 // GetParentNamespaceID retrieves the parent namespace ID for a given project or group path.

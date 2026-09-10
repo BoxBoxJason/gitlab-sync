@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 )
@@ -64,15 +65,18 @@ func TestFetchAll(t *testing.T) {
 	// Iterate over the test cases
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+			// Not parallel: the assertion below reads the process-wide error tally.
+			helpers.ResetReported()
+			t.Cleanup(helpers.ResetReported)
+
 			_, gitlabInstance := setupTestServer(t, test.role, test.instanceSize)
 
 			// Call the function with the test case parameters
-			err := gitlabInstance.FetchAll(projectFilters, groupFilters, gitlabMirrorArgs)
+			gitlabInstance.FetchAll(projectFilters, groupFilters, gitlabMirrorArgs)
 
 			// Check if an error was expected
-			if (err != nil) != test.expectedError {
-				t.Errorf(EXPECTED_ERROR_MESSAGE, test.expectedError, err)
+			if (helpers.ExitCode() != 0) != test.expectedError {
+				t.Errorf(EXPECTED_ERROR_MESSAGE, test.expectedError, helpers.ExitCode())
 			}
 
 			// Check if the instance cache contains the expected projects and groups
@@ -162,7 +166,9 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			t.Parallel()
+			// Not parallel: the assertion below reads the process-wide error tally.
+			helpers.ResetReported()
+			t.Cleanup(helpers.ResetReported)
 
 			gitlabMirrorArgs := &utils.MirrorMapping{
 				Projects: map[string]*utils.MirroringOptions{
@@ -174,9 +180,9 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 
 			_, gitlabInstance := setupTestServer(t, test.role, INSTANCE_SIZE_BIG)
 
-			err := gitlabInstance.FetchAndProcessProjectsBigInstance(&test.projectFilters, gitlabMirrorArgs)
-			if (err != nil) != test.expectError {
-				t.Fatalf("Expected error: %v, got: %v", test.expectError, err)
+			gitlabInstance.FetchAndProcessProjectsBigInstance(&test.projectFilters, gitlabMirrorArgs)
+			if (helpers.ExitCode() != 0) != test.expectError {
+				t.Fatalf("Expected error: %v, got exit code: %d", test.expectError, helpers.ExitCode())
 			}
 			if len(gitlabInstance.Projects) != len(test.expectedProjects) {
 				t.Fatalf("Expected %d projects, got %d", len(test.expectedProjects), len(gitlabInstance.Projects))
@@ -276,12 +282,15 @@ func TestFetchAndProcessProjectsSmallInstance(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			// Not parallel: the assertion below reads the process-wide error tally.
+			helpers.ResetReported()
+			t.Cleanup(helpers.ResetReported)
+
 			_, gitlabInstance := setupTestServer(t, tt.role, INSTANCE_SIZE_SMALL)
 
-			errs := gitlabInstance.FetchAndProcessProjectsSmallInstance(&tt.projectFilters, &tt.groupFilters, tt.mirrorMapping)
-			if len(errs) > 0 {
-				t.Fatalf("unexpected errors: %v", errs)
+			gitlabInstance.FetchAndProcessProjectsSmallInstance(&tt.projectFilters, &tt.groupFilters, tt.mirrorMapping)
+			if got := helpers.ExitCode(); got != 0 {
+				t.Fatalf("unexpected errors: exit code %d", got)
 			}
 
 			for project := range tt.expectedProjects {
@@ -491,6 +500,9 @@ func TestCopyProjectAvatar(t *testing.T) {
 
 func TestCreateProjects(t *testing.T) {
 	t.Run("Test Create Projects", func(t *testing.T) {
+		helpers.ResetReported()
+		t.Cleanup(helpers.ResetReported)
+
 		_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
 		sourceGitlabInstance.AddGroup(TEST_GROUP)
 		sourceGitlabInstance.AddProject(TEST_PROJECT)
@@ -509,9 +521,9 @@ func TestCreateProjects(t *testing.T) {
 				},
 			},
 		}
-		err := destinationGitlabInstance.CreateProjects(sourceGitlabInstance, mirrorMapping)
-		if len(err) > 0 {
-			t.Errorf("Unexpected error when creating projects: %v", err)
+		destinationGitlabInstance.CreateProjects(sourceGitlabInstance, mirrorMapping)
+		if got := helpers.ExitCode(); got != 0 {
+			t.Errorf("Unexpected error when creating projects: exit code %d", got)
 		}
 		if len(destinationGitlabInstance.Projects) == 0 {
 			t.Errorf("Expected projects to be created, but none were found")
@@ -632,12 +644,15 @@ func TestCreateProjectClaimOwnershipOption(t *testing.T) {
 				destinationGitlabInstance.AddProject(TEST_PROJECT_2)
 			}
 
-			createdProject, errs := destinationGitlabInstance.CreateProject(TEST_PROJECT_2.PathWithNamespace, &utils.MirroringOptions{
+			helpers.ResetReported()
+			t.Cleanup(helpers.ResetReported)
+
+			createdProject := destinationGitlabInstance.CreateProject(TEST_PROJECT_2.PathWithNamespace, &utils.MirroringOptions{
 				DestinationPath: TEST_PROJECT_2.PathWithNamespace,
 				ClaimOwnership:  tc.claimOwnership,
 			}, sourceGitlabInstance)
-			if len(errs) > 0 {
-				t.Fatalf("unexpected error: %v", errs)
+			if got := helpers.ExitCode(); got != 0 {
+				t.Fatalf("unexpected error: exit code %d", got)
 			}
 			if createdProject == nil {
 				t.Fatal("expected created project to be non-nil")

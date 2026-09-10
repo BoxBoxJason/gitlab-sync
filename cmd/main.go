@@ -18,9 +18,8 @@ import (
 )
 
 const (
-	defaultRetryCount   = 3
-	logDirPermission    = 0o700
-	nonBlockingExitCode = 2
+	defaultRetryCount = 3
+	logDirPermission  = 0o700
 )
 
 // version and buildTime can optionally be set at build time via -ldflags.
@@ -136,37 +135,27 @@ func executeMirroringCommand(args *utils.ParserArgs, mirrorMappingPath, logFile 
 
 	zap.L().Debug("Parsing mirror mapping file")
 
-	mapping, mappingErrors := utils.OpenMirrorMapping(*mirrorMappingPath)
-	if mappingErrors != nil {
-		zap.L().Fatal("Error opening mirror mapping file", zap.Errors("errors", mappingErrors))
+	mapping, err := utils.OpenMirrorMapping(*mirrorMappingPath)
+	if err != nil {
+		zap.L().Fatal("Error opening mirror mapping file: " + err.Error())
 	}
 
 	args.MirrorMapping = mapping
 
-	mirroringErrors := mirroring.MirrorGitlabs(args)
-	if mirroringErrors == nil {
+	// Errors are logged by MirrorGitlabs as they occur; only the resulting
+	// exit code is consulted here.
+	mirroring.MirrorGitlabs(args)
+
+	switch code := helpers.ExitCode(); code {
+	case helpers.ExitOK:
 		zap.L().Info("Mirroring completed successfully")
-
-		return
+	case helpers.ExitBlocking:
+		zap.L().Error("Mirroring process finished with blocking errors")
+		os.Exit(code)
+	default:
+		zap.L().Warn("Mirroring process finished with non-blocking errors")
+		os.Exit(code)
 	}
-
-	hasBlocking := false
-
-	for _, currentErr := range mirroringErrors {
-		if helpers.SeverityOf(currentErr) == helpers.SeverityBlocking {
-			hasBlocking = true
-
-			break
-		}
-	}
-
-	if hasBlocking {
-		zap.L().Error("Blocking errors occurred during mirroring process", zap.Errors("errors", mirroringErrors))
-		os.Exit(1)
-	}
-
-	zap.L().Warn("Non-blocking errors occurred during mirroring process", zap.Errors("errors", mirroringErrors))
-	os.Exit(nonBlockingExitCode)
 }
 
 // promptForInput prompts the user for input and returns the trimmed response.

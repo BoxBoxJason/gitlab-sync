@@ -2,6 +2,8 @@ package mirroring
 
 import (
 	"testing"
+
+	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 )
 
 func TestFetchProjectIssues(t *testing.T) {
@@ -54,9 +56,12 @@ func TestMirrorIssues(t *testing.T) {
 	_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
 	_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
 	t.Run("Mirror Issues", func(t *testing.T) {
-		errors := destinationGitlabInstance.MirrorIssues(sourceGitlabInstance, TEST_PROJECT, TEST_PROJECT_2)
-		if len(errors) > 0 {
-			t.Errorf("Unexpected errors when mirroring issues: %v", errors)
+		helpers.ResetReported()
+		t.Cleanup(helpers.ResetReported)
+
+		destinationGitlabInstance.MirrorIssues(sourceGitlabInstance, TEST_PROJECT, TEST_PROJECT_2)
+		if got := helpers.ExitCode(); got != 0 {
+			t.Errorf("Unexpected errors when mirroring issues: exit code %d", got)
 		}
 	})
 }

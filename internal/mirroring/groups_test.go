@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
 )
 
@@ -93,7 +94,10 @@ func TestCreateGroups(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+			// Not parallel: the assertion below reads the process-wide error tally.
+			helpers.ResetReported()
+			t.Cleanup(helpers.ResetReported)
+
 			// Setup the test server
 			_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, tt.destinationSize)
 			sourceGitlabInstance.AddGroup(TEST_GROUP)
@@ -107,9 +111,9 @@ func TestCreateGroups(t *testing.T) {
 			})
 
 			// Create groups
-			err := destinationGitlabInstance.CreateGroups(sourceGitlabInstance, mirrorMapping)
-			if err != nil {
-				t.Errorf("Unexpected error when creating groups: %v", err)
+			destinationGitlabInstance.CreateGroups(sourceGitlabInstance, mirrorMapping)
+			if got := helpers.ExitCode(); got != 0 {
+				t.Errorf("Unexpected error when creating groups: exit code %d", got)
 			}
 		})
 	}

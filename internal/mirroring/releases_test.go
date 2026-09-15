@@ -5,7 +5,7 @@ import (
 
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
-	gitlab "gitlab.com/gitlab-org/api/client-go/v2"
+	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 )
 
 func TestMirrorReleases(t *testing.T) {

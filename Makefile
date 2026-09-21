@@ -17,7 +17,7 @@ gotestsum_version := v1.13.0
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
 golangci_lint_version := v2.13.2
 # renovate: datasource=go depName=golang.org/x/vuln
-govulncheck_version := v1.7.0
+govulncheck_version := v1.8.0
 
 # Download dependencies
 deps:

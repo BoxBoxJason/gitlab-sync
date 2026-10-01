@@ -1,12 +1,13 @@
 package mirroring
 
 import (
-	"bytes"
 	"cmp"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"slices"
 	"strconv"
@@ -24,8 +25,8 @@ const (
 	// Each release gets its own package version (the sanitized tag name).
 	releaseAssetsPackageName = "release-assets"
 	// releaseAssetTransferWorkers bounds the number of asset files a destination
-	// instance downloads / uploads at the same time. Each file is fully held in
-	// memory while it is transferred, so this also bounds the memory usage.
+	// instance downloads / uploads at the same time. Each file is spooled to a
+	// temporary file while it is transferred, so this also bounds the disk usage.
 	releaseAssetTransferWorkers = 4
 	// packagesPerPage is the page size used when listing packages and package files.
 	packagesPerPage = 100
@@ -33,6 +34,8 @@ const (
 	genericPackageType = "generic"
 	// defaultReleaseAssetFileName is used when no file name can be derived from a link.
 	defaultReleaseAssetFileName = "asset"
+	// releaseAssetSpoolPattern names the temporary files release assets are spooled to.
+	releaseAssetSpoolPattern = "gitlab-sync-release-asset-*"
 	// defaultReleaseAssetVersion is used when a tag name sanitizes to nothing.
 	defaultReleaseAssetVersion = "0"
 
@@ -298,11 +301,11 @@ func (g *GitlabInstance) acquireAssetTransfer() func() {
 	return func() { <-g.assetTransfers }
 }
 
-// downloadInstanceFile downloads an arbitrary file of the instance, authenticated
+// downloadInstanceFile streams an arbitrary file of the instance to output, authenticated
 // with the instance token. link must point to the instance (see instanceRelativePath).
-func (g *GitlabInstance) downloadInstanceFile(link *url.URL) ([]byte, error) {
+func (g *GitlabInstance) downloadInstanceFile(link *url.URL, output io.Writer) error {
 	// Rebuild the URL on the configured base URL: the client refuses any other
-	// scheme / host, and it keeps the token from being sent anywhere else.
+	// scheme / host. Redirects to other hosts drop the token (see stripTokenOnCrossHostRedirect).
 	downloadURL := g.Gitlab.BaseURL()
 	downloadURL.Path = link.Path
 	downloadURL.RawPath = link.RawPath
@@ -311,57 +314,103 @@ func (g *GitlabInstance) downloadInstanceFile(link *url.URL) ([]byte, error) {
 
 	req, err := g.Gitlab.NewRequestToURL(http.MethodGet, downloadURL, nil, []gitlab.RequestOptionFunc{gitlab.WithHeader("Accept", "*/*")})
 	if err != nil {
-		return nil, fmt.Errorf("failed to build download request for %s: %w", downloadURL.Redacted(), err)
+		return fmt.Errorf("failed to build download request for %s: %w", downloadURL.Redacted(), err)
 	}
 
-	var content bytes.Buffer
-
-	resp, err := g.Gitlab.Do(req, &content)
+	resp, err := g.Gitlab.Do(req, output)
 	if err != nil {
-		return nil, fmt.Errorf("failed to download %s: %w", downloadURL.Redacted(), err)
+		return fmt.Errorf("failed to download %s: %w", downloadURL.Redacted(), err)
 	}
 
 	// Web routes that do not accept the API token redirect to the sign in page,
 	// which would otherwise be mirrored as the asset content.
 	if resp != nil && resp.Request != nil && strings.HasSuffix(resp.Request.URL.Path, signInPathSuffix) {
-		return nil, fmt.Errorf("failed to download %s: the source instance redirected to its sign in page", downloadURL.Redacted())
+		return fmt.Errorf("failed to download %s: the source instance redirected to its sign in page", downloadURL.Redacted())
 	}
 
-	return content.Bytes(), nil
+	return nil
 }
 
-// downloadReleaseAsset downloads the file a source release link points to.
-func (g *GitlabInstance) downloadReleaseAsset(plan *releaseAssetPlan) ([]byte, error) {
-	if plan.Kind == releaseAssetGenericPackage {
-		content, _, err := g.Gitlab.GenericPackages.DownloadPackageFile(plan.Package.ProjectID, plan.Package.Name, plan.Package.Version, plan.Package.FileName)
-		if errors.Is(err, gitlab.ErrNotFound) {
-			return nil, fmt.Errorf("failed to download generic package file %s: %w: %w", plan.SourceURL.Redacted(), errSourceAssetMissing, err)
-		}
+// downloadPackageFile streams the generic package file of plan to output.
+// GenericPackagesService.DownloadPackageFile is not used: it buffers the whole file.
+func (g *GitlabInstance) downloadPackageFile(plan *releaseAssetPlan, output io.Writer) error {
+	packageFile := plan.Package
 
-		if err != nil {
-			return nil, fmt.Errorf("failed to download generic package file %s: %w", plan.SourceURL.Redacted(), err)
-		}
-
-		return content, nil
+	packagePath, err := g.Gitlab.GenericPackages.FormatPackageURL(packageFile.ProjectID, packageFile.Name, packageFile.Version, packageFile.FileName)
+	if err != nil {
+		return fmt.Errorf("failed to build generic package file path %s: %w", plan.SourceURL.Redacted(), err)
 	}
 
-	return g.downloadInstanceFile(plan.SourceURL)
+	req, err := g.Gitlab.NewRequest(http.MethodGet, packagePath, nil, nil)
+	if err != nil {
+		return fmt.Errorf("failed to build download request for generic package file %s: %w", plan.SourceURL.Redacted(), err)
+	}
+
+	_, err = g.Gitlab.Do(req, output)
+	if errors.Is(err, gitlab.ErrNotFound) {
+		return fmt.Errorf("failed to download generic package file %s: %w: %w", plan.SourceURL.Redacted(), errSourceAssetMissing, err)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to download generic package file %s: %w", plan.SourceURL.Redacted(), err)
+	}
+
+	return nil
+}
+
+// downloadReleaseAsset streams the file a source release link points to into output.
+func (g *GitlabInstance) downloadReleaseAsset(plan *releaseAssetPlan, output io.Writer) error {
+	if plan.Kind == releaseAssetGenericPackage {
+		return g.downloadPackageFile(plan, output)
+	}
+
+	return g.downloadInstanceFile(plan.SourceURL, output)
+}
+
+// spooledAsset is the upload body of a release asset spooled to disk. It is an
+// io.ReadSeeker with a Len, so the HTTP client streams it with a Content-Length and
+// rewinds it on retries, instead of reading it all in memory as it does for a plain io.Reader.
+type spooledAsset struct {
+	*io.SectionReader
+}
+
+// Len returns the size of the spooled asset.
+func (a spooledAsset) Len() int {
+	return int(a.Size())
 }
 
 // copyReleaseAssetFile copies the file of a source release link to the destination
-// project generic package registry, and returns the URL of the copy.
+// project generic package registry, and returns the URL of the copy. The file is
+// spooled to a temporary file rather than held in memory, as release assets can be
+// large binaries.
 func (destinationGitlab *GitlabInstance) copyReleaseAssetFile(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, plan *releaseAssetPlan) (string, error) {
 	release := destinationGitlab.acquireAssetTransfer()
 	defer release()
 
-	content, err := sourceGitlab.downloadReleaseAsset(plan)
+	spool, err := os.CreateTemp("", releaseAssetSpoolPattern)
+	if err != nil {
+		return "", fmt.Errorf("failed to create a temporary file for release asset %s: %w", plan.SourceURL.Redacted(), err)
+	}
+
+	defer func() {
+		_ = spool.Close()
+		_ = os.Remove(spool.Name())
+	}()
+
+	err = sourceGitlab.downloadReleaseAsset(plan, spool)
 	if err != nil {
 		return "", err
 	}
 
-	packageFile := plan.Package
+	size, err := spool.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return "", fmt.Errorf("failed to read the size of release asset %s: %w", plan.SourceURL.Redacted(), err)
+	}
 
-	_, _, err = destinationGitlab.Gitlab.GenericPackages.PublishPackageFile(destinationProject.ID, packageFile.Name, packageFile.Version, packageFile.FileName, bytes.NewReader(content), nil)
+	packageFile := plan.Package
+	content := spooledAsset{io.NewSectionReader(spool, 0, size)}
+
+	_, _, err = destinationGitlab.Gitlab.GenericPackages.PublishPackageFile(destinationProject.ID, packageFile.Name, packageFile.Version, packageFile.FileName, content, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to publish generic package file %s/%s/%s: %w", packageFile.Name, packageFile.Version, packageFile.FileName, err)
 	}

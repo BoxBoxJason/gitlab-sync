@@ -269,6 +269,13 @@ func newReleaseAssetsTestServers(t *testing.T) *releaseAssetsTestServers {
 	})
 	s.destinationMux.HandleFunc(fmt.Sprintf("PUT /api/v4/projects/%d/packages/generic/{file...}", TEST_PROJECT_2.ID), func(w http.ResponseWriter, r *http.Request) {
 		content, _ := io.ReadAll(r.Body)
+		// Spooled assets are streamed with their size, never chunked.
+		if r.ContentLength != int64(len(content)) {
+			writeJSONResponse(w, http.StatusBadRequest, `{"message": "missing Content-Length"}`)
+
+			return
+		}
+
 		s.mu.Lock()
 		s.uploads[r.PathValue("file")] = string(content)
 		s.mu.Unlock()

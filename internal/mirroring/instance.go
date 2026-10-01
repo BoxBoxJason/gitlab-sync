@@ -1,8 +1,11 @@
 package mirroring
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
@@ -21,13 +24,34 @@ const (
 	ULTIMATE_PLAN             = "ultimate"
 	PREMIUM_PLAN              = "premium"
 	fetchWorkerCount          = 2
+	// maxRedirects mirrors the net/http default redirect limit.
+	maxRedirects = 10
 )
+
+// stripTokenOnCrossHostRedirect keeps the instance token from following a redirect
+// to another host. net/http only drops Authorization and Cookie there (and keeps them
+// for subdomains), so the Private-Token header the client sets would otherwise reach
+// whatever host the instance redirects to - a release asset download, for instance,
+// is redirected to the URL of the release link, which can be anything.
+func stripTokenOnCrossHostRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= maxRedirects {
+		return errors.New("stopped after 10 redirects")
+	}
+
+	if !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
+		req.Header.Del(gitlab.AccessTokenHeaderName)
+		req.Header.Del("Authorization")
+		req.Header.Del("Job-Token")
+	}
+
+	return nil
+}
 
 type GitlabInstance struct {
 	GitAuth  transport.AuthMethod
 	Gitlab   *gitlab.Client
 	GitCache *helpers.GitCache
-	// assetTransfers bounds how many release asset files are held in memory at once
+	// assetTransfers bounds how many release asset files are transferred at once
 	// (see acquireAssetTransfer). A nil channel means no bound.
 	assetTransfers      chan struct{}
 	Projects            map[string]*gitlab.Project
@@ -56,6 +80,8 @@ func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize GitLab client: %w", err)
 	}
+
+	gitlabClient.HTTPClient().CheckRedirect = stripTokenOnCrossHostRedirect
 
 	gitlabInstance := &GitlabInstance{
 		Gitlab:       gitlabClient,

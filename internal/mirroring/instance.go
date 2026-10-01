@@ -24,9 +24,12 @@ const (
 )
 
 type GitlabInstance struct {
-	GitAuth             transport.AuthMethod
-	Gitlab              *gitlab.Client
-	GitCache            *helpers.GitCache
+	GitAuth  transport.AuthMethod
+	Gitlab   *gitlab.Client
+	GitCache *helpers.GitCache
+	// assetTransfers bounds how many release asset files are held in memory at once
+	// (see acquireAssetTransfer). A nil channel means no bound.
+	assetTransfers      chan struct{}
 	Projects            map[string]*gitlab.Project
 	Groups              map[string]*gitlab.Group
 	Role                string
@@ -61,6 +64,8 @@ func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 		Role:         initArgs.Role,
 		InstanceSize: initArgs.InstanceSize,
 		GitAuth:      helpers.BuildHTTPAuth("", initArgs.GitlabToken),
+
+		assetTransfers: make(chan struct{}, releaseAssetTransferWorkers),
 	}
 
 	if initArgs.GitlabToken != "" {

@@ -232,6 +232,19 @@ Allowed options are:
 | `visibility` | The visibility level of the project on the destination GitLab instance. Can be `public`, `internal`, or `private`. |
 | `mirror_trigger_builds` | Whether to trigger builds on the destination project when a push is made to the source project. |
 | `mirror_releases` | Whether to mirror releases from the source project to the destination project. |
+| `mirror_release_assets` | Whether to also keep the release asset links (and their files) in sync (requires `mirror_releases`), including on releases that already exist on the destination. ⚠️ Deletes destination releases, links and files that no longer exist on the source. See [Release assets](#release-assets). |
+
+#### Release assets
+
+When `mirror_release_assets` is enabled, the destination release links are kept in sync with the source release links (links are matched by name), keeping their `name`, `link_type` and `direct_asset_path`:
+
+- **Generic package on the source instance** (`/api/v4/projects/:id/packages/generic/:name/:version/:file`): the file is republished to the destination project generic package registry under the same package name, version and file name, and the link points to that copy. On every run, the checksum GitLab stored for the source file is compared with the one of the destination copy (no download is needed for that): the file is only copied again when the destination copy is missing or differs. Previous copies are kept in the package, GitLab serves the newest one. When the file no longer exists on the source (the source package no longer lists it and its download answers 404), its destination copies are deleted.
+- **Any other URL on the source instance** (job artifacts, other package registries, ...): the file is downloaded and stored in the destination project generic package registry as `release-assets/<tag>/<file>`, and the link points to that copy. These sources have no checksum to compare, so the file is copied once: when the destination release does not have the link yet. A source file that disappears while its link stays (e.g. an expired job artifact) is not detected.
+- **External URLs**: the link is copied unchanged, when the destination release does not have it yet.
+
+⚠️ Links of a destination release that its source release no longer has are **deleted**, including links added by hand on the destination. When such a link points to a generic package file of the destination project, that file is deleted too, unless a link of another source release is still copied to it. Destination releases whose tag no longer has a release on the source are **deleted** too (the git tag itself is left to the repository mirroring), along with the files their links point to in the destination project generic package registry, with the same exception. With `mirror_releases` alone (without `mirror_release_assets`), nothing is ever deleted. Use `--dry-run` to see what would be deleted.
+
+Files are downloaded with the source token. Web (non-API) URLs of private projects may not accept it: when the source instance answers with its sign in page, the asset is reported as failed rather than mirrored.
 
 Be aware that the destination path must be unique for each project / group. If you try to synchronize a project / group with the same destination path as an existing project / group, the synchronization will fail.
 
@@ -246,7 +259,8 @@ Also, the destination namespace must exist on the destination GitLab instance. I
       "mirror_issues": false,
       "visibility": "public",
       "mirror_trigger_builds": false,
-      "mirror_releases": false
+      "mirror_releases": false,
+      "mirror_release_assets": false
     }
   },
   "groups": {
@@ -256,7 +270,8 @@ Also, the destination namespace must exist on the destination GitLab instance. I
       "mirror_issues": false,
       "visibility": "public",
       "mirror_trigger_builds": false,
-      "mirror_releases": false
+      "mirror_releases": false,
+      "mirror_release_assets": false
     }
   }
 }

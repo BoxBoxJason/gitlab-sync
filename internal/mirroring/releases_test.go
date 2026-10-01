@@ -15,7 +15,7 @@ func TestMirrorReleases(t *testing.T) {
 		helpers.ResetReported()
 		t.Cleanup(helpers.ResetReported)
 
-		destinationGitlabInstance.MirrorReleases(sourceGitlabInstance, TEST_PROJECT, TEST_PROJECT_2)
+		destinationGitlabInstance.MirrorReleases(sourceGitlabInstance, TEST_PROJECT, TEST_PROJECT_2, ReleasesMirroringOptions{})
 		if got := helpers.ExitCode(); got != 0 {
 			t.Errorf("Unexpected error when mirroring releases: exit code %d", got)
 		}

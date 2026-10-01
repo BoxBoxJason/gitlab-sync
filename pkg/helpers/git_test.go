@@ -171,6 +171,49 @@ func TestMirrorRepo(t *testing.T) {
 		assertRef(t, destDir, "refs/tags/v1.0.0", false)
 	})
 
+	// GitLab refuses any update to the namespaces it reserves ("deny updating a
+	// hidden ref"), and a mirror clone of a GitLab project holds some of them.
+	t.Run("GitLab reserved refs are not pushed", func(t *testing.T) {
+		t.Parallel()
+
+		srcDir := filepath.Join(t.TempDir(), "srcrepo.git")
+		seedBareRepo(t, srcDir)
+
+		srcRepo, err := git.PlainOpen(srcDir)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		head, err := srcRepo.Head()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// refs/stash is refused by every receive-pack ("funny refname").
+		hidden := []string{"refs/stash", "refs/merge-requests/1/head", "refs/pipelines/42", "refs/environments/prod/deployments/1", "refs/keep-around/" + head.Hash().String(), "refs/tmp/x", "refs/remotes/origin/main"}
+		for _, name := range hidden {
+			setRef(t, srcRepo, name, head.Hash())
+		}
+		setRef(t, srcRepo, "refs/tags/v1.0.0", head.Hash())
+		setRef(t, srcRepo, "refs/notes/commits", head.Hash())
+
+		destDir := filepath.Join(t.TempDir(), "destrepo.git")
+		if _, err := git.PlainInit(destDir, true); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil); err != nil {
+			t.Fatalf("MirrorRepo failed: %v", err)
+		}
+
+		for _, name := range hidden {
+			assertRef(t, destDir, name, false)
+		}
+		assertRef(t, destDir, head.Name().String(), true)
+		assertRef(t, destDir, "refs/tags/v1.0.0", true)
+		assertRef(t, destDir, "refs/notes/commits", true)
+	})
+
 	// A server refuses to delete the branch its HEAD points at, so the mirroring
 	// must leave that one in place instead of failing the whole push.
 	t.Run("the destination default branch is never deleted", func(t *testing.T) {

@@ -195,6 +195,7 @@ func (g *GitlabInstance) StoreGroup(group *gitlab.Group, parentGroupPath string,
 			MirrorTriggerBuilds: groupCreationOptions.MirrorTriggerBuilds,
 			Visibility:          groupCreationOptions.Visibility,
 			MirrorReleases:      groupCreationOptions.MirrorReleases,
+			MirrorReleaseAssets: groupCreationOptions.MirrorReleaseAssets,
 		})
 	}
 }

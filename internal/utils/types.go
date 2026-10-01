@@ -58,12 +58,15 @@ type ParserArgs struct {
 // - destination_url: the URL of the destination GitLab instance
 // - ci_cd_catalog: whether to add the project to the CI/CD catalog. Requires GitLab 19.3+ on the destination instance.
 // - issues: whether to mirror the issues.
+// - mirror_release_assets: whether to mirror the release asset links (and the files
+// they point to on the source instance). Only used when mirror_releases is enabled.
 type MirroringOptions struct {
 	CI_CD_Catalog       *bool   `json:"ci_cd_catalog"`
 	MirrorIssues        *bool   `json:"mirror_issues"`
 	MirrorTriggerBuilds *bool   `json:"mirror_trigger_builds"`
 	Visibility          *string `json:"visibility"`
 	MirrorReleases      *bool   `json:"mirror_releases"`
+	MirrorReleaseAssets *bool   `json:"mirror_release_assets"`
 	ClaimOwnership      *bool   `json:"claim_ownership"`
 	DestinationPath     string  `json:"destination_path"`
 }

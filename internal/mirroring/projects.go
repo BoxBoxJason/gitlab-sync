@@ -78,6 +78,7 @@ func (g *GitlabInstance) storeProject(project *gitlab.Project, parentGroupPath s
 			MirrorTriggerBuilds: groupCreationOptions.MirrorTriggerBuilds,
 			Visibility:          groupCreationOptions.Visibility,
 			MirrorReleases:      groupCreationOptions.MirrorReleases,
+			MirrorReleaseAssets: groupCreationOptions.MirrorReleaseAssets,
 			ClaimOwnership:      groupCreationOptions.ClaimOwnership,
 		})
 	}
@@ -422,6 +423,8 @@ func (destinationGitlabInstance *GitlabInstance) UpdateProjectFromSource(sourceG
 		return
 	}
 
+	releasesOptions := destinationGitlabInstance.releasesMirroringOptions(dstProj, copyOptions)
+
 	waitGroup := sync.WaitGroup{}
 	waitGroup.Add(updateProjectBaseTasks)
 
@@ -445,8 +448,33 @@ func (destinationGitlabInstance *GitlabInstance) UpdateProjectFromSource(sourceG
 	waitGroup.Wait()
 
 	if helpers.Deref(copyOptions.MirrorReleases, false) {
-		destinationGitlabInstance.MirrorReleases(sourceGitlabInstance, srcProj, dstProj)
+		destinationGitlabInstance.MirrorReleases(sourceGitlabInstance, srcProj, dstProj, releasesOptions)
 	}
+}
+
+// releasesMirroringOptions prepares the release mirroring of destinationProject. It
+// must run before the git mirroring: when the release assets are mirrored, it takes
+// the snapshot of the destination releases described in ReleasesMirroringOptions.
+// When that snapshot cannot be taken, the releases the git mirroring removes may
+// leave files behind, which is reported but does not stop the mirroring.
+func (destinationGitlabInstance *GitlabInstance) releasesMirroringOptions(destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) ReleasesMirroringOptions {
+	options := ReleasesMirroringOptions{
+		MirrorAssets: helpers.Deref(copyOptions.MirrorReleases, false) && helpers.Deref(copyOptions.MirrorReleaseAssets, false),
+	}
+	if !options.MirrorAssets {
+		return options
+	}
+
+	releases, err := destinationGitlabInstance.FetchProjectReleases(destinationProject)
+	if err != nil {
+		helpers.ReportNonBlocking(fmt.Errorf("failed to fetch the releases of destination project %s before the git mirroring, the files of the releases it removes may be left behind: %w", destinationProject.HTTPURLToRepo, err))
+
+		return options
+	}
+
+	options.DestinationReleasesBeforeGit = releases
+
+	return options
 }
 
 // mirrorProjectGitFirst runs the git side of the mirroring before any project

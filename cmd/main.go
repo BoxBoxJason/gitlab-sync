@@ -19,6 +19,8 @@ import (
 )
 
 const (
+	// binaryName is the program name, shown in the help and used as the User-Agent product.
+	binaryName        = "gitlab-sync"
 	defaultRetryCount = 3
 	logDirPermission  = 0o700
 	// defaultCacheMaxAge is how long a cached repository survives without being
@@ -56,7 +58,7 @@ func Execute() {
 
 func buildRootCmd(args *utils.ParserArgs, mirrorMappingPath, logFile *string) *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:     "gitlab-sync",
+		Use:     binaryName,
 		Version: versionInfo(),
 		Short:   "Copy and enable mirroring of gitlab projects and groups",
 		Long:    "Fully customizable gitlab repositories and groups mirroring between two (or one) gitlab instances.",
@@ -81,6 +83,7 @@ func buildRootCmd(args *utils.ParserArgs, mirrorMappingPath, logFile *string) *c
 	rootCmd.Flags().StringVar(logFile, "log-file", strings.TrimSpace(os.Getenv("GITLAB_SYNC_LOG_FILE")), "Path to the log file")
 	rootCmd.Flags().StringVar(&args.CacheDir, "cache-dir", strings.TrimSpace(os.Getenv("GITLAB_SYNC_CACHE_DIR")), "Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, empty disables caching)")
 	rootCmd.Flags().DurationVar(&args.CacheMaxAge, "cache-max-age", envDuration("GITLAB_SYNC_CACHE_MAX_AGE", defaultCacheMaxAge), "Delete the cached repositories that have not been synchronized for that long (0 keeps them forever)")
+	rootCmd.Flags().StringVar(&args.UserAgent, "user-agent", envString("GITLAB_SYNC_USER_AGENT", defaultUserAgent()), "User-Agent sent with every GitLab API request")
 	_ = rootCmd.MarkFlagFilename("mirror-mapping", "json")
 	_ = rootCmd.MarkFlagFilename("log-file", "log", "txt")
 	_ = rootCmd.MarkFlagDirname("cache-dir")
@@ -88,6 +91,16 @@ func buildRootCmd(args *utils.ParserArgs, mirrorMappingPath, logFile *string) *c
 	addCompletionCommand(rootCmd)
 
 	return rootCmd
+}
+
+// envString reads a trimmed string from the environment, falling back to
+// defaultValue when the variable is unset or blank.
+func envString(name, defaultValue string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+
+	return defaultValue
 }
 
 // envDuration reads a Go duration (for example "720h" or "45m") from the
@@ -151,6 +164,13 @@ func executeMirroringCommand(args *utils.ParserArgs, mirrorMappingPath, logFile 
 		args.Retry = 10000
 	case 0:
 		zap.L().Fatal("retry count must be -1 (no limit) or strictly greater than 0")
+	}
+
+	// An explicitly empty --user-agent would make the clients fall back to their
+	// library defaults, so it means "use ours" instead.
+	args.UserAgent = strings.TrimSpace(args.UserAgent)
+	if args.UserAgent == "" {
+		args.UserAgent = defaultUserAgent()
 	}
 
 	args.SourceGitlabURL = promptForMandatoryInput(args.SourceGitlabURL, "Input Source GitLab URL (MANDATORY)", "Source GitLab URL is mandatory", "Source GitLab URL", args.NoPrompt, false)
@@ -286,6 +306,12 @@ func versionInfo() string {
 	bt := resolveBuildTime()
 
 	return fmt.Sprintf("%s (go: %s, built: %s)", ver, runtime.Version(), bt)
+}
+
+// defaultUserAgent identifies this program and build to the GitLab instances,
+// for example "gitlab-sync/v1.2.3".
+func defaultUserAgent() string {
+	return binaryName + "/" + resolveVersion()
 }
 
 // resolveVersion returns the most specific version string available.

@@ -30,6 +30,7 @@ func createMirroringInstances(gitlabMirrorArgs *utils.ParserArgs) (*GitlabInstan
 		Role:         ROLE_SOURCE,
 		MaxRetries:   gitlabMirrorArgs.Retry,
 		InstanceSize: sourceGitlabSize,
+		UserAgent:    gitlabMirrorArgs.UserAgent,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -46,6 +47,7 @@ func createMirroringInstances(gitlabMirrorArgs *utils.ParserArgs) (*GitlabInstan
 		Role:         ROLE_DESTINATION,
 		MaxRetries:   gitlabMirrorArgs.Retry,
 		InstanceSize: destinationGitlabSize,
+		UserAgent:    gitlabMirrorArgs.UserAgent,
 	})
 	if err != nil {
 		return nil, nil, err

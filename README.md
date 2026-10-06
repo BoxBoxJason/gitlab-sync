@@ -137,7 +137,8 @@ If mandatory arguments are not provided, the program will prompt for them.
 | `--retry` or `-r` | N/A | No | Number of retries for failed GitLab API requests (default: 3) |
 | `--log-file` | `GITLAB_SYNC_LOG_FILE` | No | Path to a log file for output logs (default: `none`, only outputs logs to stderr) |
 | `--cache-dir` | `GITLAB_SYNC_CACHE_DIR` | No | Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, default: `none`, caching disabled) |
-| `--cache-max-age` | `GITLAB_SYNC_CACHE_MAX_AGE` | No | Delete the cached repositories that have not been synchronized for that long (Go duration, `0` keeps them forever, default: `720h`) |
+| `--cache-max-age` | `GITLAB_SYNC_CACHE_MAX_AGE` | No | Delete the cached repositories that have not been synchronized for that long (Go duration, `0` keeps them forever, default: `168h`, 7 days) |
+| `--user-agent` | `GITLAB_SYNC_USER_AGENT` | No | User-Agent sent with every GitLab API request; git clone, fetch and push requests keep the go-git default (default: `gitlab-sync/<version>`) |
 
 ### Freemium (non-premium) destinations
 

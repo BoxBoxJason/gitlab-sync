@@ -210,6 +210,11 @@ func (g *GitlabInstance) IsLicensePremium() (bool, error) {
 		return false, fmt.Errorf("failed to get GitLab license: %w", err)
 	}
 
+	if license == nil {
+		zap.L().Warn("GitLab license endpoint returned null; treating this instance as non-premium", zap.String(ROLE, g.Role))
+		return false, nil
+	}
+
 	zap.L().Info("GitLab Instance license", zap.String(ROLE, g.Role), zap.String("plan", license.Plan))
 
 	if license.Plan != ULTIMATE_PLAN && license.Plan != PREMIUM_PLAN || license.Expired {

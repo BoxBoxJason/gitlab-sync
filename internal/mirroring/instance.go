@@ -76,7 +76,13 @@ type GitlabInstanceOpts struct {
 // and initializes the GitLab client with a custom HTTP client.
 func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 	// Initialize the GitLab client with the custom HTTP client
-	gitlabClient, err := gitlab.NewClient(initArgs.GitlabToken, gitlab.WithBaseURL(initArgs.GitlabURL), gitlab.WithCustomRetryMax(initArgs.MaxRetries), gitlab.WithCustomBackoff(retryablehttp.DefaultBackoff))
+	gitlabClient, err := gitlab.NewClient(
+		initArgs.GitlabToken,
+		gitlab.WithBaseURL(initArgs.GitlabURL),
+		gitlab.WithUserAgent("GitlabSync/v1"),
+		gitlab.WithCustomRetryMax(initArgs.MaxRetries),
+		gitlab.WithCustomBackoff(retryablehttp.DefaultBackoff),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize GitLab client: %w", err)
 	}

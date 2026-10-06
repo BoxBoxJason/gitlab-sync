@@ -3,7 +3,10 @@ package cmd
 import (
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
+
+	"github.com/boxboxjason/gitlab-sync/internal/utils"
 
 	"go.uber.org/zap"
 )
@@ -266,4 +269,63 @@ func TestPromptForMandatoryInputPromptDisabled(t *testing.T) {
 	if err == nil {
 		t.Fatalf("Expected subprocess to fail due to prompting disabled, but it succeeded, output: %q", output)
 	}
+}
+
+func TestDefaultUserAgent(t *testing.T) {
+	got := defaultUserAgent()
+
+	if want := binaryName + "/" + resolveVersion(); got != want {
+		t.Errorf("expected %q, got %q", want, got)
+	}
+
+	if strings.ContainsAny(got, " \t\r\n") {
+		t.Errorf("expected a single User-Agent product token, got %q", got)
+	}
+}
+
+func TestUserAgentFlag(t *testing.T) {
+	t.Run("defaults to the program version", func(t *testing.T) {
+		t.Setenv("GITLAB_SYNC_USER_AGENT", "")
+
+		var args utils.ParserArgs
+
+		var mirrorMappingPath, logFile string
+
+		buildRootCmd(&args, &mirrorMappingPath, &logFile)
+
+		if args.UserAgent != defaultUserAgent() {
+			t.Errorf("expected %q, got %q", defaultUserAgent(), args.UserAgent)
+		}
+	})
+
+	t.Run("environment overrides the default", func(t *testing.T) {
+		t.Setenv("GITLAB_SYNC_USER_AGENT", "  my-sync-job/1.0  ")
+
+		var args utils.ParserArgs
+
+		var mirrorMappingPath, logFile string
+
+		buildRootCmd(&args, &mirrorMappingPath, &logFile)
+
+		if args.UserAgent != "my-sync-job/1.0" {
+			t.Errorf("expected %q, got %q", "my-sync-job/1.0", args.UserAgent)
+		}
+	})
+
+	t.Run("flag overrides the environment", func(t *testing.T) {
+		t.Setenv("GITLAB_SYNC_USER_AGENT", "my-sync-job/1.0")
+
+		var args utils.ParserArgs
+
+		var mirrorMappingPath, logFile string
+
+		rootCmd := buildRootCmd(&args, &mirrorMappingPath, &logFile)
+		if err := rootCmd.ParseFlags([]string{"--user-agent", "nightly/2.0"}); err != nil {
+			t.Fatal(err)
+		}
+
+		if args.UserAgent != "nightly/2.0" {
+			t.Errorf("expected %q, got %q", "nightly/2.0", args.UserAgent)
+		}
+	})
 }

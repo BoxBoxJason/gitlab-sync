@@ -69,14 +69,25 @@ type GitlabInstanceOpts struct {
 	GitlabToken  string
 	Role         string
 	InstanceSize string
-	MaxRetries   int
+	// UserAgent is sent with every API request. Empty keeps the client-go default.
+	UserAgent  string
+	MaxRetries int
 }
 
 // NewGitlabInstance creates a new GitlabInstance with the provided parameters
 // and initializes the GitLab client with a custom HTTP client.
 func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
+	clientOpts := []gitlab.ClientOptionFunc{
+		gitlab.WithBaseURL(initArgs.GitlabURL),
+		gitlab.WithCustomRetryMax(initArgs.MaxRetries),
+		gitlab.WithCustomBackoff(retryablehttp.DefaultBackoff),
+	}
+	if initArgs.UserAgent != "" {
+		clientOpts = append(clientOpts, gitlab.WithUserAgent(initArgs.UserAgent))
+	}
+
 	// Initialize the GitLab client with the custom HTTP client
-	gitlabClient, err := gitlab.NewClient(initArgs.GitlabToken, gitlab.WithBaseURL(initArgs.GitlabURL), gitlab.WithCustomRetryMax(initArgs.MaxRetries), gitlab.WithCustomBackoff(retryablehttp.DefaultBackoff))
+	gitlabClient, err := gitlab.NewClient(initArgs.GitlabToken, clientOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize GitLab client: %w", err)
 	}

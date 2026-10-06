@@ -58,6 +58,37 @@ func TestNewGitlabInstance(t *testing.T) {
 	}
 }
 
+func TestNewGitlabInstanceUserAgent(t *testing.T) {
+	const userAgent = "gitlab-sync/test"
+
+	var got string
+
+	mux := http.NewServeMux()
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+
+	mux.HandleFunc("/api/v4/user", func(w http.ResponseWriter, r *http.Request) {
+		got = r.UserAgent()
+		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+		fmt.Fprint(w, `{"id": 1}`)
+	})
+
+	_, err := NewGitlabInstance(&GitlabInstanceOpts{
+		GitlabURL:   server.URL,
+		GitlabToken: "test-token",
+		Role:        ROLE_SOURCE,
+		MaxRetries:  1,
+		UserAgent:   userAgent,
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if got != userAgent {
+		t.Errorf("expected User-Agent %q, got %q", userAgent, got)
+	}
+}
+
 func TestAddProject(t *testing.T) {
 	instance := &GitlabInstance{
 		Projects: make(map[string]*gitlab.Project),

@@ -34,7 +34,8 @@ const (
 // - version: whether to show the version
 // - retry: the number of retries for the GitLab API requests
 // - cache_dir: where to keep the bare git clones between runs (empty disables caching)
-// - cache_max_age: how long an unused cached repository is kept.
+// - cache_max_age: how long an unused cached repository is kept
+// - user_agent: the User-Agent sent with every GitLab API request.
 type ParserArgs struct {
 	MirrorMapping          *MirrorMapping
 	SourceGitlabURL        string
@@ -42,6 +43,7 @@ type ParserArgs struct {
 	DestinationGitlabURL   string
 	DestinationGitlabToken string
 	CacheDir               string
+	UserAgent              string
 	CacheMaxAge            time.Duration
 	Retry                  int
 	ForcePremium           bool

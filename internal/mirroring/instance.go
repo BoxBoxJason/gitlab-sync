@@ -212,6 +212,7 @@ func (g *GitlabInstance) IsLicensePremium() (bool, error) {
 
 	if license == nil {
 		zap.L().Warn("GitLab license endpoint returned null; treating this instance as non-premium", zap.String(ROLE, g.Role))
+
 		return false, nil
 	}
 

@@ -15,7 +15,7 @@ GO_BUILD_FLAGS ?= -buildvcs=true
 # renovate: datasource=go depName=gotest.tools/gotestsum
 gotestsum_version := v1.13.0
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2
-golangci_lint_version := v2.13.2
+golangci_lint_version := v2.14.0
 # renovate: datasource=go depName=golang.org/x/vuln
 govulncheck_version := v1.8.0
 

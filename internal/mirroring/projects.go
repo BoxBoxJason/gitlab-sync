@@ -542,7 +542,7 @@ func syncMirrorProjectAttributes(pullMirrorAvailable bool, destinationProject *g
 
 	mismatch := false
 
-	desiredMirrorTriggerBuilds := helpers.Deref(copyOptions.MirrorTriggerBuilds, false)
+	desiredMirrorTriggerBuilds := copyOptions.TriggerBuilds()
 	if desiredMirrorTriggerBuilds != destinationProject.MirrorTriggerBuilds {
 		gitlabEditOptions.MirrorTriggerBuilds = new(desiredMirrorTriggerBuilds)
 		mismatch = true
@@ -615,7 +615,7 @@ func (destinationGitlabInstance *GitlabInstance) MirrorProjectGit(sourceGitlabIn
 // the destination for the branches and tags it updates, unless the option is
 // explicitly enabled. Missing options count as disabled.
 func mirrorPushOptions(mirrorOptions *utils.MirroringOptions) helpers.MirrorPushOptions {
-	triggerBuilds := mirrorOptions != nil && helpers.Deref(mirrorOptions.MirrorTriggerBuilds, false)
+	triggerBuilds := mirrorOptions != nil && mirrorOptions.TriggerBuilds()
 
 	return helpers.MirrorPushOptions{SkipPipelines: !triggerBuilds}
 }
@@ -659,7 +659,7 @@ func (g *GitlabInstance) DisableProjectMirrorPull(destinationProject *gitlab.Pro
 func (g *GitlabInstance) EnableProjectMirrorPull(sourceProject, destinationProject *gitlab.Project, mirrorOptions *utils.MirroringOptions) error {
 	zap.L().Debug("Reapplying project mirror pull", zap.String("sourceProject", sourceProject.HTTPURLToRepo), zap.String("destinationProject", destinationProject.HTTPURLToRepo))
 
-	desiredMirrorTriggerBuilds := helpers.Deref(mirrorOptions.MirrorTriggerBuilds, false)
+	desiredMirrorTriggerBuilds := mirrorOptions.TriggerBuilds()
 
 	_, _, err := g.Gitlab.Projects.ConfigureProjectPullMirror(destinationProject.ID, &gitlab.ConfigureProjectPullMirrorOptions{
 		URL:                              &sourceProject.HTTPURLToRepo,

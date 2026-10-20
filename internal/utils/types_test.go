@@ -592,3 +592,28 @@ func TestCheckSetsDefaultVisibilityWhenOptionalFieldsOmitted(t *testing.T) {
 		t.Errorf("expected default group visibility %q, got %q", string(gitlab.PublicVisibility), got)
 	}
 }
+
+func TestMirroringOptionsTriggerBuilds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		options *MirroringOptions
+		want    bool
+	}{
+		{"no options", nil, false},
+		{"mirror_trigger_builds unset", &MirroringOptions{}, false},
+		{"mirror_trigger_builds disabled", &MirroringOptions{MirrorTriggerBuilds: new(false)}, false},
+		{"mirror_trigger_builds enabled", &MirroringOptions{MirrorTriggerBuilds: new(true)}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.options.TriggerBuilds(); got != tt.want {
+				t.Errorf("TriggerBuilds() = %v; want %v", got, tt.want)
+			}
+		})
+	}
+}

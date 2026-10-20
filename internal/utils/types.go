@@ -73,6 +73,12 @@ type MirroringOptions struct {
 	DestinationPath     string  `json:"destination_path"`
 }
 
+// TriggerBuilds reports whether mirroring must run CI on the destination
+// (mirror_trigger_builds). An unset option, or no options at all, counts as disabled.
+func (o *MirroringOptions) TriggerBuilds() bool {
+	return o != nil && o.MirrorTriggerBuilds != nil && *o.MirrorTriggerBuilds
+}
+
 // MirrorMapping defines the mapping of projects and groups
 // to the destination GitLab instance
 // It is used to parse the JSON file that contains the mapping

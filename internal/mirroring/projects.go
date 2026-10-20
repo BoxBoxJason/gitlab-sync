@@ -601,7 +601,11 @@ func (destinationGitlabInstance *GitlabInstance) MirrorProjectGit(sourceGitlabIn
 		return err
 	}
 
-	err = helpers.MirrorRepo(destinationGitlabInstance.GitCache, sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, destinationGitlabInstance.GitAuth)
+	// Mirror the pull mirror behaviour: unless mirror_trigger_builds is set, the
+	// push must not start a pipeline for every branch and tag it updates.
+	skipCI := !helpers.Deref(mirrorOptions.MirrorTriggerBuilds, false)
+
+	err = helpers.MirrorRepo(destinationGitlabInstance.GitCache, sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, destinationGitlabInstance.GitAuth, skipCI)
 	if err != nil {
 		return fmt.Errorf("failed to mirror repository from %s to %s: %w", sourceProject.PathWithNamespace, destinationProject.PathWithNamespace, err)
 	}

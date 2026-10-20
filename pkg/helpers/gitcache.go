@@ -121,7 +121,7 @@ func (c *GitCache) Prune() {
 
 // mirrorRepo refreshes the cached bare mirror of sourceURL, then force-pushes it
 // to destinationURL.
-func (c *GitCache) mirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.AuthMethod) error {
+func (c *GitCache) mirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.AuthMethod, skipCI bool) error {
 	repoPath, err := c.repoPath(sourceURL)
 	if err != nil {
 		return err
@@ -139,7 +139,7 @@ func (c *GitCache) mirrorRepo(sourceURL, destinationURL string, pullAuth, pushAu
 		return err
 	}
 
-	err = pushMirror(repo, destinationURL, pushAuth)
+	err = pushMirror(repo, destinationURL, pushAuth, skipCI)
 	if err != nil {
 		return err
 	}

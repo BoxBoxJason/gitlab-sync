@@ -36,6 +36,10 @@ const (
 	// through. It is never written to the repository configuration, which keeps
 	// a cached clone free of destination-specific state.
 	destinationRemoteName = "destination"
+	// ciSkipPushOption is the GitLab push option that keeps a push from creating
+	// pipelines (the equivalent of `git push -o ci.skip`). go-git always sends
+	// push options as "key=value"; GitLab reads the empty value as true.
+	ciSkipPushOption = "ci.skip"
 )
 
 func cleanupTempDir(path string) {
@@ -55,12 +59,15 @@ func cleanupTempDir(path string) {
 // and is refreshed with a pruning fetch, which leaves it an exact copy of the
 // source without re-downloading what it already holds.
 //
+// When skipCI is true the push carries the ci.skip push option, so the destination
+// GitLab does not create a pipeline for every branch and tag the mirroring updates.
+//
 // The destination HEAD (its default branch) is not touched here: it cannot be set
 // over the git transport, and the caller aligns it through the GitLab API when it
 // syncs the project attributes.
-func MirrorRepo(cache *GitCache, sourceURL, destinationURL string, pullAuth, pushAuth transport.AuthMethod) error {
+func MirrorRepo(cache *GitCache, sourceURL, destinationURL string, pullAuth, pushAuth transport.AuthMethod, skipCI bool) error {
 	if cache != nil {
-		return cache.mirrorRepo(sourceURL, destinationURL, pullAuth, pushAuth)
+		return cache.mirrorRepo(sourceURL, destinationURL, pullAuth, pushAuth, skipCI)
 	}
 
 	tmpDir, err := os.MkdirTemp("", "bare-mirror-*")
@@ -77,7 +84,7 @@ func MirrorRepo(cache *GitCache, sourceURL, destinationURL string, pullAuth, pus
 		return err
 	}
 
-	return pushMirror(srcRepo, destinationURL, pushAuth)
+	return pushMirror(srcRepo, destinationURL, pushAuth, skipCI)
 }
 
 // cloneBareMirror mirror-clones sourceURL into path as a bare repository.
@@ -98,8 +105,9 @@ func cloneBareMirror(path, sourceURL string, pullAuth transport.AuthMethod) (*gi
 
 // pushMirror force-pushes every ref of repo to destinationURL and deletes the
 // destination branches and tags that are not held locally, so the destination
-// ends up an exact copy of what was cloned or fetched.
-func pushMirror(repo *git.Repository, destinationURL string, pushAuth transport.AuthMethod) error {
+// ends up an exact copy of what was cloned or fetched. With skipCI, the push asks
+// the destination not to create pipelines for it (see mirrorPushOptions).
+func pushMirror(repo *git.Repository, destinationURL string, pushAuth transport.AuthMethod, skipCI bool) error {
 	zap.L().Debug("Pushing to destination repository", zap.String("destinationURL", destinationURL))
 
 	remote := git.NewRemote(repo.Storer, &config.RemoteConfig{
@@ -117,6 +125,7 @@ func pushMirror(repo *git.Repository, destinationURL string, pushAuth transport.
 		Force:      true,
 		RefSpecs:   refSpecs,
 		Auth:       pushAuth,
+		Options:    mirrorPushOptions(skipCI),
 	}
 
 	err = remote.Push(pushOpts)
@@ -125,6 +134,20 @@ func pushMirror(repo *git.Repository, destinationURL string, pushAuth transport.
 	}
 
 	return nil
+}
+
+// mirrorPushOptions returns the push options of a mirroring push.
+//
+// With skipCI it holds ci.skip, which makes GitLab skip pipeline creation for
+// every ref the push updates. A server that does not advertise the push-options
+// capability never receives them (go-git drops them), so this is harmless for
+// non-GitLab destinations.
+func mirrorPushOptions(skipCI bool) map[string]string {
+	if !skipCI {
+		return nil
+	}
+
+	return map[string]string{ciSkipPushOption: ""}
 }
 
 // mirrorPushRefSpecs builds the refspecs of a mirroring push: one forced

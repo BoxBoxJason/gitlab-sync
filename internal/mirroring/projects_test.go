@@ -784,6 +784,32 @@ func TestCreateProjectFromSourceDoesNotRequestMirror(t *testing.T) {
 	}
 }
 
+func TestMirrorPushOptions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		mirrorOptions     *utils.MirroringOptions
+		wantSkipPipelines bool
+	}{
+		{"no mirroring options", nil, true},
+		{"mirror_trigger_builds unset", &utils.MirroringOptions{}, true},
+		{"mirror_trigger_builds disabled", &utils.MirroringOptions{MirrorTriggerBuilds: new(false)}, true},
+		{"mirror_trigger_builds enabled", &utils.MirroringOptions{MirrorTriggerBuilds: new(true)}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			want := helpers.MirrorPushOptions{SkipPipelines: tt.wantSkipPipelines}
+			if got := mirrorPushOptions(tt.mirrorOptions); got != want {
+				t.Errorf("mirrorPushOptions() = %+v; want %+v", got, want)
+			}
+		})
+	}
+}
+
 func TestDisableProjectMirrorPull(t *testing.T) {
 	t.Run("no call when the project is not a pull mirror", func(t *testing.T) {
 		_, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)

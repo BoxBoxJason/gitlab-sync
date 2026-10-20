@@ -150,6 +150,12 @@ Pull mirroring requires GitLab Premium. When the destination instance is not pre
 - No mirror setting is written on the destination projects, and any pull mirror left over from a previous premium run is turned off first (GitLab keeps pull-mirrored repositories read-only, which would otherwise reject the push).
 - Every ref is force-pushed, and the destination branches and tags the source no longer has are deleted, so the destination repository ends up an exact copy of the source one. The branch the destination `HEAD` points at is never deleted (a git server refuses that); when the source renames its default branch, the old one disappears on the next run, once the default branch has been moved through the API.
 - The refs GitLab owns itself (`refs/merge-requests`, `refs/pipelines`, `refs/keep-around`, ...) are left untouched on the destination.
+- Unless `mirror_trigger_builds` is enabled, the push asks the destination GitLab not to run CI for the branches and tags the synchronization updates, through the `ci.skip`, `ci.no_pipeline` and `integrations.skip_ci` push options (like `git push -o ci.skip -o ci.no_pipeline -o integrations.skip_ci`):
+  - `ci.skip` works on every GitLab version, but GitLab still records one **skipped** pipeline per updated ref when the project has a CI configuration. No job runs.
+  - `ci.no_pipeline` keeps that pipeline from being created at all, like a pull mirror with `mirror_trigger_builds: false`. It needs GitLab 18.11+ with the `ci_no_pipeline_push_option` feature flag enabled on the destination instance; older versions ignore it.
+  - `integrations.skip_ci` keeps CI integrations such as Jenkins from being triggered.
+
+  Pipeline execution policies can still enforce their own jobs, as GitLab ignores these options for them unless the policy allows it.
 - Repositories are cloned into a temporary directory, so the container needs a writable `/tmp` (provided by the published image). Set `--cache-dir` to keep them instead.
 
 #### Caching the cloned repositories
@@ -231,7 +237,7 @@ Allowed options are:
 | `ci_cd_catalog` | Whether to add the project to the CI/CD catalog. ⚠️ Requires GitLab 19.3+ on the destination instance, since it relies on the `cicd_catalog_enabled` project API field introduced in that version. |
 | `mirror_issues` | Whether to copy issues from the source project to the destination project. |
 | `visibility` | The visibility level of the project on the destination GitLab instance. Can be `public`, `internal`, or `private`. |
-| `mirror_trigger_builds` | Whether to trigger builds on the destination project when a push is made to the source project. |
+| `mirror_trigger_builds` | Whether to trigger builds on the destination project when a push is made to the source project (default: `false`). On a freemium destination, `false` makes gitlab-sync push with push options that keep the synchronization from running CI (see [Freemium destinations](#freemium-non-premium-destinations)). ⚠️ Earlier versions of gitlab-sync always started pipelines on freemium destinations: set it to `true` to keep that behaviour. |
 | `mirror_releases` | Whether to mirror releases from the source project to the destination project. |
 | `mirror_release_assets` | Whether to also keep the release asset links (and their files) in sync (requires `mirror_releases`), including on releases that already exist on the destination. ⚠️ Deletes destination releases, links and files that no longer exist on the source. See [Release assets](#release-assets). |
 

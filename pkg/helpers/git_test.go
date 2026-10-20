@@ -295,10 +295,12 @@ func TestMirrorPushOptionsGitOptions(t *testing.T) {
 	// Every option GitLab offers to keep a push from running CI: ci.skip for every
 	// version, ci.no_pipeline so that no "skipped" pipeline is recorded where it
 	// is supported, and integrations.skip_ci for Jenkins-like integrations.
+	// The names are spelled out rather than taken from the constants, so that a
+	// typo in a constant fails here.
 	want := map[string]string{
-		ciSkipPushOption:             "",
-		ciNoPipelinePushOption:       "",
-		integrationsSkipCIPushOption: "",
+		"ci.skip":              "",
+		"ci.no_pipeline":       "",
+		"integrations.skip_ci": "",
 	}
 
 	if got := (MirrorPushOptions{SkipPipelines: true}).gitOptions(); !maps.Equal(got, want) {
@@ -331,7 +333,7 @@ func TestMirrorRepoPushOptions(t *testing.T) {
 		{
 			name:          "CI skipping options sent when skipping pipelines",
 			skipPipelines: true,
-			wantOptions:   []string{ciNoPipelinePushOption + "=", ciSkipPushOption + "=", integrationsSkipCIPushOption + "="},
+			wantOptions:   []string{"ci.no_pipeline=", "ci.skip=", "integrations.skip_ci="},
 		},
 		{
 			name:          "no option sent when triggering pipelines",
@@ -386,22 +388,29 @@ func initRecordingDestination(t *testing.T, path, recordFile string) {
 		t.Fatal(err)
 	}
 
+	hooksDir := filepath.Join(path, "hooks")
+
 	cfg.Raw.Section("receive").SetOption("advertisePushOptions", "true")
+	// Pin the hooks directory locally, so a core.hooksPath set in the global or
+	// system git configuration cannot make git-receive-pack skip the hook.
+	cfg.Raw.Section("core").SetOption("hooksPath", hooksDir)
 
 	if err := repo.SetConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
 
+	// The record file path is single-quoted in the script: escape any quote it holds.
+	quotedRecordFile := "'" + strings.ReplaceAll(recordFile, "'", `'\''`) + "'"
+
 	hook := `#!/bin/sh
-: > '` + recordFile + `'
+: > ` + quotedRecordFile + `
 i=0
 while [ "$i" -lt "${GIT_PUSH_OPTION_COUNT:-0}" ]; do
-	eval "printf '%s\n' \"\$GIT_PUSH_OPTION_$i\"" >> '` + recordFile + `'
+	eval "printf '%s\n' \"\$GIT_PUSH_OPTION_$i\"" >> ` + quotedRecordFile + `
 	i=$((i + 1))
 done
 `
 
-	hooksDir := filepath.Join(path, "hooks")
 	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

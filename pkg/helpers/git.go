@@ -62,6 +62,16 @@ type MirrorPushOptions struct {
 	SkipPipelines bool
 }
 
+// skipPipelinesGitOptions are the push options of a push that must not run CI.
+// They are shared by every push and must never be modified.
+//
+//nolint:gochecknoglobals // read-only, shared to avoid rebuilding it on every push
+var skipPipelinesGitOptions = map[string]string{
+	ciSkipPushOption:             "",
+	ciNoPipelinePushOption:       "",
+	integrationsSkipCIPushOption: "",
+}
+
 // gitOptions returns the push options a mirroring push carries.
 //
 // A server that does not advertise the push-options capability never receives
@@ -71,11 +81,7 @@ func (o MirrorPushOptions) gitOptions() map[string]string {
 		return nil
 	}
 
-	return map[string]string{
-		ciSkipPushOption:             "",
-		ciNoPipelinePushOption:       "",
-		integrationsSkipCIPushOption: "",
-	}
+	return skipPipelinesGitOptions
 }
 
 func cleanupTempDir(path string) {

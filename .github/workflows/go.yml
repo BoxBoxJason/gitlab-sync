@@ -21,7 +21,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
           cache: true
 
       - name: Run Build (Makefile)
@@ -37,7 +37,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
           cache: true
 
       - name: Go Install
@@ -53,7 +53,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
           cache: true
 
       - name: Cache Go tools
@@ -61,9 +61,9 @@ jobs:
         with:
           path: |
             /home/runner/go/bin
-          key: ${{ runner.os }}-go-tools-${{ hashFiles('Makefile') }}-lint
-          restore-keys: |
-            ${{ runner.os }}-go-tools-
+          # Key on the workflow too so a Go bump rebuilds the tools; no prefix restore-keys,
+          # since `make` skips installing a tool that is already on PATH, whatever its version.
+          key: ${{ runner.os }}-go-tools-${{ hashFiles('Makefile', '.github/workflows/go.yml') }}-lint
 
       - name: Run Lint (Makefile)
         run: make lint
@@ -78,7 +78,7 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.1"
+          go-version: "1.27.2"
           cache: true
 
       - name: Cache Go tools
@@ -86,9 +86,9 @@ jobs:
         with:
           path: |
             /home/runner/go/bin
-          key: ${{ runner.os }}-go-tools-${{ hashFiles('Makefile') }}-test
-          restore-keys: |
-            ${{ runner.os }}-go-tools-
+          # Key on the workflow too so a Go bump rebuilds the tools; no prefix restore-keys,
+          # since `make` skips installing a tool that is already on PATH, whatever its version.
+          key: ${{ runner.os }}-go-tools-${{ hashFiles('Makefile', '.github/workflows/go.yml') }}-test
 
       - name: Run Test (Makefile)
         run: make test

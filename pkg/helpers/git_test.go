@@ -1,6 +1,7 @@
 package helpers
 
 import (
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,7 +65,7 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatalf("failed to initialize bare repository at destination: %v", err)
 		}
 
-		if err := MirrorRepo(nil, githubHTTPURL, FILE_SCHEME+destDir, nil, nil, false); err != nil {
+		if err := MirrorRepo(nil, githubHTTPURL, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("MirrorRepo(HTTPS) failed: %v", err)
 		}
 
@@ -122,13 +123,13 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatalf("failed to initialize bare repository at destination: %v", err)
 		}
 
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, false); err != nil {
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("first MirrorRepo failed: %v", err)
 		}
 
 		// A second run has nothing to push; go-git signals that with
 		// git.NoErrAlreadyUpToDate, which must not surface as a failure.
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, false); err != nil {
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("second MirrorRepo failed: %v", err)
 		}
 	})
@@ -157,7 +158,7 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, false); err != nil {
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("first MirrorRepo failed: %v", err)
 		}
 
@@ -167,7 +168,7 @@ func TestMirrorRepo(t *testing.T) {
 		removeRef(t, srcRepo, "refs/heads/feature")
 		removeRef(t, srcRepo, "refs/tags/v1.0.0")
 
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, false); err != nil {
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("second MirrorRepo failed: %v", err)
 		}
 
@@ -206,7 +207,7 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, false); err != nil {
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("MirrorRepo failed: %v", err)
 		}
 
@@ -241,7 +242,7 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, false); err != nil {
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("first MirrorRepo failed: %v", err)
 		}
 
@@ -255,7 +256,7 @@ func TestMirrorRepo(t *testing.T) {
 
 		removeRef(t, srcRepo, head.Name().String())
 
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, false); err != nil {
+		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("second MirrorRepo failed: %v", err)
 		}
 
@@ -277,27 +278,31 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatalf("failed to initialize bare repository at destination: %v", err)
 		}
 
-		err = MirrorRepo(nil, "file:///no/such/path", FILE_SCHEME+destDir, nil, nil, false)
+		err = MirrorRepo(nil, "file:///no/such/path", FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{})
 		if err == nil {
 			t.Error("expected error for invalid source URL, got nil")
 		}
 	})
 }
 
-func TestMirrorPushOptions(t *testing.T) {
+func TestMirrorPushOptionsGitOptions(t *testing.T) {
 	t.Parallel()
 
-	if got := mirrorPushOptions(false); got != nil {
-		t.Errorf("mirrorPushOptions(false) = %v; want nil", got)
+	if got := (MirrorPushOptions{}).gitOptions(); got != nil {
+		t.Errorf("gitOptions() without SkipPipelines = %v; want nil", got)
 	}
 
-	got := mirrorPushOptions(true)
-	if len(got) != 1 {
-		t.Fatalf("mirrorPushOptions(true) = %v; want a single option", got)
+	// Every option GitLab offers to keep a push from running CI: ci.skip for every
+	// version, ci.no_pipeline so that no "skipped" pipeline is recorded where it
+	// is supported, and integrations.skip_ci for Jenkins-like integrations.
+	want := map[string]string{
+		ciSkipPushOption:             "",
+		ciNoPipelinePushOption:       "",
+		integrationsSkipCIPushOption: "",
 	}
 
-	if value, ok := got[ciSkipPushOption]; !ok || value != "" {
-		t.Errorf("mirrorPushOptions(true) = %v; want {%q: \"\"}", got, ciSkipPushOption)
+	if got := (MirrorPushOptions{SkipPipelines: true}).gitOptions(); !maps.Equal(got, want) {
+		t.Errorf("gitOptions() with SkipPipelines = %v; want %v", got, want)
 	}
 }
 
@@ -316,13 +321,23 @@ func TestMirrorRepoPushOptions(t *testing.T) {
 		t.Skip("git is not installed")
 	}
 
+	// The options arrive in no particular order (go-git iterates a map), so the
+	// expected lists are sorted like the received ones.
 	tests := []struct {
-		name        string
-		skipCI      bool
-		wantOptions []string
+		name          string
+		skipPipelines bool
+		wantOptions   []string
 	}{
-		{"ci.skip sent when skipping CI", true, []string{ciSkipPushOption + "="}},
-		{"no option sent when triggering CI", false, nil},
+		{
+			name:          "CI skipping options sent when skipping pipelines",
+			skipPipelines: true,
+			wantOptions:   []string{ciNoPipelinePushOption + "=", ciSkipPushOption + "=", integrationsSkipCIPushOption + "="},
+		},
+		{
+			name:          "no option sent when triggering pipelines",
+			skipPipelines: false,
+			wantOptions:   nil,
+		},
 	}
 
 	for _, tt := range tests {
@@ -336,7 +351,8 @@ func TestMirrorRepoPushOptions(t *testing.T) {
 			recordFile := filepath.Join(t.TempDir(), "push-options")
 			initRecordingDestination(t, destDir, recordFile)
 
-			if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, tt.skipCI); err != nil {
+			pushOptions := MirrorPushOptions{SkipPipelines: tt.skipPipelines}
+			if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, pushOptions); err != nil {
 				t.Fatalf("MirrorRepo failed: %v", err)
 			}
 
@@ -346,6 +362,8 @@ func TestMirrorRepoPushOptions(t *testing.T) {
 			}
 
 			gotOptions := strings.Fields(string(recorded))
+			slices.Sort(gotOptions)
+
 			if !slices.Equal(gotOptions, tt.wantOptions) {
 				t.Errorf("push options received = %q; want %q", gotOptions, tt.wantOptions)
 			}

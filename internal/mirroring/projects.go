@@ -601,16 +601,23 @@ func (destinationGitlabInstance *GitlabInstance) MirrorProjectGit(sourceGitlabIn
 		return err
 	}
 
-	// Mirror the pull mirror behaviour: unless mirror_trigger_builds is set, the
-	// push must not start a pipeline for every branch and tag it updates.
-	skipCI := !helpers.Deref(mirrorOptions.MirrorTriggerBuilds, false)
-
-	err = helpers.MirrorRepo(destinationGitlabInstance.GitCache, sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, destinationGitlabInstance.GitAuth, skipCI)
+	err = helpers.MirrorRepo(destinationGitlabInstance.GitCache, sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, destinationGitlabInstance.GitAuth, mirrorPushOptions(mirrorOptions))
 	if err != nil {
 		return fmt.Errorf("failed to mirror repository from %s to %s: %w", sourceProject.PathWithNamespace, destinationProject.PathWithNamespace, err)
 	}
 
 	return nil
+}
+
+// mirrorPushOptions returns how the git push of a freemium mirroring run is made.
+//
+// Like a pull mirror with mirror_trigger_builds off, the push must not run CI on
+// the destination for the branches and tags it updates, unless the option is
+// explicitly enabled. Missing options count as disabled.
+func mirrorPushOptions(mirrorOptions *utils.MirroringOptions) helpers.MirrorPushOptions {
+	triggerBuilds := mirrorOptions != nil && helpers.Deref(mirrorOptions.MirrorTriggerBuilds, false)
+
+	return helpers.MirrorPushOptions{SkipPipelines: !triggerBuilds}
 }
 
 // DisableProjectMirrorPull turns off pull mirroring on a destination project.

@@ -176,7 +176,7 @@ func TestGitCacheMirrorRepo(t *testing.T) {
 	sourceURL := FILE_SCHEME + sourceDir
 	destinationURL := FILE_SCHEME + destinationDir
 
-	if err := MirrorRepo(cache, sourceURL, destinationURL, nil, nil, false); err != nil {
+	if err := MirrorRepo(cache, sourceURL, destinationURL, nil, nil, MirrorPushOptions{}); err != nil {
 		t.Fatalf("first MirrorRepo failed: %v", err)
 	}
 
@@ -208,7 +208,7 @@ func TestGitCacheMirrorRepo(t *testing.T) {
 	removeRef(t, sourceRepo, "refs/heads/feature")
 	setRef(t, sourceRepo, "refs/heads/other", head.Hash())
 
-	if err := MirrorRepo(cache, sourceURL, destinationURL, nil, nil, false); err != nil {
+	if err := MirrorRepo(cache, sourceURL, destinationURL, nil, nil, MirrorPushOptions{}); err != nil {
 		t.Fatalf("second MirrorRepo failed: %v", err)
 	}
 
@@ -257,7 +257,7 @@ func TestGitCacheMirrorRepoRebuildsBrokenEntry(t *testing.T) {
 		t.Fatalf("failed to write the broken entry: %v", err)
 	}
 
-	if err := MirrorRepo(cache, sourceURL, FILE_SCHEME+destinationDir, nil, nil, false); err != nil {
+	if err := MirrorRepo(cache, sourceURL, FILE_SCHEME+destinationDir, nil, nil, MirrorPushOptions{}); err != nil {
 		t.Fatalf("MirrorRepo failed on a broken cache entry: %v", err)
 	}
 

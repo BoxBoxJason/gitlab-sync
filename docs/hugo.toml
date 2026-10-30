@@ -1,0 +1,42 @@
+baseURL = "https://boxboxjason.github.io/gitlab-sync/"
+title = "gitlab-sync"
+locale = "en-US"
+
+# "Last updated" dates on pages come from git history, so CI must check out all of it.
+enableGitInfo = true
+enableRobotsTXT = true
+
+[markup]
+  [markup.highlight]
+    noClasses = false
+
+# Look and feel (colours, favicon, footer, search, ...) come from the shared theme,
+# which is the same for every documentation site. Only project specifics live here.
+[module]
+  [[module.imports]]
+    path = "github.com/boxboxjason/hugo-theme"
+
+[menu]
+  [[menu.main]]
+    name = "Documentation"
+    pageRef = "/docs"
+    weight = 1
+  [[menu.main]]
+    name = "Releases"
+    url = "https://github.com/boxboxjason/gitlab-sync/releases"
+    weight = 2
+  [[menu.main]]
+    name = "Search"
+    weight = 3
+    [menu.main.params]
+      type = "search"
+  [[menu.main]]
+    name = "GitHub"
+    weight = 4
+    url = "https://github.com/boxboxjason/gitlab-sync"
+    [menu.main.params]
+      icon = "github"
+
+[params]
+  [params.editURL]
+    base = "https://github.com/boxboxjason/gitlab-sync/edit/main/docs/content"

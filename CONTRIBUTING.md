@@ -23,6 +23,16 @@ Before contributing, please ensure you have the following prerequisites:
 5. **Run security checks** to ensure there are no vulnerabilities: `make dependency-check`
 6. Submit a **pull request** with a clear description of your changes and why they are needed.
 
+## Documentation
+
+The documentation lives in the [`docs`](./docs) directory, as Markdown rendered by [Hugo](https://gohugo.io/) (extended edition) with the shared [hugo-theme](https://github.com/boxboxjason/hugo-theme), and is published to <https://boxboxjason.github.io/gitlab-sync/> from `main`.
+
+- Change the documentation in the same pull request as the code it describes.
+- `make docs-serve` serves the site locally with live reload, `make docs` builds it into `docs/public`.
+- The [CLI reference](./docs/content/docs/cli-reference.md) page is generated from the CLI definition: run `make docs-generate` after changing a flag, and commit the result.
+- `make test` fails when a flag, an environment variable or a mirror mapping option is not documented in the [usage](./docs/content/docs/usage.md) and [mapping](./docs/content/docs/mapping.md) pages, or when the generated page is stale.
+- Look and feel (colors, footer, ...) belong to the shared theme, do not restyle a single site.
+
 ## Code Style
 
 We follow the standard Go code style. Please ensure your code adheres to the following:

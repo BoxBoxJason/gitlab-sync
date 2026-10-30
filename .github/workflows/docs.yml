@@ -1,0 +1,27 @@
+name: Documentation
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+  schedule:
+    # Weekly, to catch links to other websites that went dead.
+    - cron: "41 5 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    name: Docs
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    # The build, the checks and the deployment are shared by all the documentation sites.
+    uses: boxboxjason/hugo-theme/.github/workflows/docs.yml@5ebc7710b6d4aadee0af6f7fc75b46956ac0f2c1 # main, same commit as docs/go.mod
+    with:
+      deploy: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+      check-external-links: ${{ github.event_name == 'schedule' }}

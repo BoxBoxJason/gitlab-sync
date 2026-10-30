@@ -51,10 +51,26 @@ vuln: deps
 	@command -v govulncheck >/dev/null 2>&1 || { echo "Installing govulncheck..."; go install golang.org/x/vuln/cmd/govulncheck@$(govulncheck_version); }
 	govulncheck ./...
 
+# Regenerate the documentation pages derived from the CLI definition (docs/content/docs/cli-reference.md).
+# `make test` fails when the committed page is stale.
+docs-generate:
+	@echo "Regenerating the generated documentation pages..."
+	UPDATE_DOCS=1 $(GO) test ./cmd -run '^TestCLIReference$$' -count=1
+
+# Build the documentation site into docs/public (needs the extended Hugo, see CONTRIBUTING.md).
+docs: docs-generate
+	@command -v hugo >/dev/null 2>&1 || { echo "hugo (extended) is required, see https://gohugo.io/installation/"; exit 1; }
+	hugo --source docs --gc --minify
+
+# Serve the documentation site with live reload.
+docs-serve:
+	@command -v hugo >/dev/null 2>&1 || { echo "hugo (extended) is required, see https://gohugo.io/installation/"; exit 1; }
+	hugo server --source docs
+
 # Docker target
 package:
 	@echo "Building Docker image..."
 	$(DOCKER_ENGINE) build -t $(PROJECT_NAME):dev -f $(DOCKERFILE) .
 
 # Phony targets
-.PHONY: deps build lint dependency-check test package
+.PHONY: deps build lint dependency-check test vuln docs-generate docs docs-serve package

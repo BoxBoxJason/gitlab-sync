@@ -21,200 +21,27 @@ It is designed to be used in a CI/CD pipeline to automate the process of keeping
 - Can add projects to CI/CD catalog (requires GitLab 19.3+ on the destination instance)
 - Full copy of the project (description, icon, topics,...). Can also copy issues
 
-## Installation
+## Documentation
 
-### Docker
+📖 **<https://boxboxjason.github.io/gitlab-sync/>**
 
-You can run the CLI using Docker. It is available on GitHub Container Registry.
+The documentation covers [installation](https://boxboxjason.github.io/gitlab-sync/docs/installation/), every [command line argument and environment variable](https://boxboxjason.github.io/gitlab-sync/docs/usage/), the [mirror mapping file](https://boxboxjason.github.io/gitlab-sync/docs/mapping/) and the behavior on [freemium destinations](https://boxboxjason.github.io/gitlab-sync/docs/freemium/). It is built from the [`docs`](./docs) directory of this repository, so it is updated together with the code.
 
-1. Pull the Docker image: `docker pull ghcr.io/boxboxjason/gitlab-sync:latest`
-2. Run the Docker container with the required command line arguments / env variables (don't forget to mount the JSON file):
+## Quick start
 
-```bash
-docker run --rm \
-  -e SOURCE_GITLAB_URL=<source_gitlab_url> \
-  -e SOURCE_GITLAB_TOKEN=<source_gitlab_token> \
-  -e DESTINATION_GITLAB_URL=<destination_gitlab_url> \
-  -e DESTINATION_GITLAB_TOKEN=<destination_gitlab_token> \
-  -e MIRROR_MAPPING=/home/gitlab-sync/mirror.json \
-  -v <my_mapping_json_file>:/home/gitlab-sync/mirror.json:ro,Z \
-  ghcr.io/boxboxjason/gitlab-sync:latest
-```
-
-### Compile from source
-
-To compile the CLI from source, you need to have Go installed on your machine.
-
-1. Clone the repository: `git clone https://github.com/boxboxjason/gitlab-sync.git`
-2. Change to the project directory: `cd gitlab-sync`
-3. Build the CLI: `go build -o bin/gitlab-sync .`
-4. The binary will be created in the `bin` directory.
-5. Make sure the binary is executable: `chmod +x bin/gitlab-sync`
-6. You can run the CLI from the `bin` directory: `./bin/gitlab-sync`
-7. Optionally, you can move the binary to a directory in your `PATH` for easier access: `mv bin/gitlab-sync /usr/local/bin/`
-
-### Install with go install
-
-You can install the latest published version directly with Go:
+Install the latest release:
 
 ```bash
 go install github.com/boxboxjason/gitlab-sync@latest
 ```
 
-To install a specific version, use a semantic version tag:
+Or use the container image:
 
 ```bash
-go install github.com/boxboxjason/gitlab-sync@v1.2.3
+docker pull ghcr.io/boxboxjason/gitlab-sync:latest
 ```
 
-By default, `go install` places the binary in `$(go env GOPATH)/bin`.
-If this directory is not in your `PATH`, either run the binary with its full path:
-
-```bash
-"$(go env GOPATH)/bin/gitlab-sync" --version
-```
-
-Or add it to your shell profile:
-
-```bash
-export PATH="$(go env GOPATH)/bin:$PATH"
-```
-
-Then run:
-
-```bash
-gitlab-sync --version
-```
-
-### Shell Autocomplete
-
-The CLI provides shell completions, including completion for available flags on the main command.
-
-Generate completion script:
-
-```bash
-gitlab-sync completion bash
-gitlab-sync completion zsh
-gitlab-sync completion fish
-gitlab-sync completion powershell
-```
-
-Examples:
-
-```bash
-# Bash (current session)
-source <(gitlab-sync completion bash)
-
-# Zsh (save then source from ~/.zshrc)
-gitlab-sync completion zsh > "${fpath[1]}/_gitlab-sync"
-
-# Fish
-gitlab-sync completion fish > ~/.config/fish/completions/gitlab-sync.fish
-```
-
-## Usage
-
-The CLI requires no dependencies and can be run directly. It is available as a single binary executable.
-
-The mirroring configuration can be passed by either command line arguments or environment variables.
-If mandatory arguments are not provided, the program will prompt for them.
-
-| Argument | Environment Variable equivalent | Mandatory | Description |
-| ---------- | ------------------------------- | ----------- | ------------- |
-| `--help` or `-h` | N/A | No | Show help message and exit |
-| `--version` | N/A | No | Show version information and exit |
-| `--verbose` or `-v` | N/A | No | Enable verbose output |
-| `--dry-run` | N/A | No | Perform a dry run without making any changes |
-| `--source-url` | `SOURCE_GITLAB_URL` | Yes | URL of the source GitLab instance |
-| `--source-token` | `SOURCE_GITLAB_TOKEN` | No | Access token for the source GitLab instance |
-| `--source-big` | `SOURCE_GITLAB_BIG` | No | Specify if the source GitLab instance is a big instance (default: false) |
-| `--destination-url` | `DESTINATION_GITLAB_URL` | Yes | URL of the destination GitLab instance |
-| `--destination-force-freemium` or `-f` | N/A | No | Force the destination GitLab to be treated as a non-premium instance (default: false) |
-| `--destination-force-premium` or `-p` | N/A | No | Force the destination GitLab to be treated as a premium instance (default: false) |
-| `--destination-token` | `DESTINATION_GITLAB_TOKEN` | Yes | Access token for the destination GitLab instance |
-| `--destination-big` | `DESTINATION_GITLAB_BIG` | No | Specify if the destination GitLab instance is a big instance (default: false) |
-| `--mirror-mapping` | `MIRROR_MAPPING` | Yes | Path to a JSON file containing the mirror mapping |
-| `--retry` or `-r` | N/A | No | Number of retries for failed GitLab API requests (default: 3) |
-| `--log-file` | `GITLAB_SYNC_LOG_FILE` | No | Path to a log file for output logs (default: `none`, only outputs logs to stderr) |
-| `--cache-dir` | `GITLAB_SYNC_CACHE_DIR` | No | Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, default: `none`, caching disabled) |
-| `--cache-max-age` | `GITLAB_SYNC_CACHE_MAX_AGE` | No | Delete the cached repositories that have not been synchronized for that long (Go duration, `0` keeps them forever, default: `168h`, 7 days) |
-| `--user-agent` | `GITLAB_SYNC_USER_AGENT` | No | User-Agent sent with every GitLab API request; git clone, fetch and push requests keep the go-git default (default: `gitlab-sync/<version>`) |
-
-### Freemium (non-premium) destinations
-
-Pull mirroring requires GitLab Premium. When the destination instance is not premium
-
-- or when `--destination-force-freemium` is passed to deliberately avoid pull mirrors on a premium/ultimate instance - gitlab-sync clones each source repository and pushes it to the destination itself. In that mode:
-
-- The destination token needs to be able to push over HTTP; an `api` scoped token is enough.
-- No mirror setting is written on the destination projects, and any pull mirror left over from a previous premium run is turned off first (GitLab keeps pull-mirrored repositories read-only, which would otherwise reject the push).
-- Every ref is force-pushed, and the destination branches and tags the source no longer has are deleted, so the destination repository ends up an exact copy of the source one. The branch the destination `HEAD` points at is never deleted (a git server refuses that); when the source renames its default branch, the old one disappears on the next run, once the default branch has been moved through the API.
-- The refs GitLab owns itself (`refs/merge-requests`, `refs/pipelines`, `refs/keep-around`, ...) are left untouched on the destination.
-- Unless `mirror_trigger_builds` is enabled, the push asks the destination GitLab not to run CI for the branches and tags the synchronization updates, through the `ci.skip`, `ci.no_pipeline` and `integrations.skip_ci` push options (like `git push -o ci.skip -o ci.no_pipeline -o integrations.skip_ci`):
-  - `ci.skip` works on every GitLab version, but GitLab still records one **skipped** pipeline per updated ref when the project has a CI configuration. No job runs.
-  - `ci.no_pipeline` keeps that pipeline from being created at all, like a pull mirror with `mirror_trigger_builds: false`. It needs GitLab 18.11+ with the `ci_no_pipeline_push_option` feature flag enabled on the destination instance; older versions ignore it.
-  - `integrations.skip_ci` keeps CI integrations such as Jenkins from being triggered.
-
-  Pipeline execution policies can still enforce their own jobs, as GitLab ignores these options for them unless the policy allows it.
-- Repositories are cloned into a temporary directory, so the container needs a writable `/tmp` (provided by the published image). Set `--cache-dir` to keep them instead.
-
-#### Caching the cloned repositories
-
-Without a cache, every run downloads the full history of every repository, which gets
-expensive on a schedule. `--cache-dir` points gitlab-sync at a directory where it keeps
-the bare clones between runs:
-
-```bash
-gitlab-sync \
-  --source-url https://gitlab.example.com \
-  --source-token <source_gitlab_token> \
-  --destination-url https://mycompany.example.com \
-  --destination-token <destination_gitlab_token> \
-  --mirror-mapping /path/to/mirror.json \
-  --destination-force-freemium \
-  --cache-dir /var/cache/gitlab-sync
-```
-
-- Each repository lands at a location derived from its source URL, so a run always
-  reuses the clone it produced last time:
-
-  ```text
-  /var/cache/gitlab-sync/
-    gitlab.example.com/
-      group/subgroup/repo.git/
-      group/other.git/
-  ```
-
-- An existing clone is refreshed rather than downloaded again, with a forced and pruning
-  fetch: new branches and tags are downloaded, the ones deleted at the source are deleted
-  locally, and a rewritten history replaces the one held on disk. Caching therefore never
-  changes what ends up on the destination, only how much is transferred to get there.
-- A cache entry that cannot be opened or refreshed is thrown away and cloned again, so a
-  run interrupted halfway never poisons the following ones.
-- Entries are locked while in use, both between the goroutines of one run and between
-  concurrent runs (parallel CI jobs sharing a volume, an overlapping cron). A lock left
-  behind by a run that died is detected and broken automatically.
-- Entries that go unsynced for longer than `--cache-max-age` are removed at the start of a
-  run. Pass `--cache-max-age 0` to keep them forever and manage the directory yourself.
-- The option is ignored on a premium destination, which uses pull mirroring and never
-  clones anything locally.
-
-With the published image, mount a volume on the cache directory so it survives the container:
-
-```bash
-docker run --rm \
-  -e SOURCE_GITLAB_URL=<source_gitlab_url> \
-  -e SOURCE_GITLAB_TOKEN=<source_gitlab_token> \
-  -e DESTINATION_GITLAB_URL=<destination_gitlab_url> \
-  -e DESTINATION_GITLAB_TOKEN=<destination_gitlab_token> \
-  -e MIRROR_MAPPING=/home/gitlab-sync/mirror.json \
-  -e GITLAB_SYNC_CACHE_DIR=/cache \
-  -v <my_mapping_json_file>:/home/gitlab-sync/mirror.json:ro,Z \
-  -v gitlab-sync-cache:/cache \
-  ghcr.io/boxboxjason/gitlab-sync:latest --destination-force-freemium
-```
-
-### Example
+Then describe what to synchronize in a JSON mapping file, and run:
 
 ```bash
 gitlab-sync \
@@ -225,65 +52,8 @@ gitlab-sync \
   --mirror-mapping /path/to/mirror.json
 ```
 
-### JSON Mapping File
-
-The JSON mapping file is used to define the projects and groups to be synchronized between the two GitLab instances. You also define the copy options for each project / group.
-
-Allowed options are:
-
-| Option | Description |
-| -------- | ------------- |
-| `destination_path` | The path to the project / group on the destination GitLab instance. |
-| `ci_cd_catalog` | Whether to add the project to the CI/CD catalog. ⚠️ Requires GitLab 19.3+ on the destination instance, since it relies on the `cicd_catalog_enabled` project API field introduced in that version. |
-| `mirror_issues` | Whether to copy issues from the source project to the destination project. |
-| `visibility` | The visibility level of the project on the destination GitLab instance. Can be `public`, `internal`, or `private`. |
-| `mirror_trigger_builds` | Whether to trigger builds on the destination project when a push is made to the source project (default: `false`). On a freemium destination, `false` makes gitlab-sync push with push options that keep the synchronization from running CI (see [Freemium destinations](#freemium-non-premium-destinations)). ⚠️ Earlier versions of gitlab-sync always started pipelines on freemium destinations: set it to `true` to keep that behaviour. |
-| `mirror_releases` | Whether to mirror releases from the source project to the destination project. |
-| `mirror_release_assets` | Whether to also keep the release asset links (and their files) in sync (requires `mirror_releases`), including on releases that already exist on the destination. ⚠️ Deletes destination releases, links and files that no longer exist on the source. See [Release assets](#release-assets). |
-
-#### Release assets
-
-When `mirror_release_assets` is enabled, the destination release links are kept in sync with the source release links (links are matched by name), keeping their `name`, `link_type` and `direct_asset_path`:
-
-- **Generic package on the source instance** (`/api/v4/projects/:id/packages/generic/:name/:version/:file`): the file is republished to the destination project generic package registry under the same package name, version and file name, and the link points to that copy. On every run, the checksum GitLab stored for the source file is compared with the one of the destination copy (no download is needed for that): the file is only copied again when the destination copy is missing or differs. Previous copies are kept in the package, GitLab serves the newest one. When the file no longer exists on the source (the source package no longer lists it and its download answers 404), its destination copies are deleted.
-- **Any other URL on the source instance** (job artifacts, other package registries, ...): the file is downloaded and stored in the destination project generic package registry as `release-assets/<tag>/<file>`, and the link points to that copy. These sources have no checksum to compare, so the file is copied once: when the destination release does not have the link yet. A source file that disappears while its link stays (e.g. an expired job artifact) is not detected.
-- **External URLs**: the link is copied unchanged, when the destination release does not have it yet.
-
-⚠️ Links of a destination release that its source release no longer has are **deleted**, including links added by hand on the destination. When such a link points to a generic package file of the destination project, that file is deleted too, unless a link of another source release is still copied to it. Destination releases whose tag no longer has a release on the source are **deleted** too (the git tag itself is left to the repository mirroring), along with the files their links point to in the destination project generic package registry, with the same exception. With `mirror_releases` alone (without `mirror_release_assets`), nothing is ever deleted. Use `--dry-run` to see what would be deleted.
-
-Files are downloaded with the source token. Web (non-API) URLs of private projects may not accept it: when the source instance answers with its sign in page, the asset is reported as failed rather than mirrored.
-
-Be aware that the destination path must be unique for each project / group. If you try to synchronize a project / group with the same destination path as an existing project / group, the synchronization will fail.
-
-Also, the destination namespace must exist on the destination GitLab instance. If the namespace does not exist, the synchronization will fail.
-
-```json
-{
-  "projects": {
-    "existingGroup1/project1" : {
-      "destination_path": "existingGroup64/project1",
-      "ci_cd_catalog": true,
-      "mirror_issues": false,
-      "visibility": "public",
-      "mirror_trigger_builds": false,
-      "mirror_releases": false,
-      "mirror_release_assets": false
-    }
-  },
-  "groups": {
-    "existingGroup152" : {
-      "destination_path": "existingGroup64/existingGroup152",
-      "ci_cd_catalog": true,
-      "mirror_issues": false,
-      "visibility": "public",
-      "mirror_trigger_builds": false,
-      "mirror_releases": false,
-      "mirror_release_assets": false
-    }
-  }
-}
-```
+Add `--dry-run` to see what would change without writing anything.
 
 ## Development
 
-Check the [CONTRIBUTING.md](./CONTRIBUTING.md) file for guidelines on how to contribute to this project.
+Check the [CONTRIBUTING.md](./CONTRIBUTING.md) file for guidelines on how to contribute to this project, including how to work on the documentation.

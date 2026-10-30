@@ -10,3 +10,4 @@ cliff.toml
 Containerfile
 CONTRIBUTING.md
 renovate.json
+docs/

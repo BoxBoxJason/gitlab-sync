@@ -1,5 +1,6 @@
 ---
 title: Usage
+description: "Every gitlab-sync command line argument and environment variable, with a complete example of mirroring two GitLab instances."
 weight: 20
 ---
 

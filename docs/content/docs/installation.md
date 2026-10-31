@@ -1,5 +1,6 @@
 ---
 title: Installation
+description: "Install gitlab-sync with the container image from GHCR, go install, or a build from source, and set up shell completion."
 weight: 10
 ---
 

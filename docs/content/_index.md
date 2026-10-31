@@ -1,5 +1,6 @@
 ---
 title: gitlab-sync
+description: "gitlab-sync is a Go CLI that copies and mirrors GitLab projects and groups between two instances, on GitLab Premium or Free, from a CI/CD pipeline."
 layout: hextra-home
 ---
 

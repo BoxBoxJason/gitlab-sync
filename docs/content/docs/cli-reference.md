@@ -1,5 +1,6 @@
 ---
 title: CLI reference
+description: "Generated help of every gitlab-sync command and flag, with defaults, so the reference always matches the CLI."
 weight: 50
 ---
 

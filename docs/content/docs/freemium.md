@@ -1,5 +1,6 @@
 ---
 title: Freemium destinations
+description: "How gitlab-sync mirrors repositories to GitLab Free destinations without pull mirroring, and how to cache clones between runs."
 weight: 30
 ---
 

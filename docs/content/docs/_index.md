@@ -1,5 +1,6 @@
 ---
 title: Documentation
+description: "Documentation for gitlab-sync: install the CLI, configure the mirror mapping, and mirror GitLab projects and groups between instances."
 weight: 1
 ---
 

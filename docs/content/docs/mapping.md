@@ -1,5 +1,6 @@
 ---
 title: Mirror mapping
+description: "Reference of the gitlab-sync JSON mirror mapping file: every project and group option, release assets, and an example."
 weight: 40
 ---
 

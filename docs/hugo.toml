@@ -38,5 +38,10 @@ enableRobotsTXT = true
       icon = "github"
 
 [params]
+  description = "gitlab-sync is a Go CLI that copies and mirrors GitLab projects and groups between two instances, on GitLab Premium or Free."
+  images = ["images/social.png"]
+  [params.project]
+    repository = "https://github.com/boxboxjason/gitlab-sync"
+    programmingLanguage = "Go"
   [params.editURL]
     base = "https://github.com/boxboxjason/gitlab-sync/edit/main/docs/content"

@@ -1,6 +1,6 @@
 # gitlab-sync
 
-![gitlab-sync logo](./assets/gitlab-sync.png)
+[![Watch the gitlab-sync video](./docs/static/images/discover.jpg)](https://boxboxjason.github.io/gitlab-sync/videos/discover.mp4)
 
 ![Coverage](https://sonarqube.boxboxjason.dev/api/project_badges/measure?project=gitlab-sync&metric=coverage&token=sqb_d6468715387db0c98009b78dd80c936893d1e680)
 ![Lines of Code](https://sonarqube.boxboxjason.dev/api/project_badges/measure?project=gitlab-sync&metric=ncloc&token=sqb_d6468715387db0c98009b78dd80c936893d1e680)

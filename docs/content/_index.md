@@ -32,3 +32,7 @@ layout: hextra-home
     subtitle="Describe what to synchronize in a JSON mapping file, with options per project or group, and preview the result with a dry run."
   >}}
 {{< /hextra/feature-grid >}}
+
+{{< spacer "3rem" >}}
+
+{{< video "videos/discover.mp4" >}}

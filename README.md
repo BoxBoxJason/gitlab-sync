@@ -12,6 +12,8 @@
 (golang) CLI tool to synchronize GitLab projects and groups between two GitLab instances.
 It is designed to be used in a CI/CD pipeline to automate the process of keeping two GitLab instances in sync.
 
+[![Watch the gitlab-sync video](./docs/static/images/discover.jpg)](https://boxboxjason.github.io/gitlab-sync/videos/discover.mp4)
+
 ## Features
 
 - Synchronize projects / groups between two GitLab instances

@@ -1194,7 +1194,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "(sum by (k8s_cluster_name, k8s_namespace_name, job) (increase(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\", status_class=~\"5xx|error\"}[$__range])) or on (k8s_cluster_name, k8s_namespace_name, job) 0 * sum by (k8s_cluster_name, k8s_namespace_name, job) (increase(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__range]))) / sum by (k8s_cluster_name, k8s_namespace_name, job) (increase(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__range]))",
+                        "expr": "(sum by (k8s_cluster_name, k8s_namespace_name, job) (sum_over_time(max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\", status_class=~\"5xx|error\"}[$window] offset -$window)[$__range:$window])) or on (k8s_cluster_name, k8s_namespace_name, job) 0 * sum by (k8s_cluster_name, k8s_namespace_name, job) (sum_over_time(max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$window] offset -$window)[$__range:$window]))) / sum by (k8s_cluster_name, k8s_namespace_name, job) (sum_over_time(max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$window] offset -$window)[$__range:$window]))",
                         "legendFormat": "__auto",
                         "instant": true,
                         "range": false,
@@ -1217,7 +1217,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.95, sum by (k8s_cluster_name, k8s_namespace_name, job, le) (increase(gitlab_sync_api_duration_seconds_bucket{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__range])))",
+                        "expr": "histogram_quantile(0.95, sum by (k8s_cluster_name, k8s_namespace_name, job, le) (sum_over_time(max_over_time(gitlab_sync_api_duration_seconds_bucket{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$window] offset -$window)[$__range:$window])))",
                         "legendFormat": "__auto",
                         "instant": true,
                         "range": false,
@@ -1240,7 +1240,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "(sum by (k8s_cluster_name, k8s_namespace_name, job) (increase(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\", status=\"429\"}[$__range])) or on (k8s_cluster_name, k8s_namespace_name, job) 0 * sum by (k8s_cluster_name, k8s_namespace_name, job) (increase(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__range]))) / sum by (k8s_cluster_name, k8s_namespace_name, job) (increase(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__range]))",
+                        "expr": "(sum by (k8s_cluster_name, k8s_namespace_name, job) (sum_over_time(max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\", status=\"429\"}[$window] offset -$window)[$__range:$window])) or on (k8s_cluster_name, k8s_namespace_name, job) 0 * sum by (k8s_cluster_name, k8s_namespace_name, job) (sum_over_time(max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$window] offset -$window)[$__range:$window]))) / sum by (k8s_cluster_name, k8s_namespace_name, job) (sum_over_time(max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$window] offset -$window)[$__range:$window]))",
                         "legendFormat": "__auto",
                         "instant": true,
                         "range": false,
@@ -2009,7 +2009,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "max by (k8s_cluster_name, k8s_namespace_name, job) (last_over_time(gitlab_sync_run_status{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__interval]))",
+                        "expr": "max by (k8s_cluster_name, k8s_namespace_name, job) (last_over_time(gitlab_sync_run_status{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__interval] offset -$__interval))",
                         "legendFormat": "{{k8s_cluster_name}} / {{k8s_namespace_name}}",
                         "range": true
                       }
@@ -2123,7 +2123,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "max by (k8s_cluster_name, k8s_namespace_name, job) (last_over_time(gitlab_sync_run_duration_seconds{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__interval]))",
+                        "expr": "max by (k8s_cluster_name, k8s_namespace_name, job) (last_over_time(gitlab_sync_run_duration_seconds{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__interval] offset -$__interval))",
                         "legendFormat": "{{k8s_cluster_name}} / {{k8s_namespace_name}}",
                         "range": true
                       }
@@ -2316,7 +2316,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (k8s_cluster_name, k8s_namespace_name, job) (max_over_time(gitlab_sync_entities_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\", entity=\"project\", outcome=\"success\"}[$__interval]))",
+                        "expr": "sum by (k8s_cluster_name, k8s_namespace_name, job) (max_over_time(gitlab_sync_entities_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\", entity=\"project\", outcome=\"success\"}[$__interval] offset -$__interval))",
                         "legendFormat": "{{k8s_cluster_name}} / {{k8s_namespace_name}}",
                         "range": true
                       }
@@ -2419,7 +2419,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (k8s_cluster_name, k8s_namespace_name, job) (max_over_time(gitlab_sync_errors_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\", severity=\"blocking\"}[$__interval]))",
+                        "expr": "sum by (k8s_cluster_name, k8s_namespace_name, job) (max_over_time(gitlab_sync_errors_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\", severity=\"blocking\"}[$__interval] offset -$__interval))",
                         "legendFormat": "{{k8s_cluster_name}} / {{k8s_namespace_name}}",
                         "range": true
                       }
@@ -2522,7 +2522,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "(sum by (k8s_cluster_name, k8s_namespace_name, job) (max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\", status_class=~\"5xx|error\"}[$__interval])) or on (k8s_cluster_name, k8s_namespace_name, job) 0 * sum by (k8s_cluster_name, k8s_namespace_name, job) (max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__interval]))) / sum by (k8s_cluster_name, k8s_namespace_name, job) (max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__interval]))",
+                        "expr": "(sum by (k8s_cluster_name, k8s_namespace_name, job) (max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\", status_class=~\"5xx|error\"}[$__interval] offset -$__interval)) or on (k8s_cluster_name, k8s_namespace_name, job) 0 * sum by (k8s_cluster_name, k8s_namespace_name, job) (max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__interval] offset -$__interval))) / sum by (k8s_cluster_name, k8s_namespace_name, job) (max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__interval] offset -$__interval))",
                         "legendFormat": "{{k8s_cluster_name}} / {{k8s_namespace_name}}",
                         "range": true
                       }
@@ -2625,7 +2625,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (k8s_cluster_name, k8s_namespace_name, job) (max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\", status=\"429\"}[$__interval]))",
+                        "expr": "sum by (k8s_cluster_name, k8s_namespace_name, job) (max_over_time(gitlab_sync_api_requests_total{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\", status=\"429\"}[$__interval] offset -$__interval))",
                         "legendFormat": "{{k8s_cluster_name}} / {{k8s_namespace_name}}",
                         "range": true
                       }
@@ -2728,7 +2728,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "histogram_quantile(0.95, sum by (k8s_cluster_name, k8s_namespace_name, job, le) (max_over_time(gitlab_sync_api_duration_seconds_bucket{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__interval])))",
+                        "expr": "histogram_quantile(0.95, sum by (k8s_cluster_name, k8s_namespace_name, job, le) (max_over_time(gitlab_sync_api_duration_seconds_bucket{k8s_cluster_name=~\"$cluster\", k8s_namespace_name=~\"$namespace\", job=~\"$job\"}[$__interval] offset -$__interval)))",
                         "legendFormat": "{{k8s_cluster_name}} / {{k8s_namespace_name}}",
                         "range": true
                       }

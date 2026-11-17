@@ -262,6 +262,8 @@ The Overview tab, on a week of [simulated runs](#simulated-data).
 
 Its variables filter the panels: `Data source`, `Cluster`, `Namespace`, `Job` (the `service.name`), `Version`, `Instance` (`role`), `Object` (`entity`, on the Mirroring tab), `Status` (the HTTP status code of the API calls), `Method` and `Run window`. `Cluster` and `Namespace` set to All also match deployments without Kubernetes attributes. The **Fleet** link in the header opens the fleet dashboard.
 
+Each run is a new process whose counters start from zero, so the dashboards never use `increase()`: a run that pushes a single sample, or ends at the same value as the previous run, would not be counted. The per-run graphs show the largest value of each `Run window`, and the totals of the time range add up those values. Set `Run window` to the schedule of gitlab-sync, or less: several runs in one window count as the largest of them only.
+
 #### Fleet dashboard
 
 A single page giving an overview of every tenant (cluster × namespace × job). It needs the `k8s.cluster.name` and `k8s.namespace.name` attributes described in [Several deployments](#several-deployments). Deployments without them are left out.

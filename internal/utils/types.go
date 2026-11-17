@@ -35,7 +35,8 @@ const (
 // - retry: the number of retries for the GitLab API requests
 // - cache_dir: where to keep the bare git clones between runs (empty disables caching)
 // - cache_max_age: how long an unused cached repository is kept
-// - user_agent: the User-Agent sent with every GitLab API request.
+// - user_agent: the User-Agent sent with every GitLab API request
+// - exit_zero_on_non_blocking: whether a run that only hit non-blocking errors exits 0.
 type ParserArgs struct {
 	MirrorMapping          *MirrorMapping
 	SourceGitlabURL        string
@@ -53,8 +54,7 @@ type ParserArgs struct {
 	NoPrompt               bool
 	DryRun                 bool
 	SourceGitlabIsBig      bool
-	// ExitZeroOnNonBlocking makes a run that only hit non-blocking errors exit 0.
-	ExitZeroOnNonBlocking bool
+	ExitZeroOnNonBlocking  bool
 }
 
 // MirroringOptions defines how a project or group should be mirrored

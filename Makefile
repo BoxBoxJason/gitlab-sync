@@ -72,5 +72,19 @@ package:
 	@echo "Building Docker image..."
 	$(DOCKER_ENGINE) build -t $(PROJECT_NAME):dev -f $(DOCKERFILE) .
 
+# Local observability stack (Grafana + OTLP receiver) used to develop the OpenTelemetry metrics.
+OTEL_COMPOSE ?= $(DOCKER_ENGINE) compose -f dev/otel/compose.yaml
+
+otel-up:
+	$(OTEL_COMPOSE) up -d
+	@echo "Grafana: http://localhost:$${GRAFANA_PORT:-3030} | Prometheus: http://localhost:$${PROMETHEUS_PORT:-9091} | OTLP HTTP: http://localhost:$${OTLP_HTTP_PORT:-4318}"
+	@echo "export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:$${OTLP_HTTP_PORT:-4318}"
+
+otel-down:
+	$(OTEL_COMPOSE) down
+
+otel-logs:
+	$(OTEL_COMPOSE) logs -f
+
 # Phony targets
-.PHONY: deps build lint dependency-check test vuln docs-generate docs docs-serve package
+.PHONY: deps build lint dependency-check test vuln docs-generate docs docs-serve package otel-up otel-down otel-logs

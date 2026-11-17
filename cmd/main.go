@@ -85,7 +85,7 @@ func buildRootCmd(args *utils.ParserArgs, mirrorMappingPath, logFile *string) *c
 	rootCmd.Flags().StringVar(&args.CacheDir, "cache-dir", strings.TrimSpace(os.Getenv("GITLAB_SYNC_CACHE_DIR")), "Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, empty disables caching)")
 	rootCmd.Flags().DurationVar(&args.CacheMaxAge, "cache-max-age", envDuration("GITLAB_SYNC_CACHE_MAX_AGE", defaultCacheMaxAge), "Delete the cached repositories that have not been synchronized for that long (0 keeps them forever)")
 	rootCmd.Flags().StringVar(&args.UserAgent, "user-agent", envString("GITLAB_SYNC_USER_AGENT", defaultUserAgent()), "User-Agent sent with every GitLab API request")
-	rootCmd.Flags().BoolVar(&args.ExitZeroOnNonBlocking, "exit-zero-on-non-blocking", envBool("GITLAB_SYNC_EXIT_ZERO_ON_NON_BLOCKING", false), "Exit with code 0 when only non-blocking errors occurred (blocking errors still exit 1)")
+	rootCmd.Flags().BoolVar(&args.ExitSuccessOnNonBlocking, "exit-zero-on-non-blocking", envBool("GITLAB_SYNC_EXIT_ZERO_ON_NON_BLOCKING", false), "Exit with code 0 when only non-blocking errors occurred (blocking errors still exit 1)")
 	_ = rootCmd.MarkFlagFilename("mirror-mapping", "json")
 	_ = rootCmd.MarkFlagFilename("log-file", "log", "txt")
 	_ = rootCmd.MarkFlagDirname("cache-dir")
@@ -146,10 +146,10 @@ func envBool(name string, defaultValue bool) bool {
 }
 
 // resolveExitCode turns the exit code derived from the reported errors into the
-// process exit code: non-blocking errors only exit 0 when exitZeroOnNonBlocking
+// process exit code: non-blocking errors only exit 0 when exitSuccessOnNonBlocking
 // is set, every other code is kept as is.
-func resolveExitCode(code int, exitZeroOnNonBlocking bool) int {
-	if code == helpers.ExitNonBlocking && exitZeroOnNonBlocking {
+func resolveExitCode(code int, exitSuccessOnNonBlocking bool) int {
+	if code == helpers.ExitNonBlocking && exitSuccessOnNonBlocking {
 		return helpers.ExitOK
 	}
 
@@ -234,14 +234,14 @@ func executeMirroringCommand(args *utils.ParserArgs, mirrorMappingPath, logFile 
 	case helpers.ExitBlocking:
 		zap.L().Error("Mirroring process finished with blocking errors")
 	default:
-		if args.ExitZeroOnNonBlocking {
+		if args.ExitSuccessOnNonBlocking {
 			zap.L().Warn("Mirroring process finished with non-blocking errors (exit code forced to 0)")
 		} else {
 			zap.L().Warn("Mirroring process finished with non-blocking errors")
 		}
 	}
 
-	if exitCode := resolveExitCode(code, args.ExitZeroOnNonBlocking); exitCode != helpers.ExitOK {
+	if exitCode := resolveExitCode(code, args.ExitSuccessOnNonBlocking); exitCode != helpers.ExitOK {
 		os.Exit(exitCode)
 	}
 }

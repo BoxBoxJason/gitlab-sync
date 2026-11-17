@@ -333,10 +333,10 @@ func TestUserAgentFlag(t *testing.T) {
 
 func TestResolveExitCode(t *testing.T) {
 	tests := []struct {
-		name                  string
-		code                  int
-		exitZeroOnNonBlocking bool
-		want                  int
+		name                     string
+		code                     int
+		exitSuccessOnNonBlocking bool
+		want                     int
 	}{
 		{"ok", helpers.ExitOK, false, helpers.ExitOK},
 		{"ok with override", helpers.ExitOK, true, helpers.ExitOK},
@@ -348,8 +348,8 @@ func TestResolveExitCode(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := resolveExitCode(test.code, test.exitZeroOnNonBlocking); got != test.want {
-				t.Errorf("resolveExitCode(%d, %v) = %d, want %d", test.code, test.exitZeroOnNonBlocking, got, test.want)
+			if got := resolveExitCode(test.code, test.exitSuccessOnNonBlocking); got != test.want {
+				t.Errorf("resolveExitCode(%d, %v) = %d, want %d", test.code, test.exitSuccessOnNonBlocking, got, test.want)
 			}
 		})
 	}

@@ -96,8 +96,8 @@ Recorded for every HTTP attempt both GitLab clients make, retries included.
 
 | Metric | Prometheus name | Type | Unit | Attributes | Description |
 |---|---|---|---|---|---|
-| `gitlab_sync.api.requests` | `gitlab_sync_api_requests_total` | Counter | `{request}` | `role`, `method`, `status_class` | HTTP requests sent to the GitLab API, retries included. |
-| `gitlab_sync.api.duration` | `gitlab_sync_api_duration_seconds` | Histogram | `s` | `role`, `method`, `status_class` | Duration of the HTTP requests sent to the GitLab API. |
+| `gitlab_sync.api.requests` | `gitlab_sync_api_requests_total` | Counter | `{request}` | `role`, `method`, `status`, `status_class` | HTTP requests sent to the GitLab API, retries included. |
+| `gitlab_sync.api.duration` | `gitlab_sync_api_duration_seconds` | Histogram | `s` | `role`, `method`, `status`, `status_class` | Duration of the HTTP requests sent to the GitLab API. |
 | `gitlab_sync.api.retries` | `gitlab_sync_api_retries_total` | Counter | `{retry}` | `role` | Requests that were a retry of a failed attempt (see `--retry`). |
 
 The `gitlab_sync.api.duration` histogram buckets are, in seconds: `0.005`, `0.01`, `0.025`, `0.05`, `0.075`, `0.1`, `0.25`, `0.5`, `0.75`, `1`, `2.5`, `5`, `7.5`, `10`, `30`, `60`.
@@ -127,7 +127,8 @@ Attributes are kept low-cardinality on purpose: no group or project path is ever
 | `result` | `hit`, `miss`, `invalid` | `hit`: the cached repository was refreshed with a fetch. `miss`: it was not cached yet and was cloned. `invalid`: it was unusable (or could not be fetched) and was cloned again. |
 | `role` | `source`, `destination` | The GitLab instance the request was sent to. |
 | `method` | `GET`, `POST`, `PUT`, `DELETE`, ... | The HTTP request method. |
-| `status_class` | `1xx`, `2xx`, `3xx`, `4xx`, `5xx`, `error`, `unknown` | The class of the response status. `error` means no response was received (DNS, connection or TLS error, timeout). |
+| `status` | `200`, `201`, `204`, `304`, `401`, `403`, `404`, `409`, `429`, `500`, `502`, `503`, ..., `error` | The HTTP response status code. `error` means no response was received (DNS, connection or TLS error, timeout). |
+| `status_class` | `1xx`, `2xx`, `3xx`, `4xx`, `5xx`, `error`, `unknown` | The class of the response status, for grouping the codes. `error` means no response was received, like `status`. |
 
 ### Resource attributes
 
@@ -141,7 +142,40 @@ Every metric carries these resource attributes, which identify the run (Promethe
 | `gitlab_sync.destination.url` | `https://gitlab.example.com` | Destination GitLab URL, without credentials, query or fragment. |
 | `telemetry.sdk.*` | `opentelemetry`, `go`, `1.47.0` | The OpenTelemetry SDK in use. |
 
-When several gitlab-sync jobs push to the same collector (one per mirror mapping, for example), give each its own identity so their series do not overwrite each other, for example with `OTEL_SERVICE_NAME=gitlab-sync-team-a` or `OTEL_RESOURCE_ATTRIBUTES=service.instance.id=team-a`.
+When several gitlab-sync jobs push to the same collector (one per mirror mapping, for example), give each its own identity so their series do not overwrite each other, for example with `OTEL_SERVICE_NAME=gitlab-sync-team-a` or `OTEL_RESOURCE_ATTRIBUTES=service.instance.id=team-a`. On Kubernetes, use the cluster and namespace (see [Several deployments](#several-deployments)).
+
+## Several deployments
+
+When gitlab-sync runs in many places (for example one CronJob per team namespace, across several clusters), each deployment is a **tenant**, identified by its cluster, its namespace and its `service.name` (the `job` label). The [fleet dashboard](#fleet-dashboard) shows all of them on one page.
+
+Two things are needed:
+
+1. **Each deployment sets its cluster and namespace** as resource attributes. In a Kubernetes CronJob, take the namespace from the downward API (`POD_NAMESPACE` must be declared before the variable that uses it):
+
+   ```yaml
+   env:
+     - name: POD_NAMESPACE
+       valueFrom:
+         fieldRef:
+           fieldPath: metadata.namespace
+     - name: OTEL_EXPORTER_OTLP_ENDPOINT
+       value: http://otel-collector.observability:4318
+     - name: OTEL_RESOURCE_ATTRIBUTES
+       value: k8s.cluster.name=prod-eu-west-1,k8s.namespace.name=$(POD_NAMESPACE)
+   ```
+
+   A collector running the [`k8sattributes` processor](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/k8sattributesprocessor) can add the same attributes instead.
+
+2. **Prometheus turns these attributes into labels.** By default, Prometheus keeps resource attributes on `target_info` only, so list them in its OTLP configuration:
+
+   ```yaml
+   otlp:
+     promote_resource_attributes:
+       - k8s.cluster.name
+       - k8s.namespace.name
+   ```
+
+   The series then carry `k8s_cluster_name` and `k8s_namespace_name` labels. The local stack already promotes them.
 
 ## Example queries
 
@@ -171,6 +205,9 @@ sum(last_over_time(gitlab_sync_git_cache_total{result="hit"}[1d])) / sum(last_ov
 # GitLab API requests per second, by instance and status class
 sum by (role, status_class) (rate(gitlab_sync_api_requests_total[5m]))
 
+# Rate-limited GitLab API requests (429), by instance
+sum by (role) (rate(gitlab_sync_api_requests_total{status="429"}[5m]))
+
 # 95th percentile of the API latency, by instance
 histogram_quantile(0.95, sum by (role, le) (rate(gitlab_sync_api_duration_seconds_bucket[5m])))
 
@@ -191,3 +228,75 @@ make otel-down
 ```
 
 The host ports can be changed with `GRAFANA_PORT`, `PROMETHEUS_PORT`, `OTLP_HTTP_PORT` and `OTLP_GRPC_PORT`.
+
+### Grafana dashboards
+
+Two ready-made dashboards live in [`dev/otel/dashboards/`](https://github.com/BoxBoxJason/gitlab-sync/tree/main/dev/otel/dashboards):
+
+| Dashboard | File | Local URL | For |
+|---|---|---|---|
+| gitlab-sync | `gitlab-sync.json` | http://localhost:3030/d/gitlab-sync | Everything about one deployment. |
+| gitlab-sync fleet | `gitlab-sync-fleet.json` | http://localhost:3030/d/gitlab-sync-fleet | An overview of [several deployments](#several-deployments). |
+
+Load them, or update them after a change, into the local Grafana:
+
+```bash
+make otel-dashboard   # loads every dev/otel/dashboards/*.json
+```
+
+The target uses the Grafana dashboard API (`dashboard.grafana.app/v2`), so it needs a Grafana recent enough to serve it, like the one in the local stack. Set `GRAFANA_URL` to load them into another Grafana.
+
+#### gitlab-sync dashboard
+
+| Tab | Sub-tabs | Shows |
+|---|---|---|
+| Overview | | The last run: status, duration, projects mirrored and failed, blocking and non-blocking errors. Also the number of runs and their success rate, and the GitLab API totals: requests, error rate, retries, p95 latency. |
+| Runs | Status, Duration, Versions | Run status and duration over time, failed runs per day, the fastest, average, p95 and slowest runs, and the run duration by gitlab-sync version. |
+| Mirroring | Objects, Failures, Phases | [Mirrored objects](#mirrored-objects) per run, by kind and by operation, objects created and deleted per run, and a totals table (`entity` × `operation` × `outcome`). Failed objects and errors per run, and the failure ratio by kind. Phase durations stacked per run, the average and slowest phase, and each phase's share of the run time. |
+| GitLab API | Traffic, Latency, Errors, Retries | Requests per run by instance, method and status class, throughput, latency percentiles and heatmap, failed requests, and retries. |
+| Git | Pushes, Cache | [Git](#git) pushes per run by outcome, push p50/p95/p99 and heatmap, push time per run. Cache lookups per run by result, hit ratio, and invalid entries. |
+
+Its variables filter the panels: `Data source`, `Cluster`, `Namespace`, `Job` (the `service.name`), `Version`, `Instance` (`role`), `Object` (`entity`, on the Mirroring tab), `Method` and `Run window`. `Cluster` and `Namespace` set to All also match deployments without Kubernetes attributes. The **Fleet** link in the header opens the fleet dashboard.
+
+#### Fleet dashboard
+
+A single page giving an overview of every tenant (cluster × namespace × job). It needs the `k8s.cluster.name` and `k8s.namespace.name` attributes described in [Several deployments](#several-deployments). Deployments without them are left out.
+
+- **Stats:**
+  - The number of tenants, split into healthy (last run `0`), warnings (last run `2`), failing (last run `1`) and stale (no run for longer than `Stale after`).
+  - The number of runs, the success rate, and the projects mirrored (the sum of each tenant's last run).
+- **Tenants table:** one row per tenant, failing tenants first, then stale ones, then the ones with warnings.
+  - Columns: cluster, namespace, version, last run, time since the last run, duration, runs, success rate, projects, failed projects, blocking errors of the last run, API errors and API p95 latency.
+  - Clicking a namespace opens the gitlab-sync dashboard filtered on that tenant.
+- **Graphs:** one series per tenant for the run status timeline, run duration, success rate, projects mirrored per run, blocking errors per run, API error ratio and API p95 latency.
+
+Its variables are `Data source`, `Cluster`, `Namespace`, `Job`, `Run window` and `Stale after`.
+
+### Simulated data
+
+To work on the dashboard without running hundreds of real mirrorings, load a few days of simulated, but realistic, runs into the local Prometheus:
+
+```bash
+make otel-backfill                                   # 7 days, one run per hour
+make otel-backfill BACKFILL_ARGS="--days 3 --interval 15"
+./dev/otel/backfill.py --help                        # all the options
+```
+
+The script only needs Python 3. It writes the series in the OpenMetrics format, converts them with `promtool` inside the stack container, and Prometheus picks them up within a minute. The simulated series use the same names and labels as the real exporter, and each run's counters start from zero like a real run's. It generates every metric on this page. The errors match each run's status, and the phase durations add up to the run duration. Keep `--days` under the 15 days the local Prometheus retains. Pass `--seed` to get the same data every time.
+
+To work on the fleet dashboard, generate a fleet of tenants instead of a single deployment:
+
+```bash
+make otel-backfill BACKFILL_ARGS=--fleet
+```
+
+This creates 8 tenants over 3 clusters (`prod-eu-west-1`, `prod-us-east-1`, `staging`), running every 15 minutes to every 2 hours. A few of them are set up to show the interesting states:
+
+| Tenant | Behaviour |
+|---|---|
+| `prod-eu-west-1/data` | Flaky. |
+| `prod-us-east-1/security` | Failing for the last 10 hours. |
+| `staging/sandbox` | Stale: stopped 40 hours ago. |
+| `prod-us-east-1/web` | Still on an older version (`v1.4.2`). |
+
+Loading the same runs twice would count each of them twice. Before loading, the script asks Prometheus (`--prometheus`, `http://localhost:9091` by default) whether the same tenants already have runs in that time window, and refuses if they do. Pass `--force` to load anyway.

@@ -119,11 +119,11 @@ func TestAPIInstrumentationCountsAttemptsAndRetries(t *testing.T) {
 	role := attribute.String(AttrRole, "destination")
 	get := attribute.String(AttrMethod, http.MethodGet)
 
-	if got := counterValue(t, metrics, "gitlab_sync.api.requests", role, get, attribute.String(AttrStatusClass, "5xx")); got != 1 {
+	if got := counterValue(t, metrics, "gitlab_sync.api.requests", role, get, attribute.String(AttrStatus, "503"), attribute.String(AttrStatusClass, "5xx")); got != 1 {
 		t.Errorf("5xx requests = %d, want 1", got)
 	}
 
-	if got := counterValue(t, metrics, "gitlab_sync.api.requests", role, get, attribute.String(AttrStatusClass, "2xx")); got != 1 {
+	if got := counterValue(t, metrics, "gitlab_sync.api.requests", role, get, attribute.String(AttrStatus, "200"), attribute.String(AttrStatusClass, "2xx")); got != 1 {
 		t.Errorf("2xx requests = %d, want 1", got)
 	}
 
@@ -167,7 +167,7 @@ func TestAPIInstrumentationRecordsTransportErrors(t *testing.T) {
 
 	metrics := collect(t, reader)
 
-	if got := counterValue(t, metrics, "gitlab_sync.api.requests", attribute.String(AttrRole, "source"), attribute.String(AttrStatusClass, statusClassError)); got != 1 {
+	if got := counterValue(t, metrics, "gitlab_sync.api.requests", attribute.String(AttrRole, "source"), attribute.String(AttrStatus, statusClassError), attribute.String(AttrStatusClass, statusClassError)); got != 1 {
 		t.Errorf("error requests = %d, want 1", got)
 	}
 

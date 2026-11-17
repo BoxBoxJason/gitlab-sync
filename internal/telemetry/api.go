@@ -19,6 +19,9 @@ const (
 	// AttrStatusClass is the HTTP response status class (2xx, 4xx, ...), or
 	// "error" when no response was received.
 	AttrStatusClass = "status_class"
+	// AttrStatus is the HTTP response status code ("200", "404", ...), or
+	// "error" when no response was received.
+	AttrStatus = "status"
 
 	statusClassError = "error"
 	statusClassSize  = 100
@@ -80,12 +83,18 @@ func (a *APIInstrumentation) Interceptor(next http.RoundTripper) http.RoundTripp
 		start := time.Now()
 		resp, err := next.RoundTrip(req)
 
-		statusClass := statusClassError
+		status, statusClass := statusClassError, statusClassError
 		if err == nil && resp != nil {
+			status = strconv.Itoa(resp.StatusCode)
 			statusClass = StatusClass(resp.StatusCode)
 		}
 
-		attrs := metric.WithAttributes(a.role, attribute.String(AttrMethod, req.Method), attribute.String(AttrStatusClass, statusClass))
+		attrs := metric.WithAttributes(
+			a.role,
+			attribute.String(AttrMethod, req.Method),
+			attribute.String(AttrStatus, status),
+			attribute.String(AttrStatusClass, statusClass),
+		)
 		a.requests.Add(req.Context(), 1, attrs)
 		a.duration.Record(req.Context(), time.Since(start).Seconds(), attrs)
 

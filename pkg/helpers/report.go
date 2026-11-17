@@ -3,6 +3,8 @@ package helpers
 import (
 	"sync/atomic"
 
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
+
 	"go.uber.org/zap"
 )
 
@@ -40,6 +42,8 @@ func Report(err error) {
 			break
 		}
 	}
+
+	telemetry.RecordError(Severity(severity) == SeverityBlocking)
 
 	if Severity(severity) == SeverityBlocking {
 		zap.L().Error(err.Error())

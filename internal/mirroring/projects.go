@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
@@ -295,9 +297,14 @@ func (destinationGitlab *GitlabInstance) CreateProject(sourceProjectPath string,
 
 	// Check if the project already exists in the destination GitLab instance
 	// If it does not exist, create it
+	operation := telemetry.OperationSync
+
 	if destinationProject == nil {
+		operation = telemetry.OperationCreate
+
 		destinationProject, err = destinationGitlab.CreateProjectFromSource(sourceProject, projectCreationOptions)
 		if err != nil || destinationProject == nil {
+			telemetry.RecordEntity(telemetry.EntityProject, operation, false)
 			helpers.ReportBlocking(fmt.Errorf("failed to create project %s in destination GitLab instance: %w", destinationProjectPath, err))
 
 			return nil
@@ -316,7 +323,8 @@ func (destinationGitlab *GitlabInstance) CreateProject(sourceProjectPath string,
 	}
 
 	// If the project already exists, update it with the source project details
-	destinationGitlab.UpdateProjectFromSource(sourceGitlab, sourceProject, destinationProject, projectCreationOptions)
+	ok := destinationGitlab.UpdateProjectFromSource(sourceGitlab, sourceProject, destinationProject, projectCreationOptions)
+	telemetry.RecordEntity(telemetry.EntityProject, operation, ok)
 
 	zap.L().Info("Completed project mirroring", zap.String(ROLE_SOURCE, sourceProjectPath), zap.String(ROLE_DESTINATION, destinationProjectPath))
 
@@ -382,6 +390,7 @@ func enqueueOptionalProjectTasks(
 	destinationProject *gitlab.Project,
 	copyOptions *utils.MirroringOptions,
 	waitGroup *sync.WaitGroup,
+	report func(error),
 ) {
 	if helpers.Deref(copyOptions.CI_CD_Catalog, false) {
 		waitGroup.Add(1)
@@ -389,7 +398,7 @@ func enqueueOptionalProjectTasks(
 		go func(project *gitlab.Project) {
 			defer waitGroup.Done()
 
-			helpers.Report(destinationGitlabInstance.AddProjectToCICDCatalog(project))
+			report(destinationGitlabInstance.AddProjectToCICDCatalog(project))
 		}(destinationProject)
 	}
 
@@ -412,7 +421,10 @@ func enqueueOptionalProjectTasks(
 // It enables the project mirror pull, copies the project avatar, and optionally adds the project to the CI/CD catalog.
 // It also mirrors releases if the option is set.
 // The function uses goroutines to perform these tasks concurrently and waits for all of them to finish.
-func (destinationGitlabInstance *GitlabInstance) UpdateProjectFromSource(sourceGitlabInstance *GitlabInstance, sourceProject, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) {
+//
+// It returns false when one of the project's own tasks (git, attributes, avatar,
+// CI/CD catalog) failed. Releases and issues are accounted for separately.
+func (destinationGitlabInstance *GitlabInstance) UpdateProjectFromSource(sourceGitlabInstance *GitlabInstance, sourceProject, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) bool {
 	// Immediately capture pointers in local variables to avoid any late overrides
 	srcProj := sourceProject
 
@@ -420,7 +432,17 @@ func (destinationGitlabInstance *GitlabInstance) UpdateProjectFromSource(sourceG
 	if srcProj == nil || dstProj == nil {
 		helpers.Report(errors.New("source or destination project is nil"))
 
-		return
+		return false
+	}
+
+	// report reports err like helpers.Report and remembers the project failed.
+	var failed atomic.Bool
+
+	report := func(err error) {
+		if err != nil {
+			failed.Store(true)
+			helpers.Report(err)
+		}
 	}
 
 	releasesOptions := destinationGitlabInstance.releasesMirroringOptions(dstProj, copyOptions)
@@ -428,21 +450,21 @@ func (destinationGitlabInstance *GitlabInstance) UpdateProjectFromSource(sourceG
 	waitGroup := sync.WaitGroup{}
 	waitGroup.Add(updateProjectBaseTasks)
 
-	destinationGitlabInstance.mirrorProjectGitFirst(sourceGitlabInstance, srcProj, dstProj, copyOptions)
+	report(destinationGitlabInstance.mirrorProjectGitFirst(sourceGitlabInstance, srcProj, dstProj, copyOptions))
 
 	go func(sourceProj, destinationProj *gitlab.Project) {
 		defer waitGroup.Done()
 
-		helpers.Report(destinationGitlabInstance.SyncProjectAttributes(sourceProj, destinationProj, copyOptions))
+		report(destinationGitlabInstance.SyncProjectAttributes(sourceProj, destinationProj, copyOptions))
 	}(srcProj, dstProj)
 
 	go func(sourceProj, destinationProj *gitlab.Project) {
 		defer waitGroup.Done()
 
-		helpers.Report(sourceGitlabInstance.CopyProjectAvatar(destinationGitlabInstance, destinationProj, sourceProj))
+		report(sourceGitlabInstance.CopyProjectAvatar(destinationGitlabInstance, destinationProj, sourceProj))
 	}(srcProj, dstProj)
 
-	enqueueOptionalProjectTasks(destinationGitlabInstance, sourceGitlabInstance, srcProj, dstProj, copyOptions, &waitGroup)
+	enqueueOptionalProjectTasks(destinationGitlabInstance, sourceGitlabInstance, srcProj, dstProj, copyOptions, &waitGroup, report)
 
 	// Wait for git duplication and the attribute/avatar/optional tasks to finish
 	waitGroup.Wait()
@@ -450,6 +472,8 @@ func (destinationGitlabInstance *GitlabInstance) UpdateProjectFromSource(sourceG
 	if helpers.Deref(copyOptions.MirrorReleases, false) {
 		destinationGitlabInstance.MirrorReleases(sourceGitlabInstance, srcProj, dstProj, releasesOptions)
 	}
+
+	return !failed.Load()
 }
 
 // releasesMirroringOptions prepares the release mirroring of destinationProject. It
@@ -478,7 +502,7 @@ func (destinationGitlabInstance *GitlabInstance) releasesMirroringOptions(destin
 }
 
 // mirrorProjectGitFirst runs the git side of the mirroring before any project
-// attribute is touched, reporting any failure straight away.
+// attribute is touched, and returns its failure for the caller to report.
 //
 // The ordering matters: on a freshly created project the repository is still empty
 // and GitLab refuses a default_branch pointing at a branch that does not exist yet.
@@ -490,13 +514,13 @@ func (destinationGitlabInstance *GitlabInstance) mirrorProjectGitFirst(
 	sourceProject *gitlab.Project,
 	destinationProject *gitlab.Project,
 	copyOptions *utils.MirroringOptions,
-) {
+) error {
 	err := destinationGitlabInstance.MirrorProjectGit(sourceGitlabInstance, sourceProject, destinationProject, copyOptions)
 	if err == nil {
-		return
+		return nil
 	}
 
-	helpers.Report(fmt.Errorf("failed to mirror project repository %s -> %s: %w", sourceProject.PathWithNamespace, destinationProject.PathWithNamespace, err))
+	return fmt.Errorf("failed to mirror project repository %s -> %s: %w", sourceProject.PathWithNamespace, destinationProject.PathWithNamespace, err)
 }
 
 // SyncProjectAttributes updates the destination project with settings from the source project.

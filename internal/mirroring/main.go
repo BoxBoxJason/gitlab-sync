@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
@@ -140,18 +141,48 @@ func fetchInitialData(
 func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) {
 	zap.L().Info("Starting GitLab mirroring process", zap.String(ROLE_SOURCE, gitlabMirrorArgs.SourceGitlabURL), zap.String(ROLE_DESTINATION, gitlabMirrorArgs.DestinationGitlabURL))
 
+	sourceGitlabInstance, destinationGitlabInstance, ok := prepareMirroring(gitlabMirrorArgs)
+	if !ok {
+		return
+	}
+
+	// In case of dry run, simply print the groups and projects that would be created or updated
+	if gitlabMirrorArgs.DryRun {
+		telemetry.RunPhase(telemetry.PhaseDryRun, func() {
+			destinationGitlabInstance.DryRun(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
+		})
+
+		return
+	}
+
+	// Create groups and projects in the destination GitLab instance (Groups must be created before projects)
+	telemetry.RunPhase(telemetry.PhaseGroups, func() {
+		destinationGitlabInstance.CreateGroups(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
+	})
+
+	telemetry.RunPhase(telemetry.PhaseProjects, func() {
+		destinationGitlabInstance.CreateProjects(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
+	})
+}
+
+// prepareMirroring connects to both instances and fetches the groups and
+// projects to mirror (the fetch phase). It returns false when a blocking error
+// was reported and the mirroring cannot go on.
+func prepareMirroring(gitlabMirrorArgs *utils.ParserArgs) (*GitlabInstance, *GitlabInstance, bool) {
+	defer telemetry.TimePhase(telemetry.PhaseFetch)()
+
 	sourceGitlabInstance, destinationGitlabInstance, err := createMirroringInstances(gitlabMirrorArgs)
 	if err != nil {
 		helpers.ReportBlocking(err)
 
-		return
+		return nil, nil, false
 	}
 
 	err = setPullMirrorAvailability(destinationGitlabInstance, gitlabMirrorArgs)
 	if err != nil {
 		helpers.ReportBlocking(err)
 
-		return
+		return nil, nil, false
 	}
 
 	// Done before the (long) initial fetch so an unusable cache directory is
@@ -161,7 +192,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) {
 		if err != nil {
 			helpers.ReportBlocking(err)
 
-			return
+			return nil, nil, false
 		}
 	}
 
@@ -178,17 +209,7 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) {
 
 	zap.L().Debug("Fully Computed Mirror Mapping", zap.Any("MirrorMapping", gitlabMirrorArgs.MirrorMapping))
 
-	// In case of dry run, simply print the groups and projects that would be created or updated
-	if gitlabMirrorArgs.DryRun {
-		destinationGitlabInstance.DryRun(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
-
-		return
-	}
-
-	// Create groups and projects in the destination GitLab instance (Groups must be created before projects)
-	destinationGitlabInstance.CreateGroups(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
-
-	destinationGitlabInstance.CreateProjects(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
+	return sourceGitlabInstance, destinationGitlabInstance, true
 }
 
 // processFilters processes the filters for groups and projects.

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
@@ -70,6 +71,8 @@ func (destinationGitlab *GitlabInstance) CreateGroup(destinationGroupPath string
 		zap.L().Debug("Group not found, creating new group in GitLab Instance", zap.String("group", destinationGroupPath), zap.String(ROLE, ROLE_DESTINATION))
 
 		createdGroup, err := destinationGitlab.CreateGroupFromSource(sourceGroup, groupCreationOptions)
+		telemetry.RecordEntity(telemetry.EntityGroup, telemetry.OperationCreate, err == nil)
+
 		if err != nil {
 			helpers.ReportBlocking(fmt.Errorf("failed to create group %s in destination GitLab instance: %w", destinationGroupPath, err))
 
@@ -85,6 +88,7 @@ func (destinationGitlab *GitlabInstance) CreateGroup(destinationGroupPath string
 	}
 
 	zap.L().Debug("Group already exists, skipping creation", zap.String("group", destinationGroupPath))
+	telemetry.RecordEntity(telemetry.EntityGroup, telemetry.OperationSkip, true)
 
 	return destinationGroup
 }

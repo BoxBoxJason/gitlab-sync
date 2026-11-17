@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
+
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -278,12 +280,17 @@ func sanitizePathSegment(segment string) string {
 // cache is an optimisation, never a source of truth.
 func syncCachedRepo(repoPath, sourceURL string, pullAuth transport.AuthMethod) (*git.Repository, error) {
 	repo := openCachedRepo(repoPath, sourceURL)
-	if repo != nil {
+	if repo == nil {
+		telemetry.RecordGitCache(cacheMissOrInvalid(repoPath))
+	} else {
 		err := fetchMirror(repo, sourceURL, pullAuth)
 		if err == nil {
+			telemetry.RecordGitCache(telemetry.CacheHit)
+
 			return repo, nil
 		}
 
+		telemetry.RecordGitCache(telemetry.CacheInvalid)
 		zap.L().Warn("Failed to refresh the cached repository, cloning it again", zap.String("path", repoPath), zap.String("sourceURL", sourceURL), zap.Error(err))
 	}
 
@@ -295,6 +302,17 @@ func syncCachedRepo(repoPath, sourceURL string, pullAuth transport.AuthMethod) (
 	}
 
 	return cloneCachedRepo(repoPath, sourceURL, pullAuth)
+}
+
+// cacheMissOrInvalid tells, for a cache entry that could not be opened, whether
+// nothing was cached at repoPath yet (a miss) or something unusable was.
+func cacheMissOrInvalid(repoPath string) string {
+	_, err := os.Stat(repoPath)
+	if errors.Is(err, fs.ErrNotExist) {
+		return telemetry.CacheMiss
+	}
+
+	return telemetry.CacheInvalid
 }
 
 // openCachedRepo opens the bare mirror at repoPath, returning nil when the cache

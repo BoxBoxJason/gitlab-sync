@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
@@ -824,7 +825,16 @@ func (destinationGitlab *GitlabInstance) MirrorReleaseAssets(sourceGitlab *Gitla
 	}
 
 	for _, plan := range planReleaseAssets(sourceRoot, release) {
-		err := destinationGitlab.MirrorReleaseAsset(sourceGitlab, destinationProject, release.TagName, plan, linksByName[plan.Link.Name])
+		existingLink := linksByName[plan.Link.Name]
+
+		operation := telemetry.OperationCreate
+		if existingLink != nil {
+			operation = telemetry.OperationSync
+		}
+
+		err := destinationGitlab.MirrorReleaseAsset(sourceGitlab, destinationProject, release.TagName, plan, existingLink)
+		telemetry.RecordEntity(telemetry.EntityAsset, operation, err == nil)
+
 		if err != nil {
 			helpers.Report(fmt.Errorf("failed to mirror asset %s of release %s in project %s: %w", plan.Link.Name, release.TagName, destinationProject.HTTPURLToRepo, err))
 		}
@@ -835,6 +845,8 @@ func (destinationGitlab *GitlabInstance) MirrorReleaseAssets(sourceGitlab *Gitla
 	// What is left are the destination links the source release does not have.
 	for _, staleLink := range linksByName {
 		err := destinationGitlab.DeleteStaleReleaseAsset(destinationProject, release.TagName, staleLink, referenced)
+		telemetry.RecordEntity(telemetry.EntityAsset, telemetry.OperationDelete, err == nil)
+
 		if err != nil {
 			helpers.Report(fmt.Errorf("failed to delete asset %s of release %s in project %s: %w", staleLink.Name, release.TagName, destinationProject.HTTPURLToRepo, err))
 		}

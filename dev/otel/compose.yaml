@@ -26,6 +26,9 @@ services:
       - "127.0.0.1:${OTLP_GRPC_PORT:-4317}:4317" # OTLP gRPC receiver
       - "127.0.0.1:${OTLP_HTTP_PORT:-4318}:4318" # OTLP HTTP receiver
       - "127.0.0.1:${PROMETHEUS_PORT:-9091}:9090" # Prometheus UI / API (handy to check raw series)
+    environment:
+      # Admin API: lets dev/otel/backfill.py --replace delete simulated series. Local stack only.
+      PROMETHEUS_EXTRA_ARGS: --web.enable-admin-api
     volumes:
       - otel-lgtm-data:/data
     restart: unless-stopped

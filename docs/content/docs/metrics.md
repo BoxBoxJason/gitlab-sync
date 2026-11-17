@@ -253,10 +253,10 @@ The target uses the Grafana dashboard API (`dashboard.grafana.app/v2`), so it ne
 | Overview | | The last run: status, duration, projects mirrored and failed, blocking and non-blocking errors. Also the number of runs and their success rate, and the GitLab API totals: requests, error rate, retries, p95 latency. |
 | Runs | Status, Duration, Versions | Run status and duration over time, failed runs per day, the fastest, average, p95 and slowest runs, and the run duration by gitlab-sync version. |
 | Mirroring | Objects, Failures, Phases | [Mirrored objects](#mirrored-objects) per run, by kind and by operation, objects created and deleted per run, and a totals table (`entity` × `operation` × `outcome`). Failed objects and errors per run, and the failure ratio by kind. Phase durations stacked per run, the average and slowest phase, and each phase's share of the run time. |
-| GitLab API | Traffic, Latency, Errors, Retries | Requests per run by instance, method and status class, throughput, latency percentiles and heatmap, failed requests, and retries. |
+| GitLab API | Traffic, Latency, Errors, Retries | Requests per run by instance, method and status class, requests by status code, throughput, latency percentiles and heatmap, failed requests per run and in a table by status code, retries, and rate-limited (`429`) requests. |
 | Git | Pushes, Cache | [Git](#git) pushes per run by outcome, push p50/p95/p99 and heatmap, push time per run. Cache lookups per run by result, hit ratio, and invalid entries. |
 
-Its variables filter the panels: `Data source`, `Cluster`, `Namespace`, `Job` (the `service.name`), `Version`, `Instance` (`role`), `Object` (`entity`, on the Mirroring tab), `Method` and `Run window`. `Cluster` and `Namespace` set to All also match deployments without Kubernetes attributes. The **Fleet** link in the header opens the fleet dashboard.
+Its variables filter the panels: `Data source`, `Cluster`, `Namespace`, `Job` (the `service.name`), `Version`, `Instance` (`role`), `Object` (`entity`, on the Mirroring tab), `Status` (the HTTP status code of the API calls), `Method` and `Run window`. `Cluster` and `Namespace` set to All also match deployments without Kubernetes attributes. The **Fleet** link in the header opens the fleet dashboard.
 
 #### Fleet dashboard
 
@@ -266,9 +266,9 @@ A single page giving an overview of every tenant (cluster × namespace × job). 
   - The number of tenants, split into healthy (last run `0`), warnings (last run `2`), failing (last run `1`) and stale (no run for longer than `Stale after`).
   - The number of runs, the success rate, and the projects mirrored (the sum of each tenant's last run).
 - **Tenants table:** one row per tenant, failing tenants first, then stale ones, then the ones with warnings.
-  - Columns: cluster, namespace, version, last run, time since the last run, duration, runs, success rate, projects, failed projects, blocking errors of the last run, API errors and API p95 latency.
+  - Columns: cluster, namespace, version, last run, time since the last run, duration, runs, success rate, projects, failed projects, blocking errors of the last run, API errors, API p95 latency, and the share of rate-limited (`429`) API requests.
   - Clicking a namespace opens the gitlab-sync dashboard filtered on that tenant.
-- **Graphs:** one series per tenant for the run status timeline, run duration, success rate, projects mirrored per run, blocking errors per run, API error ratio and API p95 latency.
+- **Graphs:** one series per tenant for the run status timeline, run duration, success rate, projects mirrored per run, blocking errors per run, API error ratio, rate-limited (`429`) requests per run and API p95 latency.
 
 Its variables are `Data source`, `Cluster`, `Namespace`, `Job`, `Run window` and `Stale after`.
 
@@ -299,4 +299,6 @@ This creates 8 tenants over 3 clusters (`prod-eu-west-1`, `prod-us-east-1`, `sta
 | `staging/sandbox` | Stale: stopped 40 hours ago. |
 | `prod-us-east-1/web` | Still on an older version (`v1.4.2`). |
 
-Loading the same runs twice would count each of them twice. Before loading, the script asks Prometheus (`--prometheus`, `http://localhost:9091` by default) whether the same tenants already have runs in that time window, and refuses if they do. Pass `--force` to load anyway.
+Loading the same runs twice would count each of them twice. Before loading, the script asks Prometheus (`--prometheus`, `http://localhost:9091` by default) whether the same tenants already have runs in that time window, and refuses if they do. Pass `--force` to load anyway, or `--replace` to first delete the simulated series of the same tenants, for example after a change to the simulation. `--replace` only matches the versions the simulation uses (`v1.4.2`, `v1.5.0`, `v1.6.0-rc.1`), so real runs are kept. It needs the Prometheus admin API, which the local stack enables; recreate an older stack with `make otel-up`.
+
+The simulated API requests carry a `status` code consistent with their class: mostly `404` and `403` for failed lookups, `409` for conflicts, `429` when GitLab rate limits the run (more during office hours and the incident), and `502`/`503` during the incident.

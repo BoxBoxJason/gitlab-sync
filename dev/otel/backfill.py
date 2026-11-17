@@ -10,8 +10,8 @@ The series match what the OTLP receiver produces from the real exporter
 
   gitlab_sync_run_duration_seconds   gauge, one sample at the end of each run
   gitlab_sync_run_status             gauge, exit code (0 OK, 1 blocking, 2 non-blocking)
-  gitlab_sync_api_requests_total     counter {role, method, status_class}
-  gitlab_sync_api_duration_seconds   classic histogram {role, method, status_class}
+  gitlab_sync_api_requests_total     counter {role, method, status, status_class}
+  gitlab_sync_api_duration_seconds   classic histogram {role, method, status, status_class}
   gitlab_sync_api_retries_total      counter {role}
   gitlab_sync_entities_total         counter {entity, operation, outcome}
   gitlab_sync_errors_total           counter {severity}
@@ -30,7 +30,9 @@ directory (they are picked up at the next compaction cycle, within a minute).
   dev/otel/backfill.py --output /tmp/x.om    # only write the OpenMetrics file
 
 Loading the same tenants twice over the same hours would count their runs twice,
-so the script first asks Prometheus and refuses (--force to override).
+so the script first asks Prometheus and refuses (--force to override). After a change
+to the simulation, --replace deletes the simulated series first (real runs, with
+other service versions, are kept).
 
 Only the Python standard library is used.
 """
@@ -47,6 +49,8 @@ import sys
 import tempfile
 import time
 import json
+import re
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections import defaultdict
@@ -79,9 +83,9 @@ class Run:
     job: str = "gitlab-sync"
     # Kubernetes resource attributes (k8s_cluster_name, k8s_namespace_name), empty outside a fleet
     k8s: dict = field(default_factory=dict)
-    # (role, method, status_class) -> request count
+    # (role, method, status_class, status) -> request count
     requests: dict = field(default_factory=dict)
-    # (role, method, status_class) -> (cumulative bucket counts, sum)
+    # (role, method, status_class, status) -> (cumulative bucket counts, sum)
     latency: dict = field(default_factory=dict)
     # role -> retry count
     retries: dict = field(default_factory=dict)
@@ -149,6 +153,25 @@ def fleet_tenants(args: argparse.Namespace) -> list[Tenant]:
 def default_tenant(args: argparse.Namespace) -> Tenant:
     return Tenant(job=args.job, seed=args.seed, interval=args.interval, requests=args.requests,
                   old_version=args.old_version, new_version=args.new_version)
+
+
+def split_codes(status_class: str, method: str, count: int, busy: bool, incident: bool) -> dict:
+    """Split a status class into plausible HTTP status codes (fixed shares: no random draw)."""
+    if status_class == "error":
+        shares = {"error": 1}
+    elif status_class == "2xx":
+        shares = {"POST": {"201": 1}, "DELETE": {"204": 1}}.get(method, {"200": 1})
+    elif status_class == "5xx":
+        shares = {"502": 0.5, "503": 0.4, "500": 0.1} if incident else {"500": 0.3, "502": 0.4, "503": 0.3}
+    else:  # 4xx: lookups of missing objects, conflicts, permissions, and rate limiting when GitLab is busy
+        rate_limited = 0.4 if incident else (0.15 if busy else 0.05)
+        base = {"GET": {"404": 0.85, "403": 0.15}, "POST": {"409": 0.7, "400": 0.3},
+                "PUT": {"404": 0.5, "409": 0.5}, "DELETE": {"404": 1}}[method]
+        shares = {code: share * (1 - rate_limited) for code, share in base.items()} | {"429": rate_limited}
+    codes = {code: int(count * share) for code, share in shares.items()}
+    first = next(iter(codes))
+    codes[first] += count - sum(codes.values())  # rounding leftovers
+    return {code: n for code, n in codes.items() if n > 0}
 
 
 def lognormal_cdf(x: float, median: float, sigma: float) -> float:
@@ -259,13 +282,15 @@ def simulate(args: argparse.Namespace, tenant: Tenant) -> list[Run]:
                     med *= 3
                 elif status_class == "error":
                     med = 30  # transport timeouts
-                key = (role, method, status_class)
-                run.requests[key] = count
-                run.latency[key] = histogram(count, med)
-                total_seconds += run.latency[key][1]
+                for code, n in split_codes(status_class, method, count, busy > 1, incident).items():
+                    key = (role, method, status_class, code)
+                    run.requests[key] = n
+                    run.latency[key] = histogram(n, med)
+                    total_seconds += run.latency[key][1]
 
         for role in ("source", "destination"):
-            failed = sum(c for (r, _, sc), c in run.requests.items() if r == role and sc in ("5xx", "error"))
+            # retryablehttp retries 429, 5xx and connection errors.
+            failed = sum(c for (r, _, sc, code), c in run.requests.items() if r == role and (sc in ("5xx", "error") or code == "429"))
             run.retries[role] = int(failed * rng.uniform(0.8, 1.0))
 
         # Requests run with some concurrency, plus git work not seen by the API metrics.
@@ -337,8 +362,8 @@ def render(runs: list[Run], args: argparse.Namespace) -> str:
     out.append("# TYPE gitlab_sync_api_requests counter")
     by_series = defaultdict(list)
     for run in runs:
-        for (role, method, sc), count in run.requests.items():
-            labels = fmt_labels({**resource(run), "method": method, "role": role, "status_class": sc})
+        for (role, method, sc, code), count in run.requests.items():
+            labels = fmt_labels({**resource(run), "method": method, "role": role, "status": code, "status_class": sc})
             for ts in run.export_times():
                 by_series[labels].append(f"gitlab_sync_api_requests_total{labels} {round(count * progress(run, ts))} {ts:.3f}")
     for lines in by_series.values():
@@ -360,8 +385,8 @@ def render(runs: list[Run], args: argparse.Namespace) -> str:
     # receiver stores le="1", and mixed spellings would split the buckets.
     families: dict = {"bucket": defaultdict(list), "count": defaultdict(list), "sum": defaultdict(list)}
     for run in runs:
-        for (role, method, sc), (cumulative, total) in run.latency.items():
-            base = {**resource(run), "method": method, "role": role, "status_class": sc}
+        for (role, method, sc, code), (cumulative, total) in run.latency.items():
+            base = {**resource(run), "method": method, "role": role, "status": code, "status_class": sc}
             key = fmt_labels(base)
             for ts in run.export_times():
                 p = progress(run, ts)
@@ -437,6 +462,29 @@ def sh(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True)
 
 
+def replace(runs: list[Run], args: argparse.Namespace) -> None:
+    """Delete the simulated series of these tenants (needs the Prometheus admin API).
+
+    Only the versions the simulation uses are matched, so real runs of the same
+    tenant (service.version "dev", for example) are kept.
+    """
+    tenants = {(r.job, tuple(sorted(r.k8s.items()))) for r in runs}
+    # Regex-escaped, then escaped again for the PromQL string literal.
+    versions = "|".join(sorted({re.escape(r.version) for r in runs})).replace("\\", "\\\\")
+    for job, k8s in sorted(tenants):
+        k8s = dict(k8s) or {"k8s_cluster_name": "", "k8s_namespace_name": ""}
+        selector = fmt_labels({"job": job, **k8s})[:-1] + f',service_version=~"{versions}",__name__=~"gitlab_sync_.+|target_info"}}'
+        url = f"{args.prometheus}/api/v1/admin/tsdb/delete_series?" + urllib.parse.urlencode({"match[]": selector})
+        print(f"Deleting {selector}", file=sys.stderr)
+        try:
+            urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=60).close()
+        except urllib.error.HTTPError as err:
+            if err.code in (404, 405):
+                sys.exit("The Prometheus admin API is disabled: recreate the stack with `make otel-up` (dev/otel/compose.yaml enables it).")
+            raise
+    urllib.request.urlopen(urllib.request.Request(f"{args.prometheus}/api/v1/admin/tsdb/clean_tombstones", method="POST"), timeout=300).close()
+
+
 def already_loaded(runs: list[Run], args: argparse.Namespace) -> list[str]:
     """Tenants that already have runs in the time window: loading again would count them twice."""
     tenants = {(r.job, tuple(sorted(r.k8s.items()))) for r in runs}
@@ -490,6 +538,8 @@ def main() -> int:
     parser.add_argument("--prometheus", default=f"http://localhost:{os.environ.get('PROMETHEUS_PORT', '9091')}",
                         help="Prometheus checked for already loaded data (default: http://localhost:$PROMETHEUS_PORT or 9091)")
     parser.add_argument("--force", action="store_true", help="load even when the same tenants already have data in the time window")
+    parser.add_argument("--replace", action="store_true",
+                        help="first delete the simulated series of the same tenants (any time), e.g. after changing the simulation")
     args = parser.parse_args()
 
     tenants = fleet_tenants(args) if args.fleet else [default_tenant(args)]
@@ -504,11 +554,13 @@ def main() -> int:
             f.write(data)
         return 0
 
+    if args.replace:
+        replace(runs, args)
     if not args.force:
         loaded = already_loaded(runs, args)
         if loaded:
             print("These tenants already have runs in the time window; loading them again would count every run twice:",
-                  *loaded, "Change --end-offset/--days/--seed, or pass --force.", sep="\n  ", file=sys.stderr)
+                  *loaded, "Pass --replace to swap them for the new simulation, or --force.", sep="\n  ", file=sys.stderr)
             return 1
 
     with tempfile.NamedTemporaryFile("w", suffix=".om", delete=False, encoding="utf-8") as f:

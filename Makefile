@@ -86,5 +86,22 @@ otel-down:
 otel-logs:
 	$(OTEL_COMPOSE) logs -f
 
+# Load a week of simulated runs into the local Prometheus (see dev/otel/backfill.py --help).
+otel-backfill:
+	DOCKER_ENGINE=$(DOCKER_ENGINE) ./dev/otel/backfill.py $(BACKFILL_ARGS)
+
+# Create or update the gitlab-sync dashboards (one per dev/otel/dashboards/<name>.json) in the local Grafana.
+GRAFANA_URL ?= http://localhost:$${GRAFANA_PORT:-3030}
+DASHBOARD_API = $(GRAFANA_URL)/apis/dashboard.grafana.app/v2/namespaces/default/dashboards
+
+otel-dashboard:
+	@for file in dev/otel/dashboards/*.json; do \
+		name=$$(basename $$file .json); \
+		curl -sf -o /dev/null -X PUT -H 'Content-Type: application/json' --data @$$file $(DASHBOARD_API)/$$name \
+			|| curl -sf -o /dev/null -X POST -H 'Content-Type: application/json' --data @$$file $(DASHBOARD_API) \
+			|| { echo "Failed to load $$file"; exit 1; }; \
+		echo "Dashboard: $(GRAFANA_URL)/d/$$name"; \
+	done
+
 # Phony targets
-.PHONY: deps build lint dependency-check test vuln docs-generate docs docs-serve package otel-up otel-down otel-logs
+.PHONY: deps build lint dependency-check test vuln docs-generate docs docs-serve package otel-up otel-down otel-logs otel-backfill otel-dashboard

@@ -5,6 +5,8 @@
 #
 #   make otel-up     # start the stack
 #   make otel-down   # stop it (data is kept in the otel-lgtm-data volume)
+#   make otel-dashboard  # create/update the gitlab-sync dashboard (dashboards/gitlab-sync.json)
+#   make otel-backfill   # load a week of simulated runs (BACKFILL_ARGS="--days 3 --interval 15")
 #
 # Then point gitlab-sync at it:
 #   export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318

@@ -248,6 +248,10 @@ The target uses the Grafana dashboard API (`dashboard.grafana.app/v2`), so it ne
 
 #### gitlab-sync dashboard
 
+{{< image "images/dashboard-gitlab-sync.png" "The Overview tab of the gitlab-sync dashboard, on a week of simulated runs: last run status and duration, success rate, projects mirrored, errors, GitLab API totals, and the run status timeline." >}}
+
+The Overview tab, on a week of [simulated runs](#simulated-data).
+
 | Tab | Sub-tabs | Shows |
 |---|---|---|
 | Overview | | The last run: status, duration, projects mirrored and failed, blocking and non-blocking errors. Also the number of runs and their success rate, and the GitLab API totals: requests, error rate, retries, p95 latency. |

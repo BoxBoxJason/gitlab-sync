@@ -28,7 +28,7 @@ const (
 )
 
 // envVarPattern finds the environment variables read by the CLI definition.
-var envVarPattern = regexp.MustCompile(`(?:os\.Getenv|envString|envDuration)\("([A-Z][A-Z0-9_]*)"`)
+var envVarPattern = regexp.MustCompile(`(?:os\.Getenv|envString|envDuration|envBool)\("([A-Z][A-Z0-9_]*)"`)
 
 // cliEnvVars returns the environment variables main.go reads.
 func cliEnvVars(t *testing.T) []string {

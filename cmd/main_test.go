@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	"go.uber.org/zap"
 )
@@ -328,4 +329,59 @@ func TestUserAgentFlag(t *testing.T) {
 			t.Errorf("expected %q, got %q", "nightly/2.0", args.UserAgent)
 		}
 	})
+}
+
+func TestResolveExitCode(t *testing.T) {
+	tests := []struct {
+		name                  string
+		code                  int
+		exitZeroOnNonBlocking bool
+		want                  int
+	}{
+		{"ok", helpers.ExitOK, false, helpers.ExitOK},
+		{"ok with override", helpers.ExitOK, true, helpers.ExitOK},
+		{"blocking", helpers.ExitBlocking, false, helpers.ExitBlocking},
+		{"blocking with override", helpers.ExitBlocking, true, helpers.ExitBlocking},
+		{"non-blocking", helpers.ExitNonBlocking, false, helpers.ExitNonBlocking},
+		{"non-blocking with override", helpers.ExitNonBlocking, true, helpers.ExitOK},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := resolveExitCode(test.code, test.exitZeroOnNonBlocking); got != test.want {
+				t.Errorf("resolveExitCode(%d, %v) = %d, want %d", test.code, test.exitZeroOnNonBlocking, got, test.want)
+			}
+		})
+	}
+}
+
+func TestEnvBool(t *testing.T) {
+	const name = "GITLAB_SYNC_TEST_ENV_BOOL"
+
+	tests := []struct {
+		value        string
+		defaultValue bool
+		want         bool
+	}{
+		{"", false, false},
+		{"", true, true},
+		{"  ", false, false},
+		{"true", false, true},
+		{"1", false, true},
+		{"false", true, false},
+		{"0", true, false},
+		{" true ", false, true},
+		{"nonsense", false, false},
+		{"nonsense", true, true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.value, func(t *testing.T) {
+			t.Setenv(name, test.value)
+
+			if got := envBool(name, test.defaultValue); got != test.want {
+				t.Errorf("envBool(%q, %v) = %v, want %v", test.value, test.defaultValue, got, test.want)
+			}
+		})
+	}
 }

@@ -31,6 +31,7 @@ Flags:
       --destination-token string     Destination GitLab Token
       --destination-url string       Destination GitLab URL
       --dry-run                      Perform a dry run without making any changes
+      --exit-zero-on-non-blocking    Exit with code 0 when only non-blocking errors occurred (blocking errors still exit 1)
   -h, --help                         help for gitlab-sync
       --log-file string              Path to the log file
       --mirror-mapping string        Path to the mirror mapping file

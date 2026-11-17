@@ -53,6 +53,8 @@ type ParserArgs struct {
 	NoPrompt               bool
 	DryRun                 bool
 	SourceGitlabIsBig      bool
+	// ExitZeroOnNonBlocking makes a run that only hit non-blocking errors exit 0.
+	ExitZeroOnNonBlocking bool
 }
 
 // MirroringOptions defines how a project or group should be mirrored

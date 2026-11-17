@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/boxboxjason/gitlab-sync/internal/mirroring"
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
@@ -189,18 +191,43 @@ func executeMirroringCommand(args *utils.ParserArgs, mirrorMappingPath, logFile 
 
 	args.MirrorMapping = mapping
 
+	runMirroring(args)
+}
+
+// runMirroring mirrors the instances described by args, records the run
+// metrics and exits with the code matching the reported errors.
+func runMirroring(args *utils.ParserArgs) {
+	// Metrics are opt-in (OTEL_* env vars) and never change the run outcome.
+	shutdownTelemetry, err := telemetry.Setup(context.Background(), telemetry.Options{
+		Version:        resolveVersion(),
+		SourceURL:      args.SourceGitlabURL,
+		DestinationURL: args.DestinationGitlabURL,
+	})
+	if err != nil {
+		zap.L().Warn("OpenTelemetry metrics disabled", zap.Error(err))
+	}
+
+	startedAt := time.Now()
+
 	// Errors are logged by MirrorGitlabs as they occur; only the resulting
 	// exit code is consulted here.
 	mirroring.MirrorGitlabs(args)
 
-	switch code := helpers.ExitCode(); code {
+	code := helpers.ExitCode()
+	switch code {
 	case helpers.ExitOK:
 		zap.L().Info("Mirroring completed successfully")
 	case helpers.ExitBlocking:
 		zap.L().Error("Mirroring process finished with blocking errors")
-		os.Exit(code)
 	default:
 		zap.L().Warn("Mirroring process finished with non-blocking errors")
+	}
+
+	// Record and flush before exiting: os.Exit skips deferred calls.
+	telemetry.RecordRun(context.Background(), time.Since(startedAt), code)
+	telemetry.Shutdown(shutdownTelemetry)
+
+	if code != helpers.ExitOK {
 		os.Exit(code)
 	}
 }

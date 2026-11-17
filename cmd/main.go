@@ -85,7 +85,7 @@ func buildRootCmd(args *utils.ParserArgs, mirrorMappingPath, logFile *string) *c
 	rootCmd.Flags().StringVar(&args.CacheDir, "cache-dir", strings.TrimSpace(os.Getenv("GITLAB_SYNC_CACHE_DIR")), "Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, empty disables caching)")
 	rootCmd.Flags().DurationVar(&args.CacheMaxAge, "cache-max-age", envDuration("GITLAB_SYNC_CACHE_MAX_AGE", defaultCacheMaxAge), "Delete the cached repositories that have not been synchronized for that long (0 keeps them forever)")
 	rootCmd.Flags().StringVar(&args.UserAgent, "user-agent", envString("GITLAB_SYNC_USER_AGENT", defaultUserAgent()), "User-Agent sent with every GitLab API request")
-	rootCmd.Flags().BoolVar(&args.ExitSuccessOnNonBlocking, "exit-zero-on-non-blocking", envBool("GITLAB_SYNC_EXIT_ZERO_ON_NON_BLOCKING", false), "Exit with code 0 when only non-blocking errors occurred (blocking errors still exit 1)")
+	rootCmd.Flags().BoolVar(&args.ExitSuccessOnNonBlocking, "exit-success-on-non-blocking", envBool("GITLAB_SYNC_EXIT_SUCCESS_ON_NON_BLOCKING", false), "Exit with code 0 when only non-blocking errors occurred (blocking errors still exit 1)")
 	_ = rootCmd.MarkFlagFilename("mirror-mapping", "json")
 	_ = rootCmd.MarkFlagFilename("log-file", "log", "txt")
 	_ = rootCmd.MarkFlagDirname("cache-dir")

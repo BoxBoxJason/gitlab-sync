@@ -23,5 +23,6 @@ It is designed to be used in a CI/CD pipeline to automate the process of keeping
   {{< card link="usage" title="Usage" subtitle="Command line arguments and environment variables." >}}
   {{< card link="mapping" title="Mirror mapping" subtitle="Choose what to synchronize and how." >}}
   {{< card link="freemium" title="Freemium destinations" subtitle="How mirroring works without GitLab Premium, and how to cache clones." >}}
+  {{< card link="metrics" title="Metrics" subtitle="Export run and GitLab API metrics to an OpenTelemetry collector." >}}
   {{< card link="cli-reference" title="CLI reference" subtitle="The generated help output of every command." >}}
 {{< /cards >}}

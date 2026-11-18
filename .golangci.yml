@@ -4,6 +4,9 @@ run:
   timeout: 5m
   modules-download-mode: readonly
   tests: true
+  # The end-to-end harness (test/e2e) is only compiled with this tag.
+  build-tags:
+    - e2e
 
 # Output format to generate checkstyle report (used by CI)
 output:

@@ -29,6 +29,13 @@ const (
 	destinationToken = "destination-token"
 )
 
+// binaryPath is the gitlab-sync binary every scenario runs, built once by
+// TestMain with coverage instrumentation.
+var binaryPath string
+
+// coverDir is where the instrumented binary writes its coverage data.
+var coverDir string
+
 // defaultFlags are the flags every run starts from, in this order. A scenario
 // overrides one by passing the same flag, or drops it with `without`.
 var defaultFlags = []string{"--source-url", "--source-token", "--destination-url", "--destination-token", "--mirror-mapping", "--no-prompt"}
@@ -121,7 +128,7 @@ func (w *world) url(role string) string {
 
 // makeUnreachable gives a role a URL nothing listens on.
 func (w *world) makeUnreachable(role string) error {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		return err
 	}
@@ -279,7 +286,7 @@ func (w *world) execute(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	defer cancel()
 
-	command := exec.CommandContext(ctx, binaryPath, args...)
+	command := exec.CommandContext(ctx, binaryPath, args...) //nolint:gosec // the binary is the one TestMain built
 	command.Dir = w.work
 	command.Env = []string{
 		"PATH=" + os.Getenv("PATH"),

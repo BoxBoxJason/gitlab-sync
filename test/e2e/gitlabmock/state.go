@@ -650,9 +650,7 @@ func (s *Server) Releases(fullPath string) []gitlab.Release {
 func (p *project) releaseView(release *gitlab.Release) gitlab.Release {
 	view := *release
 
-	for _, link := range p.links[release.TagName] {
-		view.Assets.Links = append(view.Assets.Links, link)
-	}
+	view.Assets.Links = append(view.Assets.Links, p.links[release.TagName]...)
 
 	view.Assets.Count = int64(len(view.Assets.Links))
 

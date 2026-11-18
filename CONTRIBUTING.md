@@ -23,6 +23,26 @@ Before contributing, please ensure you have the following prerequisites:
 5. **Run security checks** to ensure there are no vulnerabilities: `make dependency-check`
 6. Submit a **pull request** with a clear description of your changes and why they are needed.
 
+## Running e2e tests
+
+The end-to-end tests run the real `gitlab-sync` binary against **fake GitLab instances**, never against a real GitLab. They are written in Gherkin and run by [godog](https://github.com/cucumber/godog).
+
+```sh
+make e2e
+```
+
+- The binary is built once with coverage instrumentation and every scenario runs it as a subprocess (so exit codes and fatal errors are real), with `--no-prompt`, stdin on `/dev/null` and a 60s timeout. Scenarios run 4 at a time.
+- The coverage of the binary is written to `codequality/e2e-coverage.out`.
+- `make test` does not run them (they are behind the `e2e` build tag), except for the unit tests of the fake GitLab.
+
+How it is organized:
+
+- `test/e2e/features/*.feature` holds the scenarios, one file per option or topic.
+- `test/e2e/*.go` holds the step definitions. Read `steps.go` (the `Given` and `When` steps) and `steps_then.go` (the `Then` steps) for the vocabulary: set the starting state with readable steps (`the source has the project "team/app" with a commit on "main"`), give the mapping as a doc string (`the mirror mapping:`), then assert on the exit code, on regular expressions against the output, on the state of the instances and on the requests they received (`the destination received no write request`). `{source}`, `{destination}`, `{work}` and `{cache}` are replaced in the arguments.
+- `test/e2e/gitlabmock` is the fake GitLab: an in-memory REST API plus git smart-HTTP, with a request journal and fault injection (`the destination answers 503 2 times on GET /api/v4/metadata`). It is **strict**: an endpoint it does not implement answers 501 and fails the scenario, naming the method and the path. Teach it the endpoint (and test it in `server_test.go`) rather than loosening it.
+
+A scenario that exposes a bug of gitlab-sync is tagged `@bug`, with a comment above it describing the behavior seen. It is left out of `make e2e`, so that it can be fixed in its own pull request, which removes the tag. Run them on purpose with `E2E_TAGS=@bug make e2e` (any other tag expression works the same way, for example `E2E_TAGS=@wip`).
+
 ## Documentation
 
 The documentation lives in the [`docs`](./docs) directory, as Markdown rendered by [Hugo](https://gohugo.io/) (extended edition) with the shared [hugo-theme](https://github.com/boxboxjason/hugo-theme), and is published to <https://boxboxjason.github.io/gitlab-sync/> from `main`.

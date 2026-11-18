@@ -93,6 +93,24 @@ jobs:
       - name: Run Test (Makefile)
         run: make test
 
+  e2e:
+    name: End-to-end tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: "1.27.3"
+          cache: true
+
+      # Runs the binary against fake GitLab instances (test/e2e/gitlabmock): no real
+      # GitLab is involved.
+      - name: Run End-to-end tests (Makefile)
+        run: make e2e
+
   oci:
     name: Build OCI Image
     runs-on: ubuntu-latest

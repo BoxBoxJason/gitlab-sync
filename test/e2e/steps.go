@@ -10,8 +10,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/boxboxjason/gitlab-sync/test/e2e/gitlabmock"
 	"github.com/cucumber/godog"
+
+	"github.com/boxboxjason/gitlab-sync/test/e2e/gitlabmock"
 )
 
 const (
@@ -320,9 +321,9 @@ func (s *steps) unreachable(role string) error {
 
 // splitPackageFile splits "name/version/file".
 func splitPackageFile(spec string) (string, string, string, error) {
-	parts := strings.SplitN(spec, "/", 3) //nolint:mnd // name, version, file
+	parts := strings.SplitN(spec, "/", 3)
 
-	if len(parts) != 3 { //nolint:mnd // name, version, file
+	if len(parts) != 3 {
 		return "", "", "", fmt.Errorf("%q is not a package file, want name/version/file", spec)
 	}
 

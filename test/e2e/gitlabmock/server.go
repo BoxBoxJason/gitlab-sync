@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 )
 
 const (
@@ -89,7 +91,6 @@ type Server struct {
 	noLicense    bool   // the license endpoint answers 404 like a Community Edition
 	validToken   string // when set, any other token is rejected with 401
 	publicBase   string
-	badVersion   bool
 	nextID       int64
 	groups       []*group
 	projects     []*project
@@ -440,7 +441,7 @@ func (s *Server) tokenAccepted(request *http.Request) bool {
 }
 
 func requestToken(request *http.Request) string {
-	if token := request.Header.Get("PRIVATE-TOKEN"); token != "" {
+	if token := request.Header.Get(gitlab.AccessTokenHeaderName); token != "" {
 		return token
 	}
 
@@ -463,10 +464,17 @@ func (s *Server) id() int64 {
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {
+	body, err := json.Marshal(value)
+	if err != nil {
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(status)
 
-	_ = json.NewEncoder(writer).Encode(value)
+	_, _ = writer.Write(append(body, '\n'))
 }
 
 func writeError(writer http.ResponseWriter, status int, message string) {

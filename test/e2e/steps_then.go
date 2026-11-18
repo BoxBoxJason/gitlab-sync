@@ -5,15 +5,18 @@ package e2e
 import (
 	"bytes"
 	"fmt"
+	"net/http"
 	"os"
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
-	"github.com/boxboxjason/gitlab-sync/test/e2e/gitlabmock"
 	"github.com/cucumber/godog"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+
+	"github.com/boxboxjason/gitlab-sync/test/e2e/gitlabmock"
 )
 
 type projectOption = gitlabmock.ProjectOption
@@ -354,7 +357,7 @@ func (s *steps) downloaded(n int) (int64, error) {
 	var total int64
 
 	for _, request := range window {
-		if request.Method == "POST" && strings.HasSuffix(request.Path, "/git-upload-pack") {
+		if request.Method == http.MethodPost && strings.HasSuffix(request.Path, "/git-upload-pack") {
 			total += request.Bytes
 		}
 	}
@@ -642,7 +645,7 @@ func (s *steps) triggerBuilds(path, want string) error {
 		return err
 	}
 
-	if fmt.Sprint(project.MirrorTriggerBuilds) != want {
+	if strconv.FormatBool(project.MirrorTriggerBuilds) != want {
 		return fmt.Errorf("the destination project %s has mirror_trigger_builds=%t, want %s", path, project.MirrorTriggerBuilds, want)
 	}
 
@@ -660,9 +663,10 @@ func (s *steps) hasIssue(path, state, title string) error {
 }
 
 func (s *steps) issueSummary(path string) string {
-	var summary []string
+	issues := s.w.destination.Issues(path)
+	summary := make([]string, 0, len(issues))
 
-	for _, issue := range s.w.destination.Issues(path) {
+	for _, issue := range issues {
 		summary = append(summary, fmt.Sprintf("%s (%s)", issue.Title, issue.State))
 	}
 

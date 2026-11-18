@@ -15,13 +15,6 @@ import (
 	"github.com/cucumber/godog"
 )
 
-// binaryPath is the gitlab-sync binary every scenario runs, built once by
-// TestMain with coverage instrumentation.
-var binaryPath string
-
-// coverDir is where the instrumented binary writes its coverage data.
-var coverDir string
-
 func TestMain(m *testing.M) {
 	os.Exit(runSuite(m))
 }

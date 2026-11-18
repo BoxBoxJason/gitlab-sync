@@ -857,7 +857,7 @@ func (s *Server) updateReleaseLink(writer http.ResponseWriter, request *http.Req
 			continue
 		}
 
-		name, linkURL, directPath := link.Name, link.URL, ""
+		name, linkURL := link.Name, link.URL
 		if options.Name != nil {
 			name = *options.Name
 		}
@@ -866,8 +866,7 @@ func (s *Server) updateReleaseLink(writer http.ResponseWriter, request *http.Req
 			linkURL = *options.URL
 		}
 
-		directPath = deref(options.DirectAssetPath)
-		updated := s.newReleaseLink(found, tag, name, linkURL, directPath, linkType(options.LinkType))
+		updated := s.newReleaseLink(found, tag, name, linkURL, deref(options.DirectAssetPath), linkType(options.LinkType))
 		updated.ID = link.ID
 		found.links[tag][index] = updated
 
@@ -1145,8 +1144,10 @@ func readAvatar(request *http.Request) ([]byte, bool, error) {
 		return nil, false, nil
 	}
 
-	if err := request.ParseMultipartForm(maxUpload); err != nil {
-		return nil, false, err
+	request.Body = http.MaxBytesReader(nil, request.Body, maxUpload)
+
+	if err := request.ParseMultipartForm(maxUpload); err != nil { //nolint:gosec // the body is bounded just above
+		return nil, false, fmt.Errorf("read the upload: %w", err)
 	}
 
 	file, _, err := request.FormFile("avatar")

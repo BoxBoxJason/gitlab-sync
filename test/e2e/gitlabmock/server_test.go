@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/boxboxjason/gitlab-sync/test/e2e/gitlabmock"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -16,6 +15,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+
+	"github.com/boxboxjason/gitlab-sync/test/e2e/gitlabmock"
 )
 
 func newServer(t *testing.T) *gitlabmock.Server {

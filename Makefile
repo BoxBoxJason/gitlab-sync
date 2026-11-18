@@ -46,6 +46,16 @@ test: deps
 	gotestsum --junitfile codequality/unit-tests.xml --format-icons octicons -- -coverprofile=codequality/coverage.out -covermode=atomic ./...
 	@echo "Coverage report generated: codequality/coverage.html"
 
+# End-to-end tests: the real binary (built with coverage) against fake GitLab instances.
+# They never talk to a real GitLab. The coverage of the binary lands in codequality/e2e-coverage.out.
+# E2E_TAGS selects the scenarios by tag (default "~@bug", the scenarios that expose a known bug are left out).
+e2e: deps
+	@rm -rf codequality/e2e-cover
+	@mkdir -p codequality/e2e-cover
+	E2E_COVERDIR=$(CURDIR)/codequality/e2e-cover $(GO) test -tags e2e -count=1 ./test/e2e/...
+	$(GO) tool covdata textfmt -i=codequality/e2e-cover -o codequality/e2e-coverage.out
+	@echo "End-to-end coverage written to codequality/e2e-coverage.out"
+
 # Scan dependencies and stdlib for known vulnerabilities (govulncheck).
 vuln: deps
 	@command -v govulncheck >/dev/null 2>&1 || { echo "Installing govulncheck..."; go install golang.org/x/vuln/cmd/govulncheck@$(govulncheck_version); }
@@ -73,4 +83,4 @@ package:
 	$(DOCKER_ENGINE) build -t $(PROJECT_NAME):dev -f $(DOCKERFILE) .
 
 # Phony targets
-.PHONY: deps build lint dependency-check test vuln docs-generate docs docs-serve package
+.PHONY: deps build lint dependency-check test e2e vuln docs-generate docs docs-serve package

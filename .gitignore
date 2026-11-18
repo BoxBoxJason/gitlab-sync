@@ -67,3 +67,6 @@ coverage.out
 dependency-check/
 
 .copilot/
+
+# Test reports and coverage (make test, make e2e)
+codequality/

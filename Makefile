@@ -50,11 +50,12 @@ test: deps
 # They never talk to a real GitLab. The coverage of the binary lands in codequality/e2e-coverage.out.
 # E2E_TAGS selects the scenarios by tag (default "~@bug", the scenarios that expose a known bug are left out).
 e2e: deps
+	@command -v gotestsum >/dev/null 2>&1 || { echo "Installing gotestsum..."; go install gotest.tools/gotestsum@$(gotestsum_version); }
 	@rm -rf codequality/e2e-cover
 	@mkdir -p codequality/e2e-cover
-	E2E_COVERDIR=$(CURDIR)/codequality/e2e-cover $(GO) test -tags e2e -count=1 ./test/e2e/...
+	E2E_COVERDIR=$(CURDIR)/codequality/e2e-cover gotestsum --junitfile codequality/e2e-tests.xml --format testname -- -tags e2e -count=1 ./test/e2e/...
 	$(GO) tool covdata textfmt -i=codequality/e2e-cover -o codequality/e2e-coverage.out
-	@echo "End-to-end coverage written to codequality/e2e-coverage.out"
+	@echo "End-to-end report: codequality/e2e-tests.xml, coverage: codequality/e2e-coverage.out"
 
 # Scan dependencies and stdlib for known vulnerabilities (govulncheck).
 vuln: deps

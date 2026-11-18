@@ -32,7 +32,7 @@ make e2e
 ```
 
 - The binary is built once with coverage instrumentation and every scenario runs it as a subprocess (so exit codes and fatal errors are real), with `--no-prompt`, stdin on `/dev/null` and a 60s timeout. Scenarios run 4 at a time.
-- The coverage of the binary is written to `codequality/e2e-coverage.out`.
+- Every scenario is listed with its result (`PASS`/`FAIL ... TestFeatures/<scenario>`); the details of a failed scenario (command, exit code, output) are printed after the list. A JUnit report is written to `codequality/e2e-tests.xml` and the coverage of the binary to `codequality/e2e-coverage.out`.
 - `make test` does not run them (they are behind the `e2e` build tag), except for the unit tests of the fake GitLab.
 
 How it is organized:

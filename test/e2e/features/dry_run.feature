@@ -35,4 +35,5 @@ Feature: --dry-run
     And the stdout matches "team .*\(source gitlab\) -> mirror/team"
     And the output matches "Projects that will be created"
     And the stdout matches "team/app .*\(source gitlab\) -> mirror/app"
-    And the stdout matches "Dry run completed|v1"
+    And the output matches "Dry run completed"
+    And the stdout matches "Release v1 will be created in .*/mirror/app"

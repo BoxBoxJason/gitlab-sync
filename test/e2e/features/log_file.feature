@@ -15,6 +15,8 @@ Feature: --log-file
     And the file "{work}/deep/er/sync.log" exists
     And the file "{work}/deep/er/sync.log" matches "Starting GitLab mirroring process"
     And the file "{work}/deep/er/sync.log" matches "Completed project mirroring"
+    And the file "{work}/deep/er/sync.log" matches "\"level\":\"INFO\""
+    And the file "{work}/deep/er/sync.log" matches "Mirroring completed successfully"
 
   Scenario: without the flag, no file is written
     When I run gitlab-sync

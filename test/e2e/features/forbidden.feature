@@ -56,6 +56,7 @@ Feature: Being refused access (403)
     And the source answers 403 on GET /api/v4/groups/team
     When I run gitlab-sync with "--source-big"
     Then the exit code is not 0
+    And the output matches "failed to retrieve group team"
     And the destination contains the project "other/c"
     And the destination contains no project "team/a"
 

@@ -24,11 +24,18 @@ Feature: --retry
     And the destination received 3 GET requests on "/api/v4/metadata"
     And the destination contains no project "mirror/app"
 
-  Scenario: -1 retries as long as it takes
-    Given the destination answers 503 8 times on GET /api/v4/metadata
+  Scenario: -1 retries as long as it takes, far beyond any finite default
+    Given the destination answers 503 25 times on GET /api/v4/metadata
     When I run gitlab-sync with "--retry -1"
     Then the exit code is 0
-    And the destination received 9 GET requests on "/api/v4/metadata"
+    And the destination received 26 GET requests on "/api/v4/metadata"
+    And the destination contains the project "mirror/app"
+
+  Scenario: the same failures are fatal with a finite number of retries
+    Given the destination answers 503 25 times on GET /api/v4/metadata
+    When I run gitlab-sync with "--retry 10"
+    Then the exit code is 1
+    And the destination received 11 GET requests on "/api/v4/metadata"
 
   Scenario: 0 is refused
     When I run gitlab-sync with "--retry 0"

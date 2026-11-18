@@ -43,3 +43,4 @@ Feature: --cache-dir and --cache-max-age
     And I run gitlab-sync with "--cache-dir {cache} --cache-max-age 1ns"
     Then the exit code is 0
     And run 2 downloaded as much from the source as run 1
+    And the stderr matches "Removing an expired cache entry"

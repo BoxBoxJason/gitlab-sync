@@ -36,7 +36,24 @@ Feature: The source does not have what the mapping asks for
       """
     When I run gitlab-sync with "--source-big"
     Then the exit code is not 0
+    And the output matches "failed to retrieve group nowhere"
     And the destination received no POST request on "/api/v4/projects"
+    And the destination received no POST request on "/api/v4/groups"
+
+  Scenario: a mapped group answers 404, the other mapped group is mirrored
+    Given the source group "team" has an avatar
+    And the mirror mapping:
+      """
+      {"groups": {
+        "nowhere": {"destination_path": "nowhere"},
+        "team": {"destination_path": "team"}
+      }}
+      """
+    When I run gitlab-sync with "--source-big"
+    Then the exit code is not 0
+    And the output matches "failed to retrieve group nowhere"
+    And the destination project "team/a" has the same refs as the source project "team/a"
+    And the destination contains no group "nowhere"
 
   Scenario: a mapped project is neither on the source nor in a mapped group
     Given the mirror mapping:

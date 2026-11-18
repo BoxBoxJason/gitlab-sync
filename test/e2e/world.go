@@ -42,6 +42,7 @@ type run struct {
 	// started is, per fake instance, how many requests the instance had
 	// received before the run, so that assertions only look at this run.
 	started map[*gitlabmock.Server]int
+	at      time.Time
 	args    []string
 	stdout  string
 	stderr  string
@@ -273,6 +274,8 @@ func (w *world) execute(args []string) error {
 		started[server] = len(server.Requests())
 	}
 
+	began := time.Now()
+
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	defer cancel()
 
@@ -291,7 +294,7 @@ func (w *world) execute(args []string) error {
 
 	err := command.Run()
 
-	result := &run{args: args, stdout: stdout.String(), stderr: stderr.String(), started: started}
+	result := &run{args: args, stdout: stdout.String(), stderr: stderr.String(), started: started, at: began}
 	w.runs = append(w.runs, result)
 
 	if ctx.Err() != nil {

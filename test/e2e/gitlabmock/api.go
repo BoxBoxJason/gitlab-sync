@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -248,10 +249,15 @@ func (s *Server) listGroupProjects(writer http.ResponseWriter, request *http.Req
 	}
 
 	includeSubgroups := request.URL.Query().Get("include_subgroups") == "true"
+	hideArchived := request.URL.Query().Get("archived") == "false"
 
 	var projects []gitlab.Project
 
 	for _, candidate := range s.projects {
+		if hideArchived && candidate.Archived {
+			continue
+		}
+
 		namespace := candidate.Namespace.FullPath
 		if namespace == parent.FullPath || includeSubgroups && strings.HasPrefix(namespace, parent.FullPath+"/") {
 			projects = append(projects, candidate.Project)
@@ -953,6 +959,10 @@ func (s *Server) listPackages(writer http.ResponseWriter, request *http.Request)
 			continue
 		}
 
+		if version := query.Get("package_version"); version != "" && version != record.Version {
+			continue
+		}
+
 		packages = append(packages, record.Package)
 	}
 
@@ -1065,7 +1075,8 @@ func (s *Server) downloadGenericFile(writer http.ResponseWriter, request *http.R
 			continue
 		}
 
-		for _, file := range record.files {
+		// GitLab serves the newest of the files sharing a name.
+		for _, file := range slices.Backward(record.files) {
 			if file.FileName == request.PathValue("file") {
 				_, _ = writer.Write(file.content)
 

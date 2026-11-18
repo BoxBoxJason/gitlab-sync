@@ -57,6 +57,13 @@ func (s *steps) registerThenSteps(scenario *godog.ScenarioContext) {
 	scenario.Step(`^the `+role+` received a `+method+` request on "([^"]+)" with the query "([^"]*)"$`, s.receivedRequestWithQuery)
 	scenario.Step(`^the `+role+` received no `+method+` request on "([^"]+)"$`, s.receivedNoRequest)
 	scenario.Step(`^the `+role+` received (\d+) `+method+` requests? on "([^"]+)"$`, s.receivedRequestCount)
+	scenario.Step(`^the `+role+` received a `+method+` request on "([^"]+)" with the body "(.*)"$`, s.receivedRequestWithBody)
+	scenario.Step(`^the `+role+` received no `+method+` request on "([^"]+)" with the body "(.*)"$`, s.receivedNoRequestWithBody)
+	scenario.Step(`^the destination received the push option "([^"]+)"$`, s.pushOption)
+	scenario.Step(`^the destination received no push option$`, s.noPushOption)
+	scenario.Step(`^the source group "([^"]+)" is still (public|internal|private)$`, s.groupStillVisibility)
+	scenario.Step(`^the destination project "([^"]+)" has (\d+) generic package files?$`, s.packageFileCount)
+	scenario.Step(`^the destination project "([^"]+)" release "([^"]+)" contains the link "([^"]*)" to the package file "([^"]+)"$`, s.hasLinkToPackage)
 	scenario.Step(`^every request to the `+role+` carried the User-Agent "(.*)"$`, func(role, pattern string) error {
 		return s.userAgent(role, pattern, "")
 	})
@@ -87,6 +94,7 @@ func (s *steps) registerThenSteps(scenario *godog.ScenarioContext) {
 	scenario.Step(`^the destination project "([^"]+)" contains no release "([^"]+)"$`, s.hasNoRelease)
 	scenario.Step(`^the destination project "([^"]+)" release "([^"]+)" contains the link "([^"]*)" to "(.*)"$`, s.hasLink)
 	scenario.Step(`^the destination project "([^"]+)" release "([^"]+)" has (\d+) links?$`, s.linkCount)
+	scenario.Step(`^the destination project "([^"]+)" release "([^"]+)" has the (name|description) "(.*)"$`, s.releaseAttribute)
 	scenario.Step(`^the destination project "([^"]+)" contains the generic package file "([^"]+)" with the content "([^"]*)"$`, s.hasPackageFile)
 	scenario.Step(`^the destination project "([^"]+)" contains no generic package file "([^"]+)"$`, s.hasNoPackageFile)
 	scenario.Step(`^the authenticated user is an owner of the destination (project|group) "([^"]+)"$`, s.isOwner)
@@ -721,6 +729,27 @@ func (s *steps) hasLink(path, tag, name, target string) error {
 	return fmt.Errorf("the release %s of the destination project %s has no link %q to %q, it has %v", tag, path, name, target, found)
 }
 
+func (s *steps) releaseAttribute(path, tag, attribute, want string) error {
+	for _, release := range s.w.destination.Releases(path) {
+		if release.TagName != tag {
+			continue
+		}
+
+		got := release.Name
+		if attribute == "description" {
+			got = release.Description
+		}
+
+		if got != want {
+			return fmt.Errorf("the release %s of the destination project %s has the %s %q, want %q", tag, path, attribute, got, want)
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("the destination project %s has no release %q", path, tag)
+}
+
 func (s *steps) linkCount(path, tag string, want int) error {
 	links, err := s.releaseLinks(path, tag)
 	if err != nil {
@@ -734,23 +763,35 @@ func (s *steps) linkCount(path, tag string, want int) error {
 	return nil
 }
 
+// hasPackageFile checks the newest copy of a package file, the one GitLab serves.
 func (s *steps) hasPackageFile(path, file, content string) error {
 	packageName, version, fileName, err := splitPackageFile(file)
 	if err != nil {
 		return err
 	}
 
-	var found []string
+	var (
+		found  []string
+		newest *gitlabmock.PackageFileView
+	)
 
 	for _, candidate := range s.w.destination.PackageFiles(path) {
 		found = append(found, candidate.Package+"/"+candidate.Version+"/"+candidate.File)
 
-		if candidate.Package == packageName && candidate.Version == version && candidate.File == fileName && string(candidate.Content) == content {
-			return nil
+		if candidate.Package == packageName && candidate.Version == version && candidate.File == fileName {
+			newest = &candidate
 		}
 	}
 
-	return fmt.Errorf("the destination project %s has no generic package file %s with the content %q, it has %v%s", path, file, content, found, s.w.describeLastRun())
+	if newest == nil {
+		return fmt.Errorf("the destination project %s has no generic package file %s, it has %v%s", path, file, found, s.w.describeLastRun())
+	}
+
+	if string(newest.Content) != content {
+		return fmt.Errorf("the newest copy of the generic package file %s of the destination project %s holds %q, want %q", file, path, newest.Content, content)
+	}
+
+	return nil
 }
 
 func (s *steps) hasNoPackageFile(path, file string) error {
@@ -829,4 +870,136 @@ func (s *steps) pathMissing(path string) error {
 	}
 
 	return nil
+}
+
+// --- bodies, push options and links ------------------------------------------
+
+func (s *steps) matchingBody(role, method, pattern, body string) ([]gitlabmock.Request, error) {
+	matched, err := s.matching(role, method, pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	expression, err := regexp.Compile(body)
+	if err != nil {
+		return nil, fmt.Errorf("bad pattern %q: %w", body, err)
+	}
+
+	var withBody []gitlabmock.Request
+
+	for _, request := range matched {
+		if expression.MatchString(request.Body) {
+			withBody = append(withBody, request)
+		}
+	}
+
+	return withBody, nil
+}
+
+func (s *steps) receivedRequestWithBody(role, method, pattern, body string) error {
+	matched, err := s.matchingBody(role, method, pattern, body)
+	if err != nil {
+		return err
+	}
+
+	if len(matched) == 0 {
+		return fmt.Errorf("the %s received no %s request on %s with a body matching %q%s", role, method, pattern, body, s.requestsOf(role))
+	}
+
+	return nil
+}
+
+func (s *steps) receivedNoRequestWithBody(role, method, pattern, body string) error {
+	matched, err := s.matchingBody(role, method, pattern, body)
+	if err != nil {
+		return err
+	}
+
+	if len(matched) > 0 {
+		return fmt.Errorf("the %s received %s with a body matching %q: %s", role, matched[0], body, matched[0].Body)
+	}
+
+	return nil
+}
+
+// pushOptionsOfLastRun returns the git push options the destination received
+// during the last run.
+func (s *steps) pushOptionsOfLastRun() ([]string, error) {
+	last, err := s.w.lastRun()
+	if err != nil {
+		return nil, err
+	}
+
+	var options []string
+
+	for _, option := range s.w.destination.PushOptions() {
+		if !option.Time.Before(last.at) {
+			options = append(options, option.Option)
+		}
+	}
+
+	return options, nil
+}
+
+func (s *steps) pushOption(want string) error {
+	options, err := s.pushOptionsOfLastRun()
+	if err != nil {
+		return err
+	}
+
+	if !slices.Contains(options, want) {
+		return fmt.Errorf("the destination received the push options %v, want %q among them", options, want)
+	}
+
+	return nil
+}
+
+func (s *steps) noPushOption() error {
+	options, err := s.pushOptionsOfLastRun()
+	if err != nil {
+		return err
+	}
+
+	if len(options) > 0 {
+		return fmt.Errorf("the destination received the push options %v, want none", options)
+	}
+
+	return nil
+}
+
+func (s *steps) groupStillVisibility(path, want string) error {
+	group, ok := s.w.source.Group(path)
+	if !ok {
+		return fmt.Errorf("the source has no group %q", path)
+	}
+
+	if string(group.Visibility) != want {
+		return fmt.Errorf("the source group %s is now %s, it was changed behind the source's back (want %s)", path, group.Visibility, want)
+	}
+
+	return nil
+}
+
+func (s *steps) packageFileCount(path string, want int) error {
+	if got := len(s.w.destination.PackageFiles(path)); got != want {
+		return fmt.Errorf("the destination project %s has %d generic package file(s), want %d: %v", path, got, want, s.w.destination.PackageFiles(path))
+	}
+
+	return nil
+}
+
+func (s *steps) hasLinkToPackage(path, tag, name, file string) error {
+	project, err := s.destinationProject(path)
+	if err != nil {
+		return err
+	}
+
+	packageName, version, fileName, err := splitPackageFile(file)
+	if err != nil {
+		return err
+	}
+
+	target := fmt.Sprintf("%s/api/v4/projects/%d/packages/generic/%s/%s/%s", s.w.destination.URL(), project.ID, packageName, version, fileName)
+
+	return s.hasLink(path, tag, name, target)
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v5/plumbing/format/pktline"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
@@ -54,6 +55,13 @@ func (s *Server) gitOrDownload(writer http.ResponseWriter, request *http.Request
 	}
 
 	if s.downloadRedirect(writer, request) {
+		return
+	}
+
+	// A file the instance does not serve is simply not there.
+	if strings.HasPrefix(request.URL.Path, "/uploads/") {
+		writeError(writer, http.StatusNotFound, "404 File Not Found")
+
 		return
 	}
 
@@ -224,6 +232,12 @@ func (s *Server) receivePack(writer http.ResponseWriter, request *http.Request, 
 		return
 	}
 
+	// A push that only deletes refs carries no pack, which go-git's server would
+	// refuse to unpack.
+	if onlyDeletes(update) {
+		update.Packfile = nil
+	}
+
 	status, err := session.ReceivePack(context.WithoutCancel(request.Context()), update)
 	if err != nil && status == nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
@@ -275,7 +289,7 @@ func (s *Server) readPushOptions(request *http.Request, update *packp.ReferenceU
 	defer s.mu.Unlock()
 
 	for _, option := range options {
-		s.pushOptions = append(s.pushOptions, PushOption{Path: request.URL.Path, Option: strings.TrimSuffix(option, "=")})
+		s.pushOptions = append(s.pushOptions, PushOption{Time: time.Now(), Path: request.URL.Path, Option: strings.TrimSuffix(option, "=")})
 	}
 
 	return nil
@@ -283,6 +297,7 @@ func (s *Server) readPushOptions(request *http.Request, update *packp.ReferenceU
 
 // PushOption is a git push option received by the fake.
 type PushOption struct {
+	Time   time.Time
 	Path   string
 	Option string
 }
@@ -295,12 +310,25 @@ func (s *Server) PushOptions() []PushOption {
 	return append([]PushOption(nil), s.pushOptions...)
 }
 
-// markPushed records that the repository of a project now holds refs.
+// markPushed records that the repository of a project now holds refs, and drops
+// the releases of the tags the push deleted.
 func (s *Server) markPushed(projectPath string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if found := s.projectByPath(strings.Trim(projectPath, "/")); found != nil {
 		found.EmptyRepo = false
+
+		found.dropReleasesOfDeletedTags()
 	}
+}
+
+func onlyDeletes(update *packp.ReferenceUpdateRequest) bool {
+	for _, command := range update.Commands {
+		if !command.New.IsZero() {
+			return false
+		}
+	}
+
+	return len(update.Commands) > 0
 }

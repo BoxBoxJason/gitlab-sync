@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/boxboxjason/gitlab-sync/test/e2e/gitlabmock"
 	"github.com/cucumber/godog"
 )
 
@@ -80,6 +81,14 @@ func (s *steps) registerGivenSteps(scenario *godog.ScenarioContext) {
 	scenario.Step(`^the `+role+` project "([^"]+)" release "([^"]+)" has the link "([^"]*)" to the package file "([^"]+)" at "([^"]+)"$`, s.releaseLinkToPackage)
 	scenario.Step(`^the `+role+` project "([^"]+)" has the generic package file "([^"]+)" with the content "([^"]*)"$`, s.packageFile)
 	scenario.Step(`^the `+role+` (group|project) "([^"]+)" has an avatar$`, s.avatar)
+	scenario.Step(`^the `+role+` has the archived project "([^"]+)"$`, s.archivedProject)
+	scenario.Step(`^the `+role+` project "([^"]+)" now has the description "([^"]*)"$`, s.setDescription)
+	scenario.Step(`^the `+role+` project "([^"]+)" no longer has the (branch|tag) "([^"]+)"$`, s.removeRef)
+	scenario.Step(`^the `+role+` group "([^"]+)" is (public|internal|private)$`, s.groupVisibility)
+	scenario.Step(`^the destination project "([^"]+)" has the authenticated user as (guest|developer|maintainer)$`, s.member)
+	scenario.Step(`^the `+role+` project "([^"]+)" no longer has the generic package file "([^"]+)"$`, s.removePackageFile)
+	scenario.Step(`^the `+role+` project "([^"]+)" no longer has the release "([^"]+)"$`, s.removeRelease)
+	scenario.Step(`^the `+role+` project "([^"]+)" release "([^"]+)" no longer has the link "([^"]*)"$`, s.removeReleaseLink)
 	scenario.Step(`^the `+role+` serves the file "([^"]+)" with the content "([^"]*)"$`, s.servedFile)
 	scenario.Step(`^the mirror mapping:$`, s.mirrorMapping)
 	scenario.Step(`^the `+role+` answers (\d+)(?: (\d+) times?)? on `+method+` (\S+)$`, s.fault)
@@ -217,6 +226,50 @@ func (s *steps) avatar(role, kind, path string) error {
 	}
 
 	return s.w.server(role).SetProjectAvatar(path, []byte("avatar of "+path))
+}
+
+func (s *steps) archivedProject(role, path string) error {
+	return s.w.server(role).AddProject(path, gitlabmock.WithArchived())
+}
+
+func (s *steps) setDescription(role, path, description string) error {
+	return s.w.server(role).SetProjectDescription(path, description)
+}
+
+func (s *steps) removeRef(role, path, kind, name string) error {
+	prefix := "refs/heads/"
+	if kind == "tag" {
+		prefix = "refs/tags/"
+	}
+
+	return s.w.server(role).DeleteRef(path, prefix+name)
+}
+
+func (s *steps) groupVisibility(role, path, visibility string) error {
+	return s.w.server(role).SetGroupVisibility(path, visibility)
+}
+
+func (s *steps) member(path, level string) error {
+	levels := map[string]int64{"guest": 10, "developer": 30, "maintainer": 40}
+
+	return s.w.destination.AddProjectMember(path, levels[level])
+}
+
+func (s *steps) removePackageFile(role, path, file string) error {
+	packageName, version, fileName, err := splitPackageFile(file)
+	if err != nil {
+		return err
+	}
+
+	return s.w.server(role).RemovePackageFile(path, packageName, version, fileName)
+}
+
+func (s *steps) removeRelease(role, path, tag string) error {
+	return s.w.server(role).RemoveRelease(path, tag)
+}
+
+func (s *steps) removeReleaseLink(role, path, tag, name string) error {
+	return s.w.server(role).RemoveReleaseLink(path, tag, name)
 }
 
 func (s *steps) servedFile(role, path, content string) error {

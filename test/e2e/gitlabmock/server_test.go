@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net/http"
+	"strconv"
 	"testing"
 
 	"github.com/boxboxjason/gitlab-sync/test/e2e/gitlabmock"
@@ -418,7 +419,9 @@ func TestCloneAndPushOverSmartHTTP(t *testing.T) {
 
 	assert.Equal(t, source, target)
 	assert.NotEqual(t, first, target["refs/heads/main"], "the tip is the second commit")
-	assert.Contains(t, server.PushOptions(), gitlabmock.PushOption{Path: "/g/target.git/git-receive-pack", Option: "ci.skip"})
+	require.Len(t, server.PushOptions(), 1)
+	assert.Equal(t, "/g/target.git/git-receive-pack", server.PushOptions()[0].Path)
+	assert.Equal(t, "ci.skip", server.PushOptions()[0].Option)
 
 	pushed, _ := server.Project("g/target")
 	assert.False(t, pushed.EmptyRepo)
@@ -479,4 +482,77 @@ func TestAvatarsAreDownloadedAndUploaded(t *testing.T) {
 
 	updated, _ := server.Project("g/other")
 	assert.NotEmpty(t, updated.AvatarURL)
+}
+
+func TestGenericPackageDownloadServesTheNewestCopy(t *testing.T) {
+	server := newServer(t)
+	require.NoError(t, server.AddProject("g/app"))
+	require.NoError(t, server.AddPackageFile("g/app", "tool", "1", "tool.bin", []byte("old")))
+	require.NoError(t, server.AddPackageFile("g/app", "tool", "1", "tool.bin", []byte("new")))
+
+	client := newClient(t, server)
+	project, _ := server.Project("g/app")
+
+	var downloaded bytes.Buffer
+
+	request, err := client.NewRequest(http.MethodGet, "projects/"+strconv.FormatInt(project.ID, 10)+"/packages/generic/tool/1/tool.bin", nil, nil)
+	require.NoError(t, err)
+	_, err = client.Do(request, &downloaded)
+	require.NoError(t, err)
+	assert.Equal(t, "new", downloaded.String())
+}
+
+func TestAMissingUploadIsNotFoundNotUnimplemented(t *testing.T) {
+	server := newServer(t)
+
+	response, err := http.Get(server.URL() + "/uploads/-/system/gone.txt") //nolint:noctx // test
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+
+	assert.Equal(t, http.StatusNotFound, response.StatusCode)
+	assert.Empty(t, server.Unimplemented())
+}
+
+func TestPushDeletingATagDeletesItsRelease(t *testing.T) {
+	server := newServer(t)
+	require.NoError(t, server.AddProject("g/source"))
+	require.NoError(t, server.AddProject("g/target"))
+	_, err := server.Commit("g/source", "main", "a.txt", "one")
+	require.NoError(t, err)
+	_, err = server.Commit("g/target", "main", "a.txt", "one")
+	require.NoError(t, err)
+	require.NoError(t, server.Tag("g/target", "v1", "main"))
+	require.NoError(t, server.AddRelease("g/target", "v1", "One", "notes"))
+
+	auth := &githttp.BasicAuth{Username: "git", Password: "secret"}
+
+	clone, err := git.PlainClone(t.TempDir(), true, &git.CloneOptions{URL: server.URL() + "/g/target.git", Mirror: true, Auth: auth})
+	require.NoError(t, err)
+	require.NoError(t, clone.Storer.RemoveReference(plumbing.NewTagReferenceName("v1")))
+
+	remote := git.NewRemote(clone.Storer, &config.RemoteConfig{Name: "target", URLs: []string{server.URL() + "/g/target.git"}})
+	require.NoError(t, remote.Push(&git.PushOptions{RemoteName: "target", Auth: auth, RefSpecs: []config.RefSpec{":refs/tags/v1"}}))
+
+	assert.Empty(t, server.Releases("g/target"), "GitLab deletes the release of a deleted tag")
+
+	refs, err := server.Refs("g/target")
+	require.NoError(t, err)
+	assert.NotContains(t, refs, "refs/tags/v1")
+}
+
+func TestArchivedProjectsCanBeHidden(t *testing.T) {
+	server := newServer(t)
+	require.NoError(t, server.AddProject("g/live"))
+	require.NoError(t, server.AddProject("g/old", gitlabmock.WithArchived()))
+
+	client := newClient(t, server)
+
+	visible, _, err := client.Projects.ListProjects(&gitlab.ListProjectsOptions{Archived: new(false)})
+	require.NoError(t, err)
+	require.Len(t, visible, 1)
+	assert.Equal(t, "g/live", visible[0].PathWithNamespace)
+
+	all, _, err := client.Projects.ListProjects(&gitlab.ListProjectsOptions{})
+	require.NoError(t, err)
+	assert.Len(t, all, 2)
 }

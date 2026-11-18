@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,6 +69,11 @@ func WithVisibility(visibility string) ProjectOption {
 // WithDefaultBranch sets the default branch of the (still empty) repository.
 func WithDefaultBranch(branch string) ProjectOption {
 	return func(p *project) { p.DefaultBranch = branch }
+}
+
+// WithArchived archives the project.
+func WithArchived() ProjectOption {
+	return func(p *project) { p.Archived = true }
 }
 
 // WithTopics sets the project topics.
@@ -778,4 +784,165 @@ func (s *Server) ProjectAvatar(fullPath string) []byte {
 	}
 
 	return nil
+}
+
+// --- changes made between two runs ------------------------------------------
+
+// SetProjectDescription changes the description of the project at fullPath.
+func (s *Server) SetProjectDescription(fullPath, description string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	found := s.projectByPath(fullPath)
+	if found == nil {
+		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
+	}
+
+	found.Description = description
+
+	return nil
+}
+
+// SetGroupVisibility changes the visibility of the group at fullPath.
+func (s *Server) SetGroupVisibility(fullPath, visibility string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	found := s.groupByPath(fullPath)
+	if found == nil {
+		return fmt.Errorf("group %s: %w", fullPath, errNotFound)
+	}
+
+	found.Visibility = gitlab.VisibilityValue(visibility)
+
+	return nil
+}
+
+// DeleteRef removes a branch or a tag ("refs/heads/dev") of a project's repository.
+func (s *Server) DeleteRef(fullPath, ref string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	target := s.projectByPath(fullPath)
+	if target == nil {
+		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
+	}
+
+	repository, err := target.repo()
+	if err != nil {
+		return err
+	}
+
+	return repository.Storer.RemoveReference(plumbing.ReferenceName(ref))
+}
+
+// AddProjectMember makes the authenticated user a member of the project, with
+// the given access level (10 guest, 30 developer, 40 maintainer, 50 owner).
+func (s *Server) AddProjectMember(fullPath string, level int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	found := s.projectByPath(fullPath)
+	if found == nil {
+		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
+	}
+
+	found.members[userID] = level
+
+	return nil
+}
+
+// RemovePackageFile removes every copy of a generic package file of a project
+// (the files of a package are kept even when none is left).
+func (s *Server) RemovePackageFile(fullPath, name, version, fileName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	target := s.projectByPath(fullPath)
+	if target == nil {
+		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
+	}
+
+	for _, record := range target.packages {
+		if record.Name != name || record.Version != version {
+			continue
+		}
+
+		kept := record.files[:0]
+
+		for _, file := range record.files {
+			if file.FileName != fileName {
+				kept = append(kept, file)
+			}
+		}
+
+		record.files = kept
+	}
+
+	return nil
+}
+
+// RemoveRelease deletes the release of a tag (its tag is left alone).
+func (s *Server) RemoveRelease(fullPath, tag string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	target := s.projectByPath(fullPath)
+	if target == nil {
+		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
+	}
+
+	target.removeRelease(tag)
+
+	return nil
+}
+
+// RemoveReleaseLink deletes a link of a release by name.
+func (s *Server) RemoveReleaseLink(fullPath, tag, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	target := s.projectByPath(fullPath)
+	if target == nil {
+		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
+	}
+
+	kept := target.links[tag][:0]
+
+	for _, link := range target.links[tag] {
+		if link.Name != name {
+			kept = append(kept, link)
+		}
+	}
+
+	target.links[tag] = kept
+
+	return nil
+}
+
+func (p *project) removeRelease(tag string) {
+	for index, release := range p.releases {
+		if release.TagName == tag {
+			p.releases = append(p.releases[:index], p.releases[index+1:]...)
+
+			break
+		}
+	}
+
+	delete(p.links, tag)
+}
+
+// dropReleasesOfDeletedTags deletes the releases whose tag is gone from the
+// repository, like GitLab does when a tag is deleted. The caller holds the lock.
+func (p *project) dropReleasesOfDeletedTags() {
+	repository, err := p.repo()
+	if err != nil {
+		return
+	}
+
+	for _, release := range slices.Clone(p.releases) {
+		if _, tagErr := repository.Reference(plumbing.NewTagReferenceName(release.TagName), true); tagErr != nil {
+			p.removeRelease(release.TagName)
+		}
+	}
 }

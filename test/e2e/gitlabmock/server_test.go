@@ -445,3 +445,38 @@ func TestForbidGit(t *testing.T) {
 
 	require.Error(t, server.ForbidGit("fetch", ""))
 }
+
+func TestAvatarsAreDownloadedAndUploaded(t *testing.T) {
+	server := newServer(t)
+	require.NoError(t, server.AddProject("g/app"))
+	require.NoError(t, server.AddProject("g/other"))
+	require.NoError(t, server.SetProjectAvatar("g/app", []byte("png")))
+	require.NoError(t, server.SetGroupAvatar("g", []byte("group-png")))
+
+	client := newClient(t, server)
+	app, _ := server.Project("g/app")
+	other, _ := server.Project("g/other")
+	team, _ := server.Group("g")
+
+	downloaded, _, err := client.Projects.DownloadAvatar(app.ID)
+	require.NoError(t, err)
+
+	content, err := io.ReadAll(downloaded)
+	require.NoError(t, err)
+	assert.Equal(t, "png", string(content))
+
+	_, response, err := client.Projects.DownloadAvatar(other.ID)
+	require.Error(t, err, "a project without avatar has nothing to download")
+	assert.Equal(t, http.StatusNotFound, response.StatusCode)
+
+	_, _, err = client.Projects.UploadAvatar(other.ID, bytes.NewReader([]byte("copied")), "avatar.png")
+	require.NoError(t, err)
+	assert.Equal(t, "copied", string(server.ProjectAvatar("g/other")))
+
+	_, _, err = client.Groups.UploadAvatar(team.ID, bytes.NewReader([]byte("new-group-png")), "avatar.png")
+	require.NoError(t, err)
+	assert.Equal(t, "new-group-png", string(server.GroupAvatar("g")))
+
+	updated, _ := server.Project("g/other")
+	assert.NotEmpty(t, updated.AvatarURL)
+}

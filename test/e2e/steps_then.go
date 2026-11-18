@@ -48,6 +48,7 @@ func splitList(value string) []string {
 
 func (s *steps) registerThenSteps(scenario *godog.ScenarioContext) {
 	scenario.Step(`^the exit code is (\d+)$`, s.exitCode)
+	scenario.Step(`^the exit code is not 0$`, s.exitCodeNotZero)
 	scenario.Step(`^the (output|stdout|stderr) matches "(.*)"$`, s.outputMatches)
 	scenario.Step(`^the (output|stdout|stderr) does not match "(.*)"$`, s.outputDoesNotMatch)
 
@@ -56,32 +57,38 @@ func (s *steps) registerThenSteps(scenario *godog.ScenarioContext) {
 	scenario.Step(`^the `+role+` received a `+method+` request on "([^"]+)" with the query "([^"]*)"$`, s.receivedRequestWithQuery)
 	scenario.Step(`^the `+role+` received no `+method+` request on "([^"]+)"$`, s.receivedNoRequest)
 	scenario.Step(`^the `+role+` received (\d+) `+method+` requests? on "([^"]+)"$`, s.receivedRequestCount)
-	scenario.Step(`^every request to the `+role+` carried the User-Agent "(.*)"$`, s.userAgent)
+	scenario.Step(`^every request to the `+role+` carried the User-Agent "(.*)"$`, func(role, pattern string) error {
+		return s.userAgent(role, pattern, "")
+	})
+	scenario.Step(`^every API request to the `+role+` carried the User-Agent "(.*)"$`, func(role, pattern string) error {
+		return s.userAgent(role, pattern, "/api/")
+	})
 	scenario.Step(`^run (\d+) downloaded less from the source than run (\d+)$`, s.downloadedLess)
 	scenario.Step(`^run (\d+) downloaded as much from the source as run (\d+)$`, s.downloadedSame)
 
-	scenario.Step(`^the `+role+` has the (project|group) "([^"]+)"$`, s.hasEntity)
-	scenario.Step(`^the `+role+` has no (project|group) "([^"]+)"$`, s.hasNoEntity)
+	scenario.Step(`^the `+role+` contains the (project|group) "([^"]+)"$`, s.hasEntity)
+	scenario.Step(`^the `+role+` contains no (project|group) "([^"]+)"$`, s.hasNoEntity)
 	scenario.Step(`^the `+role+` project "([^"]+)" has the (description|visibility|default branch|name) "(.*)"$`, s.projectAttribute)
 	scenario.Step(`^the `+role+` group "([^"]+)" has the (description|visibility|name) "(.*)"$`, s.groupAttribute)
 	scenario.Step(`^the `+role+` project "([^"]+)" has the topics "(.*)"$`, s.topics)
 	scenario.Step(`^the destination project "([^"]+)" has the same refs as the source project "([^"]+)"$`, s.sameRefs)
+	scenario.Step(`^the destination (group|project) "([^"]+)" has the avatar of the source (?:group|project) "([^"]+)"$`, s.hasAvatar)
 	scenario.Step(`^the destination project "([^"]+)" has no refs$`, s.noRefs)
-	scenario.Step(`^the destination project "([^"]+)" has the ref "([^"]+)"$`, s.hasRef)
-	scenario.Step(`^the destination project "([^"]+)" has no ref "([^"]+)"$`, s.hasNoRef)
+	scenario.Step(`^the destination project "([^"]+)" contains the ref "([^"]+)"$`, s.hasRef)
+	scenario.Step(`^the destination project "([^"]+)" contains no ref "([^"]+)"$`, s.hasNoRef)
 	scenario.Step(`^the destination project "([^"]+)" is a pull mirror of the source project "([^"]+)"$`, s.pullMirror)
 	scenario.Step(`^the destination project "([^"]+)" is not a pull mirror$`, s.notPullMirror)
 	scenario.Step(`^the destination project "([^"]+)" is in the CI/CD catalog$`, s.inCatalog)
 	scenario.Step(`^the destination project "([^"]+)" is not in the CI/CD catalog$`, s.notInCatalog)
 	scenario.Step(`^the destination project "([^"]+)" mirror_trigger_builds is (true|false)$`, s.triggerBuilds)
-	scenario.Step(`^the destination project "([^"]+)" has the (opened|closed) issue "([^"]*)"$`, s.hasIssue)
+	scenario.Step(`^the destination project "([^"]+)" contains the (opened|closed) issue "([^"]*)"$`, s.hasIssue)
 	scenario.Step(`^the destination project "([^"]+)" has (\d+) issues?$`, s.issueCount)
-	scenario.Step(`^the destination project "([^"]+)" has the release "([^"]+)"$`, s.hasRelease)
-	scenario.Step(`^the destination project "([^"]+)" has no release "([^"]+)"$`, s.hasNoRelease)
-	scenario.Step(`^the destination project "([^"]+)" release "([^"]+)" has the link "([^"]*)" to "(.*)"$`, s.hasLink)
+	scenario.Step(`^the destination project "([^"]+)" contains the release "([^"]+)"$`, s.hasRelease)
+	scenario.Step(`^the destination project "([^"]+)" contains no release "([^"]+)"$`, s.hasNoRelease)
+	scenario.Step(`^the destination project "([^"]+)" release "([^"]+)" contains the link "([^"]*)" to "(.*)"$`, s.hasLink)
 	scenario.Step(`^the destination project "([^"]+)" release "([^"]+)" has (\d+) links?$`, s.linkCount)
-	scenario.Step(`^the destination project "([^"]+)" has the generic package file "([^"]+)" with the content "([^"]*)"$`, s.hasPackageFile)
-	scenario.Step(`^the destination project "([^"]+)" has no generic package file "([^"]+)"$`, s.hasNoPackageFile)
+	scenario.Step(`^the destination project "([^"]+)" contains the generic package file "([^"]+)" with the content "([^"]*)"$`, s.hasPackageFile)
+	scenario.Step(`^the destination project "([^"]+)" contains no generic package file "([^"]+)"$`, s.hasNoPackageFile)
 	scenario.Step(`^the authenticated user is an owner of the destination (project|group) "([^"]+)"$`, s.isOwner)
 	scenario.Step(`^the authenticated user is not a member of the destination (project|group) "([^"]+)"$`, s.isNotMember)
 
@@ -100,6 +107,19 @@ func (s *steps) exitCode(want int) error {
 
 	if last.exit != want {
 		return fmt.Errorf("the exit code is %d, want %d%s", last.exit, want, s.w.describeLastRun())
+	}
+
+	return nil
+}
+
+func (s *steps) exitCodeNotZero() error {
+	last, err := s.w.lastRun()
+	if err != nil {
+		return err
+	}
+
+	if last.exit == 0 {
+		return fmt.Errorf("the exit code is 0, want a failure%s", s.w.describeLastRun())
 	}
 
 	return nil
@@ -256,14 +276,24 @@ func (s *steps) receivedRequestCount(role string, count int, method, pattern str
 	return nil
 }
 
-func (s *steps) userAgent(role, pattern string) error {
-	requests, err := s.w.requests(role)
+// userAgent checks the User-Agent of the requests of the last run whose path
+// starts with pathPrefix (all of them when it is empty).
+func (s *steps) userAgent(role, pattern, pathPrefix string) error {
+	all, err := s.w.requests(role)
 	if err != nil {
 		return err
 	}
 
+	var requests []gitlabmock.Request
+
+	for _, request := range all {
+		if strings.HasPrefix(request.Path, pathPrefix) {
+			requests = append(requests, request)
+		}
+	}
+
 	if len(requests) == 0 {
-		return fmt.Errorf("the %s received no request", role)
+		return fmt.Errorf("the %s received no request under %q", role, pathPrefix)
 	}
 
 	expression, err := regexp.Compile(pattern)
@@ -477,6 +507,21 @@ func (s *steps) sameRefs(destinationPath, sourcePath string) error {
 
 	if !reflect.DeepEqual(got, want) {
 		return fmt.Errorf("the destination project %s has the refs %v, want those of the source project %s: %v%s", destinationPath, got, sourcePath, want, s.w.describeLastRun())
+	}
+
+	return nil
+}
+
+func (s *steps) hasAvatar(kind, path, sourcePath string) error {
+	want := []byte("avatar of " + sourcePath)
+
+	got := s.w.destination.ProjectAvatar(path)
+	if kind == "group" {
+		got = s.w.destination.GroupAvatar(path)
+	}
+
+	if string(got) != string(want) {
+		return fmt.Errorf("the destination %s %s has the avatar %q, want %q", kind, path, got, want)
 	}
 
 	return nil

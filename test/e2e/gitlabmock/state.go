@@ -25,6 +25,7 @@ type group struct {
 	gitlab.Group
 
 	members map[int64]int64
+	avatar  []byte
 }
 
 type packageFile struct {
@@ -43,6 +44,7 @@ type project struct {
 	gitlab.Project
 
 	repoDir  string
+	avatar   []byte
 	issues   []*gitlab.Issue
 	releases []*gitlab.Release
 	links    map[string][]*gitlab.ReleaseLink
@@ -718,4 +720,62 @@ func (s *Server) PackageFiles(fullPath string) []PackageFileView {
 	}
 
 	return files
+}
+
+// --- avatars ----------------------------------------------------------------
+
+// SetGroupAvatar gives the group at fullPath an avatar.
+func (s *Server) SetGroupAvatar(fullPath string, content []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	found := s.groupByPath(fullPath)
+	if found == nil {
+		return fmt.Errorf("group %s: %w", fullPath, errNotFound)
+	}
+
+	found.avatar = content
+	found.AvatarURL = fmt.Sprintf("%s/uploads/-/system/group/avatar/%d/avatar.png", s.publicBase, found.ID)
+
+	return nil
+}
+
+// SetProjectAvatar gives the project at fullPath an avatar.
+func (s *Server) SetProjectAvatar(fullPath string, content []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	found := s.projectByPath(fullPath)
+	if found == nil {
+		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
+	}
+
+	found.avatar = content
+	found.AvatarURL = fmt.Sprintf("%s/uploads/-/system/project/avatar/%d/avatar.png", s.publicBase, found.ID)
+
+	return nil
+}
+
+// GroupAvatar returns the avatar of the group at fullPath, nil when it has none.
+func (s *Server) GroupAvatar(fullPath string) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if found := s.groupByPath(fullPath); found != nil {
+		return found.avatar
+	}
+
+	return nil
+}
+
+// ProjectAvatar returns the avatar of the project at fullPath, nil when it has none.
+func (s *Server) ProjectAvatar(fullPath string) []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if found := s.projectByPath(fullPath); found != nil {
+		return found.avatar
+	}
+
+	return nil
 }

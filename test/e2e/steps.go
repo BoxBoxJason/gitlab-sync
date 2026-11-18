@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/cucumber/godog"
@@ -78,6 +79,7 @@ func (s *steps) registerGivenSteps(scenario *godog.ScenarioContext) {
 	scenario.Step(`^the `+role+` project "([^"]+)" release "([^"]+)" has the link "([^"]*)" to "([^"]*)"$`, s.releaseLink)
 	scenario.Step(`^the `+role+` project "([^"]+)" release "([^"]+)" has the link "([^"]*)" to the package file "([^"]+)" at "([^"]+)"$`, s.releaseLinkToPackage)
 	scenario.Step(`^the `+role+` project "([^"]+)" has the generic package file "([^"]+)" with the content "([^"]*)"$`, s.packageFile)
+	scenario.Step(`^the `+role+` (group|project) "([^"]+)" has an avatar$`, s.avatar)
 	scenario.Step(`^the `+role+` serves the file "([^"]+)" with the content "([^"]*)"$`, s.servedFile)
 	scenario.Step(`^the mirror mapping:$`, s.mirrorMapping)
 	scenario.Step(`^the `+role+` answers (\d+)(?: (\d+) times?)? on `+method+` (\S+)$`, s.fault)
@@ -209,6 +211,14 @@ func (s *steps) packageFile(role, path, file, content string) error {
 	return s.w.server(role).AddPackageFile(path, packageName, version, fileName, []byte(content))
 }
 
+func (s *steps) avatar(role, kind, path string) error {
+	if kind == "group" {
+		return s.w.server(role).SetGroupAvatar(path, []byte("avatar of "+path))
+	}
+
+	return s.w.server(role).SetProjectAvatar(path, []byte("avatar of "+path))
+}
+
 func (s *steps) servedFile(role, path, content string) error {
 	s.w.server(role).AddFile(path, []byte(content))
 
@@ -219,8 +229,20 @@ func (s *steps) mirrorMapping(doc *godog.DocString) error {
 	return s.w.writeMapping(doc.Content)
 }
 
-func (s *steps) fault(role string, status, times int, method, pattern string) error {
-	s.w.server(role).InjectFault(method, pattern, status, times)
+// fault fails the requests matching the method and the path pattern; times is
+// empty when every matching request must fail.
+func (s *steps) fault(role string, status int, times, method, pattern string) error {
+	count := 0
+
+	if times != "" {
+		var err error
+
+		if count, err = strconv.Atoi(times); err != nil {
+			return err
+		}
+	}
+
+	s.w.server(role).InjectFault(method, pattern, status, count)
 
 	return nil
 }

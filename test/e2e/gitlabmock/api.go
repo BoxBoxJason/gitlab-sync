@@ -27,6 +27,8 @@ func (s *Server) registerRoutes() {
 		"POST /api/v4/groups":                   s.createGroup,
 		"GET /api/v4/groups/{id}":               s.getGroup,
 		"PUT /api/v4/groups/{id}":               s.updateGroup,
+		"GET /api/v4/groups/{id}/avatar":        s.groupAvatar,
+		"GET /api/v4/projects/{id}/avatar":      s.projectAvatar,
 		"GET /api/v4/groups/{id}/subgroups":     s.listSubgroups,
 		"GET /api/v4/groups/{id}/projects":      s.listGroupProjects,
 		"POST /api/v4/groups/{id}/members":      s.addGroupMember,
@@ -164,11 +166,21 @@ func (s *Server) createGroup(writer http.ResponseWriter, request *http.Request) 
 }
 
 func (s *Server) updateGroup(writer http.ResponseWriter, request *http.Request) {
-	var options gitlab.UpdateGroupOptions
-	if err := decodeBody(request, &options); err != nil {
+	avatar, uploaded, err := readAvatar(request)
+	if err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 
 		return
+	}
+
+	var options gitlab.UpdateGroupOptions
+
+	if !uploaded {
+		if err = decodeBody(request, &options); err != nil {
+			writeError(writer, http.StatusBadRequest, err.Error())
+
+			return
+		}
 	}
 
 	s.mu.Lock()
@@ -179,6 +191,11 @@ func (s *Server) updateGroup(writer http.ResponseWriter, request *http.Request) 
 		writeError(writer, http.StatusNotFound, "404 Group Not Found")
 
 		return
+	}
+
+	if uploaded {
+		found.avatar = avatar
+		found.AvatarURL = fmt.Sprintf("%s/uploads/-/system/group/avatar/%d/avatar.png", s.publicBase, found.ID)
 	}
 
 	if options.Name != nil {
@@ -391,17 +408,21 @@ func (s *Server) projectNamespace(namespaceID *int64) (*group, bool) {
 }
 
 func (s *Server) editProject(writer http.ResponseWriter, request *http.Request) {
-	if strings.HasPrefix(request.Header.Get("Content-Type"), "multipart/") {
-		s.notImplemented(writer, request)
+	avatar, uploaded, err := readAvatar(request)
+	if err != nil {
+		writeError(writer, http.StatusBadRequest, err.Error())
 
 		return
 	}
 
 	var options gitlab.EditProjectOptions
-	if err := decodeBody(request, &options); err != nil {
-		writeError(writer, http.StatusBadRequest, err.Error())
 
-		return
+	if !uploaded {
+		if err = decodeBody(request, &options); err != nil {
+			writeError(writer, http.StatusBadRequest, err.Error())
+
+			return
+		}
 	}
 
 	s.mu.Lock()
@@ -412,6 +433,11 @@ func (s *Server) editProject(writer http.ResponseWriter, request *http.Request) 
 		writeError(writer, http.StatusNotFound, "404 Project Not Found")
 
 		return
+	}
+
+	if uploaded {
+		found.avatar = avatar
+		found.AvatarURL = fmt.Sprintf("%s/uploads/-/system/project/avatar/%d/avatar.png", s.publicBase, found.ID)
 	}
 
 	if message := found.apply(&options); message != "" {
@@ -1099,4 +1125,57 @@ func deref[T any](value *T) T {
 	}
 
 	return *value
+}
+
+// readAvatar reads the avatar of a multipart upload (UploadAvatar of the client).
+// uploaded is false for any other kind of request.
+func readAvatar(request *http.Request) ([]byte, bool, error) {
+	if !strings.HasPrefix(request.Header.Get("Content-Type"), "multipart/") {
+		return nil, false, nil
+	}
+
+	if err := request.ParseMultipartForm(maxUpload); err != nil {
+		return nil, false, err
+	}
+
+	file, _, err := request.FormFile("avatar")
+	if err != nil {
+		return nil, false, err
+	}
+
+	defer file.Close() //nolint:errcheck // nothing to do about it
+
+	content, err := io.ReadAll(file)
+
+	return content, true, err
+}
+
+const maxUpload = 32 << 20
+
+func (s *Server) groupAvatar(writer http.ResponseWriter, request *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	found := s.lookupGroup(request.PathValue("id"))
+	if found == nil || found.avatar == nil {
+		writeError(writer, http.StatusNotFound, "404 Avatar Not Found")
+
+		return
+	}
+
+	_, _ = writer.Write(found.avatar)
+}
+
+func (s *Server) projectAvatar(writer http.ResponseWriter, request *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	found := s.lookupProject(request.PathValue("id"))
+	if found == nil || found.avatar == nil {
+		writeError(writer, http.StatusNotFound, "404 Avatar Not Found")
+
+		return
+	}
+
+	_, _ = writer.Write(found.avatar)
 }

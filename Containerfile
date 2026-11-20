@@ -1,4 +1,4 @@
-FROM docker.io/golang:1.27.2-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
+FROM docker.io/golang:1.27.3-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS build
 
 WORKDIR /app
 
@@ -10,7 +10,7 @@ ENV GO111MODULE=on \
 RUN apk add --no-cache make git && \
   make build
 
-FROM alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a AS security_provider
+FROM alpine:3.24.4@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf AS security_provider
 
 # /staging/tmp is staged here so the scratch image below gets a writable /tmp:
 # when the destination instance is not premium (or --destination-force-freemium is

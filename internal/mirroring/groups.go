@@ -106,7 +106,7 @@ func (g *GitlabInstance) CreateGroupFromSource(sourceGroup *gitlab.Group, copyOp
 	// This is used to set the parent ID for the group
 	zap.L().Debug("Retrieving group namespace ID", zap.String(ROLE, ROLE_DESTINATION), zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
 
-	parentGroupID, err := g.GetParentNamespaceID(copyOptions.DestinationPath)
+	parentGroupID, err := g.EnsureParentNamespaceID(copyOptions.DestinationPath, sourceGroup.Visibility)
 	if err != nil {
 		return nil, err
 	}

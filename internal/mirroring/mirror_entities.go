@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
@@ -12,7 +13,8 @@ import (
 
 // mirrorProjectEntities mirrors a category of project entities (issues, releases,
 // ...) from a source project to a destination project. Every failure is logged as
-// it happens via helpers.Report.
+// it happens via helpers.Report. entityName is also the telemetry entity
+// (telemetry.EntityIssue, telemetry.EntityRelease).
 func mirrorProjectEntities[T any](
 	entityName string,
 	sourceProject *gitlab.Project,
@@ -44,6 +46,7 @@ func mirrorProjectEntities[T any](
 		entityKey := getKey(sourceEntity)
 		if _, exists := existingKeys[entityKey]; exists {
 			zap.L().Debug(entityName+" already exists", zap.String(entityName, entityKey), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+			telemetry.RecordEntity(entityName, telemetry.OperationSkip, true)
 
 			continue
 		}
@@ -54,6 +57,8 @@ func mirrorProjectEntities[T any](
 			defer waitGroup.Done()
 
 			createErr := createEntity(destinationProject, entity)
+			telemetry.RecordEntity(entityName, telemetry.OperationCreate, createErr == nil)
+
 			if createErr != nil {
 				helpers.Report(fmt.Errorf("failed to create %s %s in project %s: %w", entityName, key, destinationProject.HTTPURLToRepo, createErr))
 			}

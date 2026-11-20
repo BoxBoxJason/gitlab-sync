@@ -7,6 +7,9 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
+
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
@@ -170,10 +173,16 @@ func pushMirror(repo *git.Repository, destinationURL string, pushAuth transport.
 		Options:    pushOptions.gitOptions(),
 	}
 
+	start := time.Now()
 	err = remote.Push(pushOpts)
+
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+		telemetry.RecordGitPush(time.Since(start), false)
+
 		return fmt.Errorf("failed to push to destination repository: %w", err)
 	}
+
+	telemetry.RecordGitPush(time.Since(start), true)
 
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
@@ -280,7 +281,7 @@ func (destinationGitlab *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInst
 	}
 
 	mirrorProjectEntities(
-		"release",
+		telemetry.EntityRelease,
 		sourceProject,
 		destinationProject,
 		destinationGitlab.FetchProjectReleasesTags,
@@ -353,7 +354,9 @@ func (destinationGitlab *GitlabInstance) mirrorReleasesWithAssets(sourceGitlab *
 		}
 
 		waitGroup.Go(func() {
-			helpers.Report(destinationGitlab.DeleteStaleRelease(destinationProject, destinationRelease, referenced))
+			err := destinationGitlab.DeleteStaleRelease(destinationProject, destinationRelease, referenced)
+			telemetry.RecordEntity(telemetry.EntityRelease, telemetry.OperationDelete, err == nil)
+			helpers.Report(err)
 		})
 	}
 
@@ -400,8 +403,13 @@ func (destinationGitlab *GitlabInstance) mirrorReleaseWithAssets(sourceGitlab *G
 		zap.L().Debug("release already exists", zap.String("release", sourceRelease.TagName), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
 
 		existingLinks = existingRelease.Assets.Links
+
+		// The release itself is left as it is; only its assets are synchronized (and counted).
+		telemetry.RecordEntity(telemetry.EntityRelease, telemetry.OperationSync, true)
 	} else {
 		err := destinationGitlab.MirrorRelease(destinationProject, sourceRelease)
+		telemetry.RecordEntity(telemetry.EntityRelease, telemetry.OperationCreate, err == nil)
+
 		if err != nil {
 			helpers.Report(fmt.Errorf("failed to create release %s in project %s: %w", sourceRelease.TagName, destinationProject.HTTPURLToRepo, err))
 

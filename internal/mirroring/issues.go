@@ -3,6 +3,8 @@ package mirroring
 import (
 	"fmt"
 
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
+
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 	"go.uber.org/zap"
 )
@@ -121,7 +123,7 @@ func (g *GitlabInstance) CloseIssue(project *gitlab.Project, issue *gitlab.Issue
 // It fetches existing issues from the destination project and creates new issues for those that do not.
 func (destinationGitlab *GitlabInstance) MirrorIssues(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project) {
 	mirrorProjectEntities(
-		"issue",
+		telemetry.EntityIssue,
 		sourceProject,
 		destinationProject,
 		destinationGitlab.FetchProjectIssuesTitles,

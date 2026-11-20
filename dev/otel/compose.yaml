@@ -1,0 +1,37 @@
+# Local observability stack for developing the gitlab-sync OpenTelemetry metrics.
+#
+# grafana/otel-lgtm bundles an OpenTelemetry Collector (OTLP receiver),
+# Prometheus (metrics), Tempo (traces), Loki (logs) and a pre-provisioned Grafana.
+#
+#   make otel-up     # start the stack
+#   make otel-down   # stop it (data is kept in the otel-lgtm-data volume)
+#   make otel-dashboard  # create/update the gitlab-sync dashboard (dashboards/gitlab-sync.json)
+#   make otel-backfill   # load a week of simulated runs (BACKFILL_ARGS="--days 3 --interval 15")
+#
+# Then point gitlab-sync at it:
+#   export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+#   export OTEL_METRIC_EXPORT_INTERVAL=5000   # 5s while developing
+#
+# Grafana: http://localhost:3030 (anonymous admin, no login)
+# Prometheus: http://localhost:9091
+# Ports: GRAFANA_PORT, OTLP_GRPC_PORT, OTLP_HTTP_PORT, PROMETHEUS_PORT
+name: gitlab-sync-otel
+
+services:
+  otel-lgtm:
+    image: docker.io/grafana/otel-lgtm:0.38.1
+    # Host ports are overridable to avoid clashing with other local stacks.
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3030}:3000" # Grafana UI
+      - "127.0.0.1:${OTLP_GRPC_PORT:-4317}:4317" # OTLP gRPC receiver
+      - "127.0.0.1:${OTLP_HTTP_PORT:-4318}:4318" # OTLP HTTP receiver
+      - "127.0.0.1:${PROMETHEUS_PORT:-9091}:9090" # Prometheus UI / API (handy to check raw series)
+    environment:
+      # Admin API: lets dev/otel/backfill.py --replace delete simulated series. Local stack only.
+      PROMETHEUS_EXTRA_ARGS: --web.enable-admin-api
+    volumes:
+      - otel-lgtm-data:/data
+    restart: unless-stopped
+
+volumes:
+  otel-lgtm-data:

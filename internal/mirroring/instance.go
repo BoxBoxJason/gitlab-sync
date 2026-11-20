@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
 	"github.com/boxboxjason/gitlab-sync/internal/utils"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/hashicorp/go-retryablehttp"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 )
 
@@ -79,10 +81,15 @@ type GitlabInstanceOpts struct {
 // NewGitlabInstance creates a new GitlabInstance with the provided parameters
 // and initializes the GitLab client with a custom HTTP client.
 func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
+	// Counts and times every API attempt, and the retries, for this instance role.
+	apiMetrics := telemetry.NewAPIInstrumentation(otel.GetMeterProvider(), initArgs.Role)
+
 	clientOpts := []gitlab.ClientOptionFunc{
 		gitlab.WithBaseURL(initArgs.GitlabURL),
 		gitlab.WithCustomRetryMax(initArgs.MaxRetries),
 		gitlab.WithCustomBackoff(retryablehttp.DefaultBackoff),
+		gitlab.WithInterceptor(apiMetrics.Interceptor),
+		gitlab.WithRequestLogHook(apiMetrics.RetryHook),
 	}
 	if initArgs.UserAgent != "" {
 		clientOpts = append(clientOpts, gitlab.WithUserAgent(initArgs.UserAgent))

@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/boxboxjason/gitlab-sync/internal/telemetry"
+
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 )
@@ -460,5 +462,17 @@ func assertRef(t *testing.T, repoPath, name string, want bool) {
 		t.Errorf("%s is missing from %q", name, repoPath)
 	case err != nil && !errors.Is(err, plumbing.ErrReferenceNotFound):
 		t.Fatalf("failed to read %s in %q: %v", name, repoPath, err)
+	}
+}
+
+func TestCacheMissOrInvalid(t *testing.T) {
+	root := t.TempDir()
+
+	if got := cacheMissOrInvalid(filepath.Join(root, "absent.git")); got != telemetry.CacheMiss {
+		t.Errorf("cacheMissOrInvalid(absent) = %q, want %q", got, telemetry.CacheMiss)
+	}
+
+	if got := cacheMissOrInvalid(root); got != telemetry.CacheInvalid {
+		t.Errorf("cacheMissOrInvalid(existing directory) = %q, want %q", got, telemetry.CacheInvalid)
 	}
 }

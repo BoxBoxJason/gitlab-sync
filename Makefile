@@ -72,5 +72,36 @@ package:
 	@echo "Building Docker image..."
 	$(DOCKER_ENGINE) build -t $(PROJECT_NAME):dev -f $(DOCKERFILE) .
 
+# Local observability stack (Grafana + OTLP receiver) used to develop the OpenTelemetry metrics.
+OTEL_COMPOSE ?= $(DOCKER_ENGINE) compose -f dev/otel/compose.yaml
+
+otel-up:
+	$(OTEL_COMPOSE) up -d
+	@echo "Grafana: http://localhost:$${GRAFANA_PORT:-3030} | Prometheus: http://localhost:$${PROMETHEUS_PORT:-9091} | OTLP HTTP: http://localhost:$${OTLP_HTTP_PORT:-4318}"
+	@echo "export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:$${OTLP_HTTP_PORT:-4318}"
+
+otel-down:
+	$(OTEL_COMPOSE) down
+
+otel-logs:
+	$(OTEL_COMPOSE) logs -f
+
+# Load a week of simulated runs into the local Prometheus (see dev/otel/backfill.py --help).
+otel-backfill:
+	DOCKER_ENGINE=$(DOCKER_ENGINE) ./dev/otel/backfill.py $(BACKFILL_ARGS)
+
+# Create or update the gitlab-sync dashboards (one per dev/otel/dashboards/<name>.json) in the local Grafana.
+GRAFANA_URL ?= http://localhost:$${GRAFANA_PORT:-3030}
+DASHBOARD_API = $(GRAFANA_URL)/apis/dashboard.grafana.app/v2/namespaces/default/dashboards
+
+otel-dashboard:
+	@for file in dev/otel/dashboards/*.json; do \
+		name=$$(basename $$file .json); \
+		curl -sf -o /dev/null -X PUT -H 'Content-Type: application/json' --data @$$file $(DASHBOARD_API)/$$name \
+			|| curl -sf -o /dev/null -X POST -H 'Content-Type: application/json' --data @$$file $(DASHBOARD_API) \
+			|| { echo "Failed to load $$file"; exit 1; }; \
+		echo "Dashboard: $(GRAFANA_URL)/d/$$name"; \
+	done
+
 # Phony targets
-.PHONY: deps build lint dependency-check test vuln docs-generate docs docs-serve package
+.PHONY: deps build lint dependency-check test vuln docs-generate docs docs-serve package otel-up otel-down otel-logs otel-backfill otel-dashboard

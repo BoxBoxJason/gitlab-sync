@@ -53,14 +53,16 @@ type GitlabInstance struct {
 	GitCache *helpers.GitCache
 	// assetTransfers bounds how many release asset files are transferred at once
 	// (see acquireAssetTransfer). A nil channel means no bound.
-	assetTransfers      chan struct{}
-	Projects            map[string]*gitlab.Project
-	Groups              map[string]*gitlab.Group
-	Role                string
-	InstanceSize        string
-	UserID              int64
-	muProjects          sync.RWMutex
-	muGroups            sync.RWMutex
+	assetTransfers chan struct{}
+	Projects       map[string]*gitlab.Project
+	Groups         map[string]*gitlab.Group
+	Role           string
+	InstanceSize   string
+	UserID         int64
+	muProjects     sync.RWMutex
+	muGroups       sync.RWMutex
+	// muEnsureGroups serializes the creation of missing parent groups (see EnsureParentNamespaceID).
+	muEnsureGroups      sync.Mutex
 	PullMirrorAvailable bool
 }
 

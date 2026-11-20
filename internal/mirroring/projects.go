@@ -350,7 +350,7 @@ func (g *GitlabInstance) CreateProjectFromSource(sourceProject *gitlab.Project, 
 
 	// Get the parent namespace ID for the project
 	// This is used to set the namespace ID for the project
-	parentNamespaceId, err := g.GetParentNamespaceID(copyOptions.DestinationPath)
+	parentNamespaceId, err := g.EnsureParentNamespaceID(copyOptions.DestinationPath, *projectCreationArgs.Visibility)
 	if err != nil {
 		return nil, err
 	}

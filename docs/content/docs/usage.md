@@ -36,6 +36,41 @@ The full `--help` output of the CLI is available in the [CLI reference]({{< relr
 | `--cache-dir` | `GITLAB_SYNC_CACHE_DIR` | No | Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, default: `none`, caching disabled). See [caching]({{< relref "freemium#caching-the-cloned-repositories" >}}) |
 | `--cache-max-age` | `GITLAB_SYNC_CACHE_MAX_AGE` | No | Delete the cached repositories that have not been synchronized for that long (Go duration, `0` keeps them forever, default: `168h`, 7 days) |
 | `--user-agent` | `GITLAB_SYNC_USER_AGENT` | No | User-Agent sent with every GitLab API request; git clone, fetch and push requests keep the go-git default (default: `gitlab-sync/<version>`) |
+| `--exit-success-on-non-blocking` | `GITLAB_SYNC_EXIT_SUCCESS_ON_NON_BLOCKING` | No | Exit with code `0` when only non-blocking errors occurred (default: false, the environment variable accepts `true`/`false`/`1`/`0`). Blocking errors still exit `1` |
+
+## Exit codes
+
+| Code | Meaning |
+| ---- | ------- |
+| `0` | Success |
+| `1` | At least one blocking error occurred |
+| `2` | Only non-blocking errors (warnings) occurred |
+
+Non-blocking errors are always logged at `WARN` as they happen. With `--exit-success-on-non-blocking`, code `2` becomes `0` and the final summary says so (`exit code forced to 0`).
+
+### Kubernetes CronJob
+
+Any non-zero exit marks the pod as failed, so a CronJob with `restartPolicy: OnFailure` retries the whole mirror on mere warnings. Opt in to exit `0` for those:
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gitlab-sync
+spec:
+  schedule: "0 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: gitlab-sync
+              image: ghcr.io/boxboxjason/gitlab-sync:latest
+              env:
+                - name: GITLAB_SYNC_EXIT_SUCCESS_ON_NON_BLOCKING
+                  value: "true"
+```
 
 ## Example
 

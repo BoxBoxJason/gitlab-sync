@@ -23,25 +23,26 @@ Available Commands:
   completion  Generate shell completion script
 
 Flags:
-      --cache-dir string             Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, empty disables caching)
-      --cache-max-age duration       Delete the cached repositories that have not been synchronized for that long (0 keeps them forever) (default 168h0m0s)
-      --destination-big              Destination GitLab is a big instance
-  -f, --destination-force-freemium   Force the destination GitLab to be treated as a non premium instance
-  -p, --destination-force-premium    Force the destination GitLab to be treated as a premium instance
-      --destination-token string     Destination GitLab Token
-      --destination-url string       Destination GitLab URL
-      --dry-run                      Perform a dry run without making any changes
-  -h, --help                         help for gitlab-sync
-      --log-file string              Path to the log file
-      --mirror-mapping string        Path to the mirror mapping file
-  -n, --no-prompt                    Disable prompting for missing values
-  -r, --retry int                    Number of retries for failed requests (default 3)
-      --source-big                   Source GitLab is a big instance
-      --source-token string          Source GitLab Token
-      --source-url string            Source GitLab URL
-      --user-agent string            User-Agent sent with every GitLab API request (default "gitlab-sync/<version>")
-  -v, --verbose                      Enable verbose output
-      --version                      version for gitlab-sync
+      --cache-dir string               Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, empty disables caching)
+      --cache-max-age duration         Delete the cached repositories that have not been synchronized for that long (0 keeps them forever) (default 168h0m0s)
+      --destination-big                Destination GitLab is a big instance
+  -f, --destination-force-freemium     Force the destination GitLab to be treated as a non premium instance
+  -p, --destination-force-premium      Force the destination GitLab to be treated as a premium instance
+      --destination-token string       Destination GitLab Token
+      --destination-url string         Destination GitLab URL
+      --dry-run                        Perform a dry run without making any changes
+      --exit-success-on-non-blocking   Exit with code 0 when only non-blocking errors occurred (blocking errors still exit 1)
+  -h, --help                           help for gitlab-sync
+      --log-file string                Path to the log file
+      --mirror-mapping string          Path to the mirror mapping file
+  -n, --no-prompt                      Disable prompting for missing values
+  -r, --retry int                      Number of retries for failed requests (default 3)
+      --source-big                     Source GitLab is a big instance
+      --source-token string            Source GitLab Token
+      --source-url string              Source GitLab URL
+      --user-agent string              User-Agent sent with every GitLab API request (default "gitlab-sync/<version>")
+  -v, --verbose                        Enable verbose output
+      --version                        version for gitlab-sync
 
 Use "gitlab-sync [command] --help" for more information about a command.
 ```

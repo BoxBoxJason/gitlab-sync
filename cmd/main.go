@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"time"
 
@@ -84,6 +85,7 @@ func buildRootCmd(args *utils.ParserArgs, mirrorMappingPath, logFile *string) *c
 	rootCmd.Flags().StringVar(&args.CacheDir, "cache-dir", strings.TrimSpace(os.Getenv("GITLAB_SYNC_CACHE_DIR")), "Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, empty disables caching)")
 	rootCmd.Flags().DurationVar(&args.CacheMaxAge, "cache-max-age", envDuration("GITLAB_SYNC_CACHE_MAX_AGE", defaultCacheMaxAge), "Delete the cached repositories that have not been synchronized for that long (0 keeps them forever)")
 	rootCmd.Flags().StringVar(&args.UserAgent, "user-agent", envString("GITLAB_SYNC_USER_AGENT", defaultUserAgent()), "User-Agent sent with every GitLab API request")
+	rootCmd.Flags().BoolVar(&args.ExitSuccessOnNonBlocking, "exit-success-on-non-blocking", envBool("GITLAB_SYNC_EXIT_SUCCESS_ON_NON_BLOCKING", false), "Exit with code 0 when only non-blocking errors occurred (blocking errors still exit 1)")
 	_ = rootCmd.MarkFlagFilename("mirror-mapping", "json")
 	_ = rootCmd.MarkFlagFilename("log-file", "log", "txt")
 	_ = rootCmd.MarkFlagDirname("cache-dir")
@@ -121,6 +123,37 @@ func envDuration(name string, defaultValue time.Duration) time.Duration {
 	}
 
 	return parsed
+}
+
+// envBool reads a boolean (anything strconv.ParseBool accepts) from the
+// environment, falling back to defaultValue when the variable is unset, blank
+// or does not parse. An unparsable value is reported rather than silently
+// ignored, but it does not stop the run: the flag can still override it.
+func envBool(name string, defaultValue bool) bool {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return defaultValue
+	}
+
+	parsed, err := strconv.ParseBool(raw)
+	if err != nil {
+		zap.L().Warn("Ignoring an invalid boolean in the environment", zap.String("variable", name), zap.String("value", raw), zap.Error(err))
+
+		return defaultValue
+	}
+
+	return parsed
+}
+
+// resolveExitCode turns the exit code derived from the reported errors into the
+// process exit code: non-blocking errors only exit 0 when exitSuccessOnNonBlocking
+// is set, every other code is kept as is.
+func resolveExitCode(code int, exitSuccessOnNonBlocking bool) int {
+	if code == helpers.ExitNonBlocking && exitSuccessOnNonBlocking {
+		return helpers.ExitOK
+	}
+
+	return code
 }
 
 func addCompletionCommand(rootCmd *cobra.Command) {
@@ -193,15 +226,23 @@ func executeMirroringCommand(args *utils.ParserArgs, mirrorMappingPath, logFile 
 	// exit code is consulted here.
 	mirroring.MirrorGitlabs(args)
 
-	switch code := helpers.ExitCode(); code {
+	code := helpers.ExitCode()
+
+	switch code {
 	case helpers.ExitOK:
 		zap.L().Info("Mirroring completed successfully")
 	case helpers.ExitBlocking:
 		zap.L().Error("Mirroring process finished with blocking errors")
-		os.Exit(code)
 	default:
-		zap.L().Warn("Mirroring process finished with non-blocking errors")
-		os.Exit(code)
+		if args.ExitSuccessOnNonBlocking {
+			zap.L().Warn("Mirroring process finished with non-blocking errors (exit code forced to 0)")
+		} else {
+			zap.L().Warn("Mirroring process finished with non-blocking errors")
+		}
+	}
+
+	if exitCode := resolveExitCode(code, args.ExitSuccessOnNonBlocking); exitCode != helpers.ExitOK {
+		os.Exit(exitCode)
 	}
 }
 

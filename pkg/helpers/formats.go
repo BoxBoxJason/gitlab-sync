@@ -65,6 +65,24 @@ func EnvDuration(name string, defaultValue time.Duration) (time.Duration, error)
 	return parsed, nil
 }
 
+// EnvInt reads an integer from the environment, falling back to defaultValue
+// when the variable is unset, blank or does not parse. An unparsable value
+// yields defaultValue and a non-nil error, so the caller can report it once its
+// logger is ready. The flag can still override it.
+func EnvInt(name string, defaultValue int) (int, error) {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return defaultValue, nil
+	}
+
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		return defaultValue, fmt.Errorf("ignoring invalid integer %q in %s: %w", raw, name, err)
+	}
+
+	return parsed, nil
+}
+
 // EnvBool reads a boolean (anything strconv.ParseBool accepts) from the
 // environment, falling back to defaultValue when the variable is unset, blank
 // or does not parse. An unparsable value yields defaultValue and a non-nil

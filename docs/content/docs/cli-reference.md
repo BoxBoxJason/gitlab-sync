@@ -23,6 +23,7 @@ Available Commands:
   completion  Generate shell completion script
 
 Flags:
+      --api-concurrency int                         Maximum number of GitLab API requests in flight at once, per instance (default 16)
       --cache-dir string                            Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, empty disables caching)
       --cache-max-age duration                      Delete the cached repositories that have not been synchronized for that long (0 keeps them forever) (default 168h0m0s)
       --destination-big[=true|false]                Destination GitLab is a big instance
@@ -32,6 +33,7 @@ Flags:
       --destination-url string                      Destination GitLab URL
       --dry-run[=true|false]                        Perform a dry run without making any changes
       --exit-success-on-non-blocking[=true|false]   Exit with code 0 when only non-blocking errors occurred (blocking errors still exit 1)
+      --git-concurrency int                         Maximum number of git clones and pushes running at once (freemium mirroring only) (default 4)
   -h, --help[=true|false]                           help for gitlab-sync
       --log-file string                             Path to the log file
       --mirror-mapping string                       Path to the mirror mapping file

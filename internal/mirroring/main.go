@@ -30,12 +30,14 @@ func createMirroringInstances(gitlabMirrorArgs *mirrorcfg.ParserArgs) (mirroring
 	}
 
 	sourceGitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
-		GitlabURL:    gitlabMirrorArgs.SourceGitlabURL,
-		GitlabToken:  gitlabMirrorArgs.SourceGitlabToken,
-		Role:         RoleSource,
-		MaxRetries:   gitlabMirrorArgs.Retry,
-		InstanceSize: sourceGitlabSize,
-		UserAgent:    gitlabMirrorArgs.UserAgent,
+		GitlabURL:      gitlabMirrorArgs.SourceGitlabURL,
+		GitlabToken:    gitlabMirrorArgs.SourceGitlabToken,
+		Role:           RoleSource,
+		MaxRetries:     gitlabMirrorArgs.Retry,
+		APIConcurrency: gitlabMirrorArgs.APIConcurrency,
+		GitConcurrency: gitlabMirrorArgs.GitConcurrency,
+		InstanceSize:   sourceGitlabSize,
+		UserAgent:      gitlabMirrorArgs.UserAgent,
 	})
 	if err != nil {
 		return mirroringInstances{}, err
@@ -47,12 +49,14 @@ func createMirroringInstances(gitlabMirrorArgs *mirrorcfg.ParserArgs) (mirroring
 	}
 
 	destinationGitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
-		GitlabURL:    gitlabMirrorArgs.DestinationGitlabURL,
-		GitlabToken:  gitlabMirrorArgs.DestinationGitlabToken,
-		Role:         RoleDestination,
-		MaxRetries:   gitlabMirrorArgs.Retry,
-		InstanceSize: destinationGitlabSize,
-		UserAgent:    gitlabMirrorArgs.UserAgent,
+		GitlabURL:      gitlabMirrorArgs.DestinationGitlabURL,
+		GitlabToken:    gitlabMirrorArgs.DestinationGitlabToken,
+		Role:           RoleDestination,
+		MaxRetries:     gitlabMirrorArgs.Retry,
+		APIConcurrency: gitlabMirrorArgs.APIConcurrency,
+		GitConcurrency: gitlabMirrorArgs.GitConcurrency,
+		InstanceSize:   destinationGitlabSize,
+		UserAgent:      gitlabMirrorArgs.UserAgent,
 	})
 	if err != nil {
 		return mirroringInstances{}, err

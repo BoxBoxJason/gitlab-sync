@@ -174,8 +174,6 @@ func executeMirroringCommand(args *mirrorcfg.ParserArgs, mirrorMappingPath, logF
 	default:
 	}
 
-	validateConcurrency(args)
-
 	// An explicitly empty --user-agent would make the clients fall back to their
 	// library defaults, so it means "use ours" instead.
 	args.UserAgent = strings.TrimSpace(args.UserAgent)

@@ -5,7 +5,6 @@ import (
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	"github.com/spf13/cobra"
-	"go.uber.org/zap"
 )
 
 // addConcurrencyFlags registers the flags bounding the work in flight and
@@ -23,15 +22,8 @@ func addConcurrencyFlags(rootCmd *cobra.Command, args *mirrorcfg.ParserArgs) []e
 		errs = append(errs, err)
 	}
 
-	rootCmd.Flags().IntVar(&args.APIConcurrency, "api-concurrency", apiConcurrency, "Maximum number of GitLab API requests in flight at once, per instance")
-	rootCmd.Flags().IntVar(&args.GitConcurrency, "git-concurrency", gitConcurrency, "Maximum number of git clones and pushes running at once (freemium mirroring only)")
+	rootCmd.Flags().IntVar(&args.APIConcurrency, "api-concurrency", apiConcurrency, "Maximum number of GitLab API requests in flight at once, per instance (0 or less: unbounded)")
+	rootCmd.Flags().IntVar(&args.GitConcurrency, "git-concurrency", gitConcurrency, "Maximum number of git clones and pushes running at once (freemium mirroring only, 0 or less: unbounded)")
 
 	return errs
-}
-
-// validateConcurrency stops the program when a concurrency bound is not positive.
-func validateConcurrency(args *mirrorcfg.ParserArgs) {
-	if args.APIConcurrency < 1 || args.GitConcurrency < 1 {
-		zap.L().Fatal("api and git concurrency must be strictly greater than 0")
-	}
 }

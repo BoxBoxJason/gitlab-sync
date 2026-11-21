@@ -49,6 +49,9 @@ func (g *GitlabInstance) MirrorProjectGit(sourceGitlabInstance *GitlabInstance, 
 		return err
 	}
 
+	releaseGit := g.acquireGitSlot()
+	defer releaseGit()
+
 	err = helpers.MirrorRepo(g.GitCache, sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, g.GitAuth, mirrorPushOptions(mirrorOptions))
 	if err != nil {
 		return fmt.Errorf("failed to mirror repository from %s to %s: %w", sourceProject.PathWithNamespace, destinationProject.PathWithNamespace, err)

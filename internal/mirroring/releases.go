@@ -172,6 +172,7 @@ func (g *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInstance, sourceProj
 		func(project *gitlab.Project, release *gitlab.Release) error {
 			return g.MirrorRelease(project, release)
 		},
+		createConcurrently,
 	)
 }
 

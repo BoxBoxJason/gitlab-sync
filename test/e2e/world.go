@@ -27,38 +27,39 @@ const (
 
 	sourceToken      = "source-token"
 	destinationToken = "destination-token"
+
+	flagSourceURL        = "--source-url"
+	flagSourceToken      = "--source-token"
+	flagDestinationURL   = "--destination-url"
+	flagDestinationToken = "--destination-token"
+	flagMirrorMapping    = "--mirror-mapping"
+	flagNoPrompt         = "--no-prompt"
+
+	mappingFilePerm = 0o600
 )
 
-// binaryPath is the gitlab-sync binary every scenario runs, built once by
-// TestMain with coverage instrumentation.
-var binaryPath string
-
-// coverDir is where the instrumented binary writes its coverage data.
-var coverDir string
-
-// defaultFlags are the flags every run starts from, in this order. A scenario
-// overrides one by passing the same flag, or drops it with `without`.
-var defaultFlags = []string{"--source-url", "--source-token", "--destination-url", "--destination-token", "--mirror-mapping", "--no-prompt"}
-
-// flagAliases maps the short flags to the long name used to tell which default
-// flag a scenario overrides.
-var flagAliases = map[string]string{"-n": "--no-prompt"}
+// binary is the gitlab-sync binary every scenario runs, built once with
+// coverage instrumentation.
+type binary struct {
+	path string
+	// coverDir is where the instrumented binary writes its coverage data.
+	coverDir string
+}
 
 // run is the outcome of one execution of the binary.
 type run struct {
-	// started is, per fake instance, how many requests the instance had
-	// received before the run, so that assertions only look at this run.
-	started map[*gitlabmock.Server]int
 	at      time.Time
-	args    []string
+	started map[*gitlabmock.Server]int
 	stdout  string
 	stderr  string
+	args    []string
 	exit    int
 }
 
 // world is the state of one scenario: its fake instances, the files it wrote
 // and the runs it made.
 type world struct {
+	bin         binary
 	source      *gitlabmock.Server
 	destination *gitlabmock.Server
 	// unreachable holds, per role, a URL nothing listens on.
@@ -69,7 +70,7 @@ type world struct {
 	counter     atomic.Int64
 }
 
-func newWorld() (*world, error) {
+func newWorld(bin binary) (*world, error) {
 	work, err := os.MkdirTemp("", "gitlab-sync-scenario-*")
 	if err != nil {
 		return nil, fmt.Errorf("create the work directory: %w", err)
@@ -77,26 +78,33 @@ func newWorld() (*world, error) {
 
 	source, err := gitlabmock.New()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("start the source instance: %w", err)
 	}
 
 	destination, err := gitlabmock.New()
 	if err != nil {
-		source.Close()
+		closeErr := source.Close()
 
-		return nil, err
+		return nil, errors.Join(fmt.Errorf("start the destination instance: %w", err), closeErr)
 	}
 
-	return &world{source: source, destination: destination, work: work, unreachable: make(map[string]string)}, nil
+	return &world{bin: bin, source: source, destination: destination, work: work, unreachable: make(map[string]string)}, nil
 }
 
 // close stops the fake instances and removes the scenario files.
-func (w *world) close() {
+func (w *world) close() error {
+	var errs []error
+
 	for _, server := range w.servers() {
-		server.Close()
+		errs = append(errs, server.Close())
 	}
 
-	_ = os.RemoveAll(w.work)
+	err := os.RemoveAll(w.work)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("remove the scenario files: %w", err))
+	}
+
+	return errors.Join(errs...)
 }
 
 // servers lists the fake instances once each (source and destination can be the
@@ -130,12 +138,17 @@ func (w *world) url(role string) string {
 func (w *world) makeUnreachable(role string) error {
 	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
-		return err
+		return fmt.Errorf("reserve a port: %w", err)
 	}
 
 	w.unreachable[role] = "http://" + listener.Addr().String()
 
-	return listener.Close()
+	err = listener.Close()
+	if err != nil {
+		return fmt.Errorf("release the port: %w", err)
+	}
+
+	return nil
 }
 
 // expand replaces the placeholders a scenario can use in its arguments.
@@ -176,101 +189,12 @@ func (w *world) requests(role string) ([]gitlabmock.Request, error) {
 func (w *world) writeMapping(content string) error {
 	w.mappingPath = filepath.Join(w.work, "mirror-mapping.json")
 
-	return os.WriteFile(w.mappingPath, []byte(w.expand(content)), 0o600)
-}
-
-// flagsFor builds the command line of a run: the default flags (minus the
-// overridden and the dropped ones), then the extra flags.
-func (w *world) flagsFor(extra, without []string) []string {
-	skipped := make(map[string]bool)
-
-	for _, name := range append(append([]string(nil), without...), flagNames(extra)...) {
-		skipped[canonicalFlag(name)] = true
+	err := os.WriteFile(w.mappingPath, []byte(w.expand(content)), mappingFilePerm)
+	if err != nil {
+		return fmt.Errorf("write the mirror mapping: %w", err)
 	}
 
-	values := map[string]string{
-		"--source-url":        w.url(roleSource),
-		"--source-token":      sourceToken,
-		"--destination-url":   w.url(roleDestination),
-		"--destination-token": destinationToken,
-		"--mirror-mapping":    w.mappingPath,
-	}
-
-	var args []string
-
-	for _, name := range defaultFlags {
-		if skipped[name] {
-			continue
-		}
-
-		if name == "--no-prompt" {
-			args = append(args, name)
-
-			continue
-		}
-
-		if values[name] != "" {
-			args = append(args, name, values[name])
-		}
-	}
-
-	return append(args, extra...)
-}
-
-func canonicalFlag(name string) string {
-	if long, ok := flagAliases[name]; ok {
-		return long
-	}
-
-	return name
-}
-
-// flagNames lists the flags (not their values) among args.
-func flagNames(args []string) []string {
-	var names []string
-
-	for _, arg := range args {
-		if name, _, _ := strings.Cut(arg, "="); strings.HasPrefix(name, "-") {
-			names = append(names, name)
-		}
-	}
-
-	return names
-}
-
-// splitArgs splits a command line the way a shell would for plain words and
-// double quoted strings.
-func splitArgs(line string) []string {
-	var (
-		args    []string
-		current strings.Builder
-		quoted  bool
-		started bool
-	)
-
-	for _, char := range line {
-		switch {
-		case char == '"':
-			quoted, started = !quoted, true
-		case (char == ' ' || char == '\t') && !quoted:
-			if started {
-				args = append(args, current.String())
-				current.Reset()
-
-				started = false
-			}
-		default:
-			current.WriteRune(char)
-
-			started = true
-		}
-	}
-
-	if started {
-		args = append(args, current.String())
-	}
-
-	return args
+	return nil
 }
 
 // execute runs the binary with args, without any prompt possible (stdin is
@@ -286,13 +210,13 @@ func (w *world) execute(args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	defer cancel()
 
-	command := exec.CommandContext(ctx, binaryPath, args...) //nolint:gosec // the binary is the one TestMain built
+	command := exec.CommandContext(ctx, w.bin.path, args...) //nolint:gosec // the binary is the one the suite built
 	command.Dir = w.work
 	command.Env = []string{
 		"PATH=" + os.Getenv("PATH"),
 		"HOME=" + w.work,
 		"TMPDIR=" + w.work,
-		"GOCOVERDIR=" + coverDir,
+		"GOCOVERDIR=" + w.bin.coverDir,
 	}
 
 	var stdout, stderr bytes.Buffer

@@ -85,11 +85,13 @@ linters:
           allow:
             - $gostd
             - github.com/boxboxjason/gitlab-sync
+            - github.com/cucumber/godog
             - github.com/go-git/go-git/v5
             - github.com/hashicorp/go-retryablehttp
             - github.com/Masterminds/semver/v3
             - github.com/spf13/cobra
             - github.com/spf13/pflag
+            - github.com/stretchr/testify
             - gitlab.com/gitlab-org/api/client-go/v3
             - go.uber.org/zap
     errcheck:

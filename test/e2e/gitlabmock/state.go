@@ -1,29 +1,20 @@
 package gitlabmock
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"path"
 	"path/filepath"
-	"slices"
-	"sort"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/filemode"
-	"github.com/go-git/go-git/v5/plumbing/object"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 )
 
 var errNotFound = errors.New("not found")
 
 type group struct {
-	gitlab.Group
+	*gitlab.Group
 
 	members map[int64]int64
 	avatar  []byte
@@ -44,13 +35,13 @@ type packageRecord struct {
 type project struct {
 	gitlab.Project
 
+	links    map[string][]*gitlab.ReleaseLink
+	members  map[int64]int64
 	repoDir  string
 	avatar   []byte
 	issues   []*gitlab.Issue
 	releases []*gitlab.Release
-	links    map[string][]*gitlab.ReleaseLink
 	packages []*packageRecord
-	members  map[int64]int64
 }
 
 // ProjectOption tunes a project created by AddProject.
@@ -129,7 +120,7 @@ func (s *Server) newGroup(name, groupPath string, parentID int64, visibility, de
 	}
 
 	created := &group{
-		Group: gitlab.Group{
+		Group: &gitlab.Group{
 			ID:          s.id(),
 			Name:        name,
 			Path:        groupPath,
@@ -170,8 +161,9 @@ func (s *Server) groupByID(id int64) *group {
 
 // lookupGroup finds a group by numeric id or by full path.
 func (s *Server) lookupGroup(idOrPath string) *group {
-	if id, err := strconv.ParseInt(idOrPath, 10, 64); err == nil {
-		return s.groupByID(id)
+	parsed, err := strconv.ParseInt(idOrPath, 10, 64)
+	if err == nil {
+		return s.groupByID(parsed)
 	}
 
 	return s.groupByPath(idOrPath)
@@ -209,12 +201,12 @@ func (s *Server) AddProject(fullPath string, options ...ProjectOption) error {
 // newProject records a project (the caller holds the lock). The repository is
 // created on first use.
 func (s *Server) newProject(name, projectPath string, namespace *group, visibility string) *project {
-	id := s.id()
+	projectID := s.id()
 	fullPath := namespace.FullPath + "/" + projectPath
 
 	created := &project{
 		Project: gitlab.Project{
-			ID:                id,
+			ID:                projectID,
 			Name:              name,
 			Path:              projectPath,
 			PathWithNamespace: fullPath,
@@ -227,7 +219,7 @@ func (s *Server) newProject(name, projectPath string, namespace *group, visibili
 			Topics:            []string{},
 			Namespace:         &gitlab.ProjectNamespace{ID: namespace.ID, FullPath: namespace.FullPath, Name: namespace.Name, Path: namespace.Path},
 		},
-		repoDir: filepath.Join(s.dir, strconv.FormatInt(id, 10)+".git"),
+		repoDir: filepath.Join(s.dir, strconv.FormatInt(projectID, 10)+".git"),
 		links:   make(map[string][]*gitlab.ReleaseLink),
 		members: make(map[int64]int64),
 	}
@@ -259,8 +251,9 @@ func (s *Server) projectByID(id int64) *project {
 
 // lookupProject finds a project by numeric id or by full path.
 func (s *Server) lookupProject(idOrPath string) *project {
-	if id, err := strconv.ParseInt(idOrPath, 10, 64); err == nil {
-		return s.projectByID(id)
+	parsed, err := strconv.ParseInt(idOrPath, 10, 64)
+	if err == nil {
+		return s.projectByID(parsed)
 	}
 
 	return s.projectByPath(idOrPath)
@@ -283,664 +276,4 @@ func (s *Server) AddGeneratedProjects(parent string, count int) error {
 	}
 
 	return nil
-}
-
-// --- repository seeding and inspection -------------------------------------
-
-var commitSignature = object.Signature{Name: "Seed", Email: "seed@example.com", When: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}
-
-// repo opens (creating it when needed) the bare repository of a project.
-func (p *project) repo() (*git.Repository, error) {
-	repository, err := git.PlainOpen(p.repoDir)
-	if err == nil {
-		return repository, nil
-	}
-
-	if !errors.Is(err, git.ErrRepositoryNotExists) {
-		return nil, err
-	}
-
-	repository, err = git.PlainInit(p.repoDir, true)
-	if err != nil {
-		return nil, err
-	}
-
-	head := plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName(p.DefaultBranch))
-
-	return repository, repository.Storer.SetReference(head)
-}
-
-// Commit adds a commit writing content to file on branch of the project at
-// fullPath, creating the branch when missing. It returns the commit hash.
-func (s *Server) Commit(fullPath, branch, file, content string) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	target := s.projectByPath(fullPath)
-	if target == nil {
-		return "", fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	repository, err := target.repo()
-	if err != nil {
-		return "", err
-	}
-
-	var parents []plumbing.Hash
-
-	branchRef := plumbing.NewBranchReferenceName(branch)
-	if ref, refErr := repository.Reference(branchRef, true); refErr == nil {
-		parents = append(parents, ref.Hash())
-	}
-
-	blobObject := repository.Storer.NewEncodedObject()
-	blobObject.SetType(plumbing.BlobObject)
-
-	writer, err := blobObject.Writer()
-	if err != nil {
-		return "", err
-	}
-
-	if _, err = writer.Write([]byte(content)); err != nil {
-		return "", err
-	}
-
-	if err = writer.Close(); err != nil {
-		return "", err
-	}
-
-	blobHash, err := repository.Storer.SetEncodedObject(blobObject)
-	if err != nil {
-		return "", err
-	}
-
-	tree := &object.Tree{Entries: []object.TreeEntry{{Name: file, Mode: filemode.Regular, Hash: blobHash}}}
-	treeObject := repository.Storer.NewEncodedObject()
-
-	if err = tree.Encode(treeObject); err != nil {
-		return "", err
-	}
-
-	treeHash, err := repository.Storer.SetEncodedObject(treeObject)
-	if err != nil {
-		return "", err
-	}
-
-	signature := commitSignature
-	signature.When = signature.When.Add(time.Duration(len(parents)+int(blobHash[0])) * time.Second)
-
-	commit := &object.Commit{Author: signature, Committer: signature, Message: "update " + file, TreeHash: treeHash, ParentHashes: parents}
-	commitObject := repository.Storer.NewEncodedObject()
-
-	if err = commit.Encode(commitObject); err != nil {
-		return "", err
-	}
-
-	commitHash, err := repository.Storer.SetEncodedObject(commitObject)
-	if err != nil {
-		return "", err
-	}
-
-	if err = repository.Storer.SetReference(plumbing.NewHashReference(branchRef, commitHash)); err != nil {
-		return "", err
-	}
-
-	target.EmptyRepo = false
-
-	return commitHash.String(), nil
-}
-
-// Tag creates the lightweight tag name on the tip of branch.
-func (s *Server) Tag(fullPath, name, branch string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	target := s.projectByPath(fullPath)
-	if target == nil {
-		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	repository, err := target.repo()
-	if err != nil {
-		return err
-	}
-
-	ref, err := repository.Reference(plumbing.NewBranchReferenceName(branch), true)
-	if err != nil {
-		return fmt.Errorf("branch %s of %s: %w", branch, fullPath, err)
-	}
-
-	return repository.Storer.SetReference(plumbing.NewHashReference(plumbing.NewTagReferenceName(name), ref.Hash()))
-}
-
-// Refs returns the branches and tags of a project's repository ("refs/heads/main"
-// -> commit hash).
-func (s *Server) Refs(fullPath string) (map[string]string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	target := s.projectByPath(fullPath)
-	if target == nil {
-		return nil, fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	repository, err := target.repo()
-	if err != nil {
-		return nil, err
-	}
-
-	iterator, err := repository.References()
-	if err != nil {
-		return nil, err
-	}
-
-	refs := make(map[string]string)
-
-	err = iterator.ForEach(func(ref *plumbing.Reference) error {
-		if ref.Type() == plumbing.HashReference {
-			refs[ref.Name().String()] = ref.Hash().String()
-		}
-
-		return nil
-	})
-
-	return refs, err
-}
-
-// --- inspection of the REST resources --------------------------------------
-
-// Project returns a copy of the project at fullPath.
-func (s *Server) Project(fullPath string) (gitlab.Project, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	found := s.projectByPath(fullPath)
-	if found == nil {
-		return gitlab.Project{}, false
-	}
-
-	return found.Project, true
-}
-
-// ProjectPaths lists the full path of every project, sorted.
-func (s *Server) ProjectPaths() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	paths := make([]string, 0, len(s.projects))
-	for _, candidate := range s.projects {
-		paths = append(paths, candidate.PathWithNamespace)
-	}
-
-	sort.Strings(paths)
-
-	return paths
-}
-
-// Group returns a copy of the group at fullPath.
-func (s *Server) Group(fullPath string) (gitlab.Group, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	found := s.groupByPath(fullPath)
-	if found == nil {
-		return gitlab.Group{}, false
-	}
-
-	return found.Group, true
-}
-
-// GroupPaths lists the full path of every group, sorted.
-func (s *Server) GroupPaths() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	paths := make([]string, 0, len(s.groups))
-	for _, candidate := range s.groups {
-		paths = append(paths, candidate.FullPath)
-	}
-
-	sort.Strings(paths)
-
-	return paths
-}
-
-// ProjectMember returns the access level of the authenticated user on the project.
-func (s *Server) ProjectMember(fullPath string) (int64, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	found := s.projectByPath(fullPath)
-	if found == nil {
-		return 0, false
-	}
-
-	level, ok := found.members[userID]
-
-	return level, ok
-}
-
-// GroupMember returns the access level of the authenticated user on the group.
-func (s *Server) GroupMember(fullPath string) (int64, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	found := s.groupByPath(fullPath)
-	if found == nil {
-		return 0, false
-	}
-
-	level, ok := found.members[userID]
-
-	return level, ok
-}
-
-// --- issues -----------------------------------------------------------------
-
-// AddIssue adds an issue to a project. state is "opened" or "closed".
-func (s *Server) AddIssue(fullPath, title, description, state string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	target := s.projectByPath(fullPath)
-	if target == nil {
-		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	target.issues = append(target.issues, s.newIssue(target, title, description, state))
-
-	return nil
-}
-
-func (s *Server) newIssue(target *project, title, description, state string) *gitlab.Issue {
-	now := time.Now().UTC()
-
-	return &gitlab.Issue{
-		ID:          s.id(),
-		IID:         int64(len(target.issues) + 1),
-		ProjectID:   target.ID,
-		Title:       title,
-		Description: description,
-		State:       state,
-		CreatedAt:   &now,
-		UpdatedAt:   &now,
-	}
-}
-
-// Issues returns a copy of the issues of a project.
-func (s *Server) Issues(fullPath string) []gitlab.Issue {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	found := s.projectByPath(fullPath)
-	if found == nil {
-		return nil
-	}
-
-	issues := make([]gitlab.Issue, 0, len(found.issues))
-	for _, issue := range found.issues {
-		issues = append(issues, *issue)
-	}
-
-	return issues
-}
-
-// --- releases ---------------------------------------------------------------
-
-// AddRelease adds a release to a project.
-func (s *Server) AddRelease(fullPath, tag, name, description string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	target := s.projectByPath(fullPath)
-	if target == nil {
-		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	now := time.Now().UTC()
-	target.releases = append(target.releases, &gitlab.Release{TagName: tag, Name: name, Description: description, CreatedAt: &now, ReleasedAt: &now})
-
-	return nil
-}
-
-// AddReleaseLink adds an asset link to the release tag of a project. directPath
-// is the optional direct asset path ("/bin/tool").
-func (s *Server) AddReleaseLink(fullPath, tag, name, url, directPath string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	target := s.projectByPath(fullPath)
-	if target == nil {
-		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	target.links[tag] = append(target.links[tag], s.newReleaseLink(target, tag, name, url, directPath, "other"))
-
-	return nil
-}
-
-func (s *Server) newReleaseLink(target *project, tag, name, url, directPath, linkType string) *gitlab.ReleaseLink {
-	link := &gitlab.ReleaseLink{ID: s.id(), Name: name, URL: url, LinkType: gitlab.LinkTypeValue(linkType), DirectAssetURL: url}
-	if directPath != "" {
-		link.DirectAssetURL = s.publicBase + "/" + target.PathWithNamespace + "/-/releases/" + tag + "/downloads" + directPath
-	}
-
-	return link
-}
-
-// Releases returns a copy of the releases of a project, with their links.
-func (s *Server) Releases(fullPath string) []gitlab.Release {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	found := s.projectByPath(fullPath)
-	if found == nil {
-		return nil
-	}
-
-	releases := make([]gitlab.Release, 0, len(found.releases))
-	for _, release := range found.releases {
-		releases = append(releases, found.releaseView(release))
-	}
-
-	return releases
-}
-
-// releaseView copies a release and fills its asset links.
-func (p *project) releaseView(release *gitlab.Release) gitlab.Release {
-	view := *release
-
-	view.Assets.Links = append(view.Assets.Links, p.links[release.TagName]...)
-
-	view.Assets.Count = int64(len(view.Assets.Links))
-
-	return view
-}
-
-// --- generic packages -------------------------------------------------------
-
-// AddPackageFile publishes a file of a generic package of a project.
-func (s *Server) AddPackageFile(fullPath, name, version, fileName string, content []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	target := s.projectByPath(fullPath)
-	if target == nil {
-		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	s.publishPackageFile(target, name, version, fileName, content)
-
-	return nil
-}
-
-// publishPackageFile adds a file to a generic package, creating the package when
-// needed. The caller holds the lock.
-func (s *Server) publishPackageFile(target *project, name, version, fileName string, content []byte) {
-	var record *packageRecord
-
-	for _, candidate := range target.packages {
-		if candidate.Name == name && candidate.Version == version {
-			record = candidate
-		}
-	}
-
-	if record == nil {
-		record = &packageRecord{Package: gitlab.Package{ID: s.id(), Name: name, Version: version, PackageType: "generic"}}
-		target.packages = append(target.packages, record)
-	}
-
-	sum := sha256.Sum256(content)
-	record.files = append(record.files, &packageFile{
-		PackageFile: gitlab.PackageFile{ID: s.id(), PackageID: record.ID, FileName: fileName, Size: int64(len(content)), FileSHA256: hex.EncodeToString(sum[:])},
-		content:     content,
-	})
-}
-
-// PackageFileView describes a package file for assertions.
-type PackageFileView struct {
-	Package string
-	Version string
-	File    string
-	Content []byte
-}
-
-// PackageFiles lists the generic package files of a project.
-func (s *Server) PackageFiles(fullPath string) []PackageFileView {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	found := s.projectByPath(fullPath)
-	if found == nil {
-		return nil
-	}
-
-	var files []PackageFileView
-
-	for _, record := range found.packages {
-		for _, file := range record.files {
-			files = append(files, PackageFileView{Package: record.Name, Version: record.Version, File: file.FileName, Content: file.content})
-		}
-	}
-
-	return files
-}
-
-// --- avatars ----------------------------------------------------------------
-
-// SetGroupAvatar gives the group at fullPath an avatar.
-func (s *Server) SetGroupAvatar(fullPath string, content []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	found := s.groupByPath(fullPath)
-	if found == nil {
-		return fmt.Errorf("group %s: %w", fullPath, errNotFound)
-	}
-
-	found.avatar = content
-	found.AvatarURL = fmt.Sprintf("%s/uploads/-/system/group/avatar/%d/avatar.png", s.publicBase, found.ID)
-
-	return nil
-}
-
-// SetProjectAvatar gives the project at fullPath an avatar.
-func (s *Server) SetProjectAvatar(fullPath string, content []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	found := s.projectByPath(fullPath)
-	if found == nil {
-		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	found.avatar = content
-	found.AvatarURL = fmt.Sprintf("%s/uploads/-/system/project/avatar/%d/avatar.png", s.publicBase, found.ID)
-
-	return nil
-}
-
-// GroupAvatar returns the avatar of the group at fullPath, nil when it has none.
-func (s *Server) GroupAvatar(fullPath string) []byte {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if found := s.groupByPath(fullPath); found != nil {
-		return found.avatar
-	}
-
-	return nil
-}
-
-// ProjectAvatar returns the avatar of the project at fullPath, nil when it has none.
-func (s *Server) ProjectAvatar(fullPath string) []byte {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if found := s.projectByPath(fullPath); found != nil {
-		return found.avatar
-	}
-
-	return nil
-}
-
-// --- changes made between two runs ------------------------------------------
-
-// SetProjectDescription changes the description of the project at fullPath.
-func (s *Server) SetProjectDescription(fullPath, description string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	found := s.projectByPath(fullPath)
-	if found == nil {
-		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	found.Description = description
-
-	return nil
-}
-
-// SetGroupVisibility changes the visibility of the group at fullPath.
-func (s *Server) SetGroupVisibility(fullPath, visibility string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	found := s.groupByPath(fullPath)
-	if found == nil {
-		return fmt.Errorf("group %s: %w", fullPath, errNotFound)
-	}
-
-	found.Visibility = gitlab.VisibilityValue(visibility)
-
-	return nil
-}
-
-// DeleteRef removes a branch or a tag ("refs/heads/dev") of a project's repository.
-func (s *Server) DeleteRef(fullPath, ref string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	target := s.projectByPath(fullPath)
-	if target == nil {
-		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	repository, err := target.repo()
-	if err != nil {
-		return err
-	}
-
-	return repository.Storer.RemoveReference(plumbing.ReferenceName(ref))
-}
-
-// AddProjectMember makes the authenticated user a member of the project, with
-// the given access level (10 guest, 30 developer, 40 maintainer, 50 owner).
-func (s *Server) AddProjectMember(fullPath string, level int64) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	found := s.projectByPath(fullPath)
-	if found == nil {
-		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	found.members[userID] = level
-
-	return nil
-}
-
-// RemovePackageFile removes every copy of a generic package file of a project
-// (the files of a package are kept even when none is left).
-func (s *Server) RemovePackageFile(fullPath, name, version, fileName string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	target := s.projectByPath(fullPath)
-	if target == nil {
-		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	for _, record := range target.packages {
-		if record.Name != name || record.Version != version {
-			continue
-		}
-
-		kept := record.files[:0]
-
-		for _, file := range record.files {
-			if file.FileName != fileName {
-				kept = append(kept, file)
-			}
-		}
-
-		record.files = kept
-	}
-
-	return nil
-}
-
-// RemoveRelease deletes the release of a tag (its tag is left alone).
-func (s *Server) RemoveRelease(fullPath, tag string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	target := s.projectByPath(fullPath)
-	if target == nil {
-		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	target.removeRelease(tag)
-
-	return nil
-}
-
-// RemoveReleaseLink deletes a link of a release by name.
-func (s *Server) RemoveReleaseLink(fullPath, tag, name string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	target := s.projectByPath(fullPath)
-	if target == nil {
-		return fmt.Errorf("project %s: %w", fullPath, errNotFound)
-	}
-
-	kept := target.links[tag][:0]
-
-	for _, link := range target.links[tag] {
-		if link.Name != name {
-			kept = append(kept, link)
-		}
-	}
-
-	target.links[tag] = kept
-
-	return nil
-}
-
-func (p *project) removeRelease(tag string) {
-	for index, release := range p.releases {
-		if release.TagName == tag {
-			p.releases = append(p.releases[:index], p.releases[index+1:]...)
-
-			break
-		}
-	}
-
-	delete(p.links, tag)
-}
-
-// dropReleasesOfDeletedTags deletes the releases whose tag is gone from the
-// repository, like GitLab does when a tag is deleted. The caller holds the lock.
-func (p *project) dropReleasesOfDeletedTags() {
-	repository, err := p.repo()
-	if err != nil {
-		return
-	}
-
-	for _, release := range slices.Clone(p.releases) {
-		if _, tagErr := repository.Reference(plumbing.NewTagReferenceName(release.TagName), true); tagErr != nil {
-			p.removeRelease(release.TagName)
-		}
-	}
 }

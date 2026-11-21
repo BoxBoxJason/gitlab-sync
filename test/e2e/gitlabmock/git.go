@@ -3,9 +3,9 @@ package gitlabmock
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/go-git/go-git/v5/plumbing/format/pktline"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
@@ -88,7 +88,7 @@ func (s *Server) gitPost(writer http.ResponseWriter, request *http.Request) {
 func (s *Server) gitEndpoint(projectPath string) (*transport.Endpoint, transport.Transport, error) {
 	endpoint, err := transport.NewEndpoint(s.publicBase + projectPath + ".git")
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("build the git endpoint of %s: %w", projectPath, err)
 	}
 
 	return endpoint, server.NewServer(repositoryLoader{server: s}), nil
@@ -104,38 +104,14 @@ func (s *Server) advertiseRefs(writer http.ResponseWriter, request *http.Request
 		return
 	}
 
-	var refs *packp.AdvRefs
-
-	switch service {
-	case uploadPack:
-		var session transport.UploadPackSession
-
-		session, err = backend.NewUploadPackSession(endpoint, nil)
-		if err == nil {
-			defer session.Close() //nolint:errcheck // nothing to do about it
-
-			refs, err = session.AdvertisedReferencesContext(request.Context())
-		}
-	case receivePack:
-		var session transport.ReceivePackSession
-
-		session, err = backend.NewReceivePackSession(endpoint, nil)
-		if err == nil {
-			defer session.Close() //nolint:errcheck // nothing to do about it
-
-			refs, err = session.AdvertisedReferencesContext(request.Context())
-		}
-
-		if err == nil {
-			err = refs.Capabilities.Set(pushOptionsCapability)
-		}
-	default:
+	refs, err := advertise(request.Context(), backend, endpoint, service)
+	if errors.Is(err, errUnknownService) {
 		s.notImplemented(writer, request)
 
 		return
 	}
 
-	if err != nil && !errors.Is(err, transport.ErrEmptyRemoteRepository) {
+	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, transport.ErrRepositoryNotFound) {
 			status = http.StatusNotFound
@@ -151,7 +127,7 @@ func (s *Server) advertiseRefs(writer http.ResponseWriter, request *http.Request
 
 	refs.Prefix = [][]byte{[]byte("# service=" + service), pktline.Flush}
 
-	_ = refs.Encode(writer)
+	logFailure("write the references", refs.Encode(writer))
 }
 
 func (s *Server) uploadPack(writer http.ResponseWriter, request *http.Request, projectPath string) {
@@ -169,17 +145,20 @@ func (s *Server) uploadPack(writer http.ResponseWriter, request *http.Request, p
 		return
 	}
 
-	defer session.Close() //nolint:errcheck // nothing to do about it
+	defer closeLogged(session)
 
 	// The session learns the capabilities it serves while advertising.
-	if _, err = session.AdvertisedReferencesContext(request.Context()); err != nil {
+	_, err = session.AdvertisedReferencesContext(request.Context())
+	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 
 		return
 	}
 
 	upload := packp.NewUploadPackRequest()
-	if err = upload.Decode(request.Body); err != nil {
+
+	err = upload.Decode(request.Body)
+	if err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 
 		return
@@ -193,7 +172,30 @@ func (s *Server) uploadPack(writer http.ResponseWriter, request *http.Request, p
 	}
 
 	writer.Header().Set("Content-Type", "application/x-"+uploadPack+"-result")
-	_ = response.Encode(writer)
+	logFailure("write the upload-pack result", response.Encode(writer))
+}
+
+// readUpdate decodes the body of a push.
+func (s *Server) readUpdate(request *http.Request) (*packp.ReferenceUpdateRequest, error) {
+	update := packp.NewReferenceUpdateRequest()
+
+	err := update.Decode(request.Body)
+	if err != nil {
+		return nil, fmt.Errorf("decode the push: %w", err)
+	}
+
+	err = s.readPushOptions(request, update)
+	if err != nil {
+		return nil, fmt.Errorf("read the push options: %w", err)
+	}
+
+	// A push that only deletes refs carries no pack, which go-git's server would
+	// refuse to unpack.
+	if onlyDeletes(update) {
+		update.Packfile = nil
+	}
+
+	return update, nil
 }
 
 func (s *Server) receivePack(writer http.ResponseWriter, request *http.Request, projectPath string) {
@@ -211,31 +213,20 @@ func (s *Server) receivePack(writer http.ResponseWriter, request *http.Request, 
 		return
 	}
 
-	defer session.Close() //nolint:errcheck // nothing to do about it
+	defer closeLogged(session)
 
-	if _, err = session.AdvertisedReferencesContext(request.Context()); err != nil {
+	_, err = session.AdvertisedReferencesContext(request.Context())
+	if err != nil {
 		writeError(writer, http.StatusInternalServerError, err.Error())
 
 		return
 	}
 
-	update := packp.NewReferenceUpdateRequest()
-	if err = update.Decode(request.Body); err != nil {
+	update, err := s.readUpdate(request)
+	if err != nil {
 		writeError(writer, http.StatusBadRequest, err.Error())
 
 		return
-	}
-
-	if err = s.readPushOptions(request, update); err != nil {
-		writeError(writer, http.StatusBadRequest, err.Error())
-
-		return
-	}
-
-	// A push that only deletes refs carries no pack, which go-git's server would
-	// refuse to unpack.
-	if onlyDeletes(update) {
-		update.Packfile = nil
 	}
 
 	status, err := session.ReceivePack(context.WithoutCancel(request.Context()), update)
@@ -250,85 +241,6 @@ func (s *Server) receivePack(writer http.ResponseWriter, request *http.Request, 
 	writer.Header().Set("Content-Type", "application/x-"+receivePack+"-result")
 
 	if status != nil && update.Capabilities.Supports(capability.ReportStatus) {
-		_ = status.Encode(writer)
+		logFailure("write the receive-pack status", status.Encode(writer))
 	}
-}
-
-// readPushOptions consumes the push options that precede the pack in the body
-// of a push (go-git's decoder leaves them in the pack reader), records them (see
-// PushOptions) and removes the capability go-git's server does not know.
-func (s *Server) readPushOptions(request *http.Request, update *packp.ReferenceUpdateRequest) error {
-	if !update.Capabilities.Supports(pushOptionsCapability) {
-		return nil
-	}
-
-	update.Capabilities.Delete(pushOptionsCapability)
-
-	if update.Packfile == nil {
-		return nil
-	}
-
-	scanner := pktline.NewScanner(update.Packfile)
-
-	var options []string
-
-	for scanner.Scan() {
-		payload := scanner.Bytes()
-		if len(payload) == 0 {
-			break
-		}
-
-		options = append(options, strings.TrimSuffix(string(payload), "\n"))
-	}
-
-	if err := scanner.Err(); err != nil {
-		return err
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	for _, option := range options {
-		s.pushOptions = append(s.pushOptions, PushOption{Time: time.Now(), Path: request.URL.Path, Option: strings.TrimSuffix(option, "=")})
-	}
-
-	return nil
-}
-
-// PushOption is a git push option received by the fake.
-type PushOption struct {
-	Time   time.Time
-	Path   string
-	Option string
-}
-
-// PushOptions returns the push options received so far.
-func (s *Server) PushOptions() []PushOption {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return append([]PushOption(nil), s.pushOptions...)
-}
-
-// markPushed records that the repository of a project now holds refs, and drops
-// the releases of the tags the push deleted.
-func (s *Server) markPushed(projectPath string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if found := s.projectByPath(strings.Trim(projectPath, "/")); found != nil {
-		found.EmptyRepo = false
-
-		found.dropReleasesOfDeletedTags()
-	}
-}
-
-func onlyDeletes(update *packp.ReferenceUpdateRequest) bool {
-	for _, command := range update.Commands {
-		if !command.New.IsZero() {
-			return false
-		}
-	}
-
-	return len(update.Commands) > 0
 }

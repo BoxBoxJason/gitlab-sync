@@ -6,7 +6,6 @@
 package e2e
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,50 +14,50 @@ import (
 	"github.com/cucumber/godog"
 )
 
-func TestMain(m *testing.M) {
-	os.Exit(runSuite(m))
-}
+const (
+	coverDirPerm = 0o750
 
-func runSuite(m *testing.M) int {
-	buildDir, err := os.MkdirTemp("", "gitlab-sync-e2e-*")
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "create the build directory:", err)
+	// concurrency is how many scenarios run at the same time.
+	concurrency = 4
+)
 
-		return 1
-	}
+// buildBinary builds gitlab-sync with coverage instrumentation, once for all the
+// scenarios. The coverage data of the runs lands in E2E_COVERDIR when it is set.
+func buildBinary(t *testing.T) binary {
+	t.Helper()
 
-	defer os.RemoveAll(buildDir) //nolint:errcheck // best effort
+	buildDir := t.TempDir()
 
-	coverDir = os.Getenv("E2E_COVERDIR")
+	coverDir := os.Getenv("E2E_COVERDIR")
 	if coverDir == "" {
 		coverDir = filepath.Join(buildDir, "cover")
 	}
 
-	if err = os.MkdirAll(coverDir, 0o750); err != nil {
-		fmt.Fprintln(os.Stderr, "create the coverage directory:", err)
-
-		return 1
+	err := os.MkdirAll(coverDir, coverDirPerm)
+	if err != nil {
+		t.Fatalf("create the coverage directory: %v", err)
 	}
 
-	binaryPath = filepath.Join(buildDir, "gitlab-sync")
+	built := binary{path: filepath.Join(buildDir, "gitlab-sync"), coverDir: coverDir}
 
-	build := exec.Command("go", "build", "-cover", "-covermode=atomic", "-o", binaryPath, ".")
+	build := exec.CommandContext(t.Context(), "go", "build", "-cover", "-covermode=atomic", "-o", built.path, ".")
 	build.Dir = filepath.Join("..", "..")
 	build.Stdout, build.Stderr = os.Stdout, os.Stderr
 
-	if err = build.Run(); err != nil {
-		fmt.Fprintln(os.Stderr, "build gitlab-sync:", err)
-
-		return 1
+	err = build.Run()
+	if err != nil {
+		t.Fatalf("build gitlab-sync: %v", err)
 	}
 
-	return m.Run()
+	return built
 }
 
 // TestFeatures runs every scenario of features/, except the ones tagged @bug:
 // they describe a behavior that is wrong today, see the comment above each.
 // Run them on purpose with E2E_TAGS=@bug.
 func TestFeatures(t *testing.T) {
+	t.Parallel()
+
 	tags := os.Getenv("E2E_TAGS")
 	if tags == "" {
 		tags = "~@bug"
@@ -66,12 +65,12 @@ func TestFeatures(t *testing.T) {
 
 	suite := godog.TestSuite{
 		Name:                "gitlab-sync",
-		ScenarioInitializer: initializeScenario,
+		ScenarioInitializer: initializeScenario(buildBinary(t)),
 		Options: &godog.Options{
 			Format:      "pretty",
 			Paths:       []string{"features"},
 			Tags:        tags,
-			Concurrency: 4,
+			Concurrency: concurrency,
 			Strict:      true,
 			TestingT:    t,
 		},

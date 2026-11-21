@@ -1,7 +1,8 @@
-version: 2
+version: "2"
 
 run:
   timeout: 5m
+  modules-download-mode: readonly
   tests: true
 
 # Output format to generate checkstyle report (used by CI)
@@ -14,10 +15,12 @@ output:
 formatters:
   enable:
     - gofmt
+    - gofumpt
     - goimports
   settings:
     goimports:
-      local-prefixes: github.com/boxboxjason/gitlab-sync
+      local-prefixes:
+        - github.com/boxboxjason/gitlab-sync
     gofmt:
       simplify: true
 
@@ -96,17 +99,12 @@ linters:
         - io/ioutil.ReadFile
         - io.Copy(*bytes.Buffer)
         - io.Copy(os.Stdout)
+    exhaustive:
+      default-signifies-exhaustive: true
     fatcontext:
       # Check for potential fat contexts in struct pointers.
       # May generate false positives.
       check-struct-pointers: true
-    gci:
-      custom-order: true
-      sections:
-        - standard
-        - default
-        - prefix(github.com/boxboxjason/gitlab-sync)
-      skip-generated: true
     gocritic:
       enable-all: true
     gosec:
@@ -120,12 +118,11 @@ linters:
           # Whether to be strict about shadowing; can be noisy.
           strict: true
     grouper:
-      # Require the use of grouped global 'const' declarations.
-      const-require-grouping: true
+      # Left off: gofumpt ungroups single-item blocks, which would conflict with these two.
+      const-require-grouping: false
       # Require the use of a single 'import' declaration only.
       import-require-grouping: true
-      # Require the use of grouped global 'var' declarations.
-      var-require-grouping: true
+      var-require-grouping: false
     ineffassign:
       # Check escaping variables of type error, may cause false positives.
       check-escaping-errors: true
@@ -135,6 +132,8 @@ linters:
       # In addition, detect opposite situation (simultaneous return of non-nil error and valid value).
       detect-opposite: true
     nolintlint:
+      # Fail on nolint directives that no longer suppress anything.
+      allow-unused: false
       # Enable to require an explanation of nonzero length after each nolint directive.
       require-explanation: true
       # Enable to require nolint directives to mention the specific linter being suppressed.

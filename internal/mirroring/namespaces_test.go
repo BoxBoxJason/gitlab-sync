@@ -13,9 +13,7 @@ import (
 	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 )
 
-var (
-	groupAA = &gitlab.Group{ID: 10, Name: "AA", Path: "AA", FullPath: "AA", Visibility: gitlab.InternalVisibility}
-)
+var groupAA = &gitlab.Group{ID: 10, Name: "AA", Path: "AA", FullPath: "AA", Visibility: gitlab.InternalVisibility}
 
 func TestEnsureParentNamespaceIDCreatesMissingParent(t *testing.T) {
 	t.Parallel()

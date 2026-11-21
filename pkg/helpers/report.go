@@ -16,14 +16,12 @@ const (
 	ExitNonBlocking = 2
 )
 
-var (
-	// reportedSeverity holds the highest error severity reported during the run.
-	// ExitCode consults it once the mirroring process is done to pick the process
-	// exit status.
-	//
-	//nolint:gochecknoglobals // process-wide error tally, intentionally shared
-	reportedSeverity atomic.Int32
-)
+// reportedSeverity holds the highest error severity reported during the run.
+// ExitCode consults it once the mirroring process is done to pick the process
+// exit status.
+//
+//nolint:gochecknoglobals // process-wide error tally, intentionally shared
+var reportedSeverity atomic.Int32
 
 // Report logs err straight away, at a level matching its severity (blocking
 // errors at ERROR, everything else at WARN), and records its severity so

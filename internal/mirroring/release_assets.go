@@ -41,11 +41,9 @@ const (
 	signInPathSuffix = "/users/sign_in"
 )
 
-var (
-	// errSourceAssetMissing is returned when the file a source release link points to
-	// does not exist on the source instance (anymore).
-	errSourceAssetMissing = errors.New("the file does not exist on the source instance")
-)
+// errSourceAssetMissing is returned when the file a source release link points to
+// does not exist on the source instance (anymore).
+var errSourceAssetMissing = errors.New("the file does not exist on the source instance")
 
 // releaseAssetKind tells how a source release link is mirrored.
 type releaseAssetKind int

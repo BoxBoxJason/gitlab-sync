@@ -55,8 +55,12 @@ const (
 	lockWaitTimeout = 30 * time.Minute
 )
 
-// errLockHeld reports that another run currently holds the lock on a cache entry.
-var errLockHeld = errors.New("cache entry is locked by another run")
+var (
+	// errLockHeld reports that another run currently holds the lock on a cache entry.
+	errLockHeld = errors.New("cache entry is locked by another run")
+	// errLockBusy reports that the lock of an entry is held by someone else.
+	errLockBusy = errors.New("the cache lock is held by another holder")
+)
 
 // GitCache keeps the bare mirror clones used by the freemium mirroring path on
 // the filesystem, so consecutive runs refresh an existing clone instead of
@@ -181,7 +185,8 @@ func (c *GitCache) repoPath(sourceURL string) (string, error) {
 //
 // It returns nil when the URL carries nothing that identifies a repository.
 func repoURLSegments(sourceURL string) []string {
-	host, repoPath := splitRepoURL(strings.TrimSpace(sourceURL))
+	location := splitRepoURL(strings.TrimSpace(sourceURL))
+	host, repoPath := location.host, location.path
 
 	segments := make([]string, 0, strings.Count(repoPath, "/")+2) //nolint:mnd // host segment + path segments
 	segments = appendSanitizedSegment(segments, host, unknownHostDir)
@@ -198,19 +203,25 @@ func repoURLSegments(sourceURL string) []string {
 	return segments
 }
 
+// repoLocation is the host and the repository path of a repository URL.
+type repoLocation struct {
+	host string
+	path string
+}
+
 // splitRepoURL extracts the host and the repository path from the URL forms a
 // GitLab instance hands out: https://host/group/repo.git, ssh://git@host/group/repo.git,
 // the scp-like git@host:group/repo.git, and the file:// URLs used by the tests.
 //
 // Both values are returned empty rather than guessed when the URL cannot be
 // understood; the caller decides what to do with that.
-func splitRepoURL(rawURL string) (string, string) {
+func splitRepoURL(rawURL string) repoLocation {
 	parsed, err := url.Parse(rawURL)
 	if err == nil && parsed.Scheme != "" {
 		// The escaped form is kept on purpose: decoding it would turn a %2F
 		// inside a segment into a directory separator, letting two different
 		// repositories share one cache entry.
-		return parsed.Hostname(), strings.Trim(parsed.EscapedPath(), "/")
+		return repoLocation{host: parsed.Hostname(), path: strings.Trim(parsed.EscapedPath(), "/")}
 	}
 
 	// scp-like syntax carries no scheme: [user@]host:path
@@ -220,10 +231,10 @@ func splitRepoURL(rawURL string) (string, string) {
 			host = host[at+1:]
 		}
 
-		return host, strings.Trim(repoPath, "/")
+		return repoLocation{host: host, path: strings.Trim(repoPath, "/")}
 	}
 
-	return "", strings.Trim(rawURL, "/")
+	return repoLocation{path: strings.Trim(rawURL, "/")}
 }
 
 // appendSanitizedSegment appends segment to segments once it has been reduced to
@@ -337,6 +348,7 @@ func alignOriginRemote(repo *git.Repository, sourceURL string) error {
 		}
 	case !errors.Is(err, git.ErrRemoteNotFound):
 		return fmt.Errorf("failed to read the origin remote: %w", err)
+	default:
 	}
 
 	_, err = repo.CreateRemote(&config.RemoteConfig{
@@ -511,13 +523,14 @@ func entryLastUsed(repoPath string) (time.Time, error) {
 // lock takes the lock on an entry, waiting up to lockWaitTimeout for whoever
 // holds it. The returned function releases it.
 func (c *GitCache) lock(repoPath string) (func(), error) {
-	release, acquired, err := c.acquireLock(repoPath, lockWaitTimeout)
+	release, err := c.acquireLock(repoPath, lockWaitTimeout)
 
-	switch {
-	case err != nil:
-		return nil, err
-	case !acquired:
+	if errors.Is(err, errLockBusy) {
 		return nil, fmt.Errorf("timed out after %s waiting for the cache lock on %q", lockWaitTimeout, repoPath)
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	return release, nil
@@ -526,48 +539,51 @@ func (c *GitCache) lock(repoPath string) (func(), error) {
 // tryLock takes the lock on an entry only if it is free right now, reporting
 // whether it succeeded.
 func (c *GitCache) tryLock(repoPath string) (func(), bool) {
-	release, acquired, err := c.acquireLock(repoPath, 0)
+	release, err := c.acquireLock(repoPath, 0)
 	if err != nil {
-		zap.L().Debug("Failed to lock a cache entry", zap.String("path", repoPath), zap.Error(err))
+		if !errors.Is(err, errLockBusy) {
+			zap.L().Debug("Failed to lock a cache entry", zap.String("path", repoPath), zap.Error(err))
+		}
 
 		return nil, false
 	}
 
-	return release, acquired
+	return release, true
 }
 
 // acquireLock takes both halves of an entry's lock: a mutex serialising the
 // goroutines of this run, and a lock file keeping concurrent runs - CI jobs
 // sharing a cache volume, an overlapping cron - out of the same entry.
 //
-// A timeout of zero makes it a single attempt.
-func (c *GitCache) acquireLock(repoPath string, timeout time.Duration) (func(), bool, error) {
+// A timeout of zero makes it a single attempt. errLockBusy is returned when the
+// lock is held by someone else.
+func (c *GitCache) acquireLock(repoPath string, timeout time.Duration) (func(), error) {
 	value, _ := c.locks.LoadOrStore(repoPath, &sync.Mutex{})
 
 	mutex, ok := value.(*sync.Mutex)
 	if !ok {
-		return nil, false, fmt.Errorf("the cache lock on %q has an unexpected type %T", repoPath, value)
+		return nil, fmt.Errorf("the cache lock on %q has an unexpected type %T", repoPath, value)
 	}
 
 	if timeout <= 0 {
 		if !mutex.TryLock() {
-			return nil, false, nil
+			return nil, errLockBusy
 		}
 	} else {
 		mutex.Lock()
 	}
 
-	lock, acquired, err := acquireFileLock(repoPath+cacheLockSuffix, timeout)
-	if err != nil || !acquired {
+	lock, err := acquireFileLock(repoPath+cacheLockSuffix, timeout)
+	if err != nil {
 		mutex.Unlock()
 
-		return nil, false, err
+		return nil, err
 	}
 
 	return func() {
 		lock.release()
 		mutex.Unlock()
-	}, true, nil
+	}, nil
 }
 
 // fileLock is an advisory cross-process lock materialised by an exclusively
@@ -581,25 +597,26 @@ type fileLock struct {
 }
 
 // acquireFileLock creates the lock file at path, waiting up to timeout for a
-// concurrent holder to release it. It reports whether the lock was taken.
-func acquireFileLock(path string, timeout time.Duration) (*fileLock, bool, error) {
+// concurrent holder to release it. errLockBusy is returned when it stays held.
+func acquireFileLock(path string, timeout time.Duration) (*fileLock, error) {
 	parent := filepath.Dir(path)
 
 	err := os.MkdirAll(parent, cacheDirPermission)
 	if err != nil {
-		return nil, false, fmt.Errorf("failed to create the cache directory %q: %w", parent, err)
+		return nil, fmt.Errorf("failed to create the cache directory %q: %w", parent, err)
 	}
 
 	deadline := time.Now().Add(timeout)
 
 	for {
-		lock, err := createLockFile(path)
+		lock, lockErr := createLockFile(path)
 
 		switch {
-		case err == nil:
-			return lock, true, nil
-		case !errors.Is(err, errLockHeld):
-			return nil, false, err
+		case lockErr == nil:
+			return lock, nil
+		case !errors.Is(lockErr, errLockHeld):
+			return nil, lockErr
+		default:
 		}
 
 		// The holder stopped refreshing the lock: it is gone, take over.
@@ -608,7 +625,7 @@ func acquireFileLock(path string, timeout time.Duration) (*fileLock, bool, error
 		}
 
 		if !time.Now().Before(deadline) {
-			return nil, false, nil
+			return nil, errLockBusy
 		}
 
 		time.Sleep(lockPollInterval)

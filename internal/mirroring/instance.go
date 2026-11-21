@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	"github.com/Masterminds/semver/v3"
@@ -20,10 +20,13 @@ import (
 )
 
 const (
-	INSTANCE_SEMVER_THRESHOLD = "17.6"
-	ULTIMATE_PLAN             = "ultimate"
-	PREMIUM_PLAN              = "premium"
-	fetchWorkerCount          = 2
+	// InstanceSemverThreshold is the first GitLab version supporting pull mirroring.
+	InstanceSemverThreshold = "17.6"
+	// UltimatePlan is the GitLab ultimate plan name.
+	UltimatePlan = "ultimate"
+	// PremiumPlan is the GitLab premium plan name.
+	PremiumPlan      = "premium"
+	fetchWorkerCount = 2
 	// maxRedirects mirrors the net/http default redirect limit.
 	maxRedirects = 10
 )
@@ -47,6 +50,7 @@ func stripTokenOnCrossHostRedirect(req *http.Request, via []*http.Request) error
 	return nil
 }
 
+// GitlabInstance is a GitLab instance (source or destination) with its API client, git access and caches.
 type GitlabInstance struct {
 	GitAuth  transport.AuthMethod
 	Gitlab   *gitlab.Client
@@ -66,6 +70,7 @@ type GitlabInstance struct {
 	PullMirrorAvailable bool
 }
 
+// GitlabInstanceOpts holds the options used to create a GitlabInstance.
 type GitlabInstanceOpts struct {
 	GitlabURL    string
 	GitlabToken  string
@@ -109,9 +114,9 @@ func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 
 	if initArgs.GitlabToken != "" {
 		// Get the current user ID
-		user, _, err := gitlabClient.Users.CurrentUser()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get current user: %w", err)
+		user, _, userErr := gitlabClient.Users.CurrentUser()
+		if userErr != nil {
+			return nil, fmt.Errorf("failed to get current user: %w", userErr)
 		}
 
 		gitlabInstance.UserID = user.ID
@@ -183,31 +188,31 @@ func (g *GitlabInstance) ProjectsLen() int {
 // IsBig checks if the GitLab instance is of size "big".
 // It returns true if the InstanceSize is "big", otherwise false.
 func (g *GitlabInstance) IsBig() bool {
-	return g.InstanceSize == INSTANCE_SIZE_BIG
+	return g.InstanceSize == InstanceSizeBig
 }
 
 // IsSource checks if the GitLab instance is a source instance.
 func (g *GitlabInstance) IsSource() bool {
-	return g.Role == ROLE_SOURCE
+	return g.Role == RoleSource
 }
 
 // IsVersionGreaterThanThreshold checks if the GitLab instance version is below the defined threshold.
 // It retrieves the metadata from the GitLab instance and compares the version
-// with the INSTANCE_SEMVER_THRESHOLD.
+// with the InstanceSemverThreshold.
 func (g *GitlabInstance) IsVersionGreaterThanThreshold() (bool, error) {
 	metadata, _, err := g.Gitlab.Metadata.GetMetadata()
 	if err != nil {
 		return false, fmt.Errorf("failed to get GitLab version: %w", err)
 	}
 
-	zap.L().Debug("GitLab Instance version", zap.String(ROLE, g.Role), zap.String("version", metadata.Version))
+	zap.L().Debug("GitLab Instance version", zap.String(RoleKey, g.Role), zap.String("version", metadata.Version))
 
 	currentVer, err := semver.NewVersion(metadata.Version)
 	if err != nil {
 		return false, fmt.Errorf("failed to parse GitLab version: %w", err)
 	}
 
-	thresholdVer, err := semver.NewVersion(INSTANCE_SEMVER_THRESHOLD)
+	thresholdVer, err := semver.NewVersion(InstanceSemverThreshold)
 	if err != nil {
 		return false, fmt.Errorf("failed to parse version threshold: %w", err)
 	}
@@ -224,14 +229,14 @@ func (g *GitlabInstance) IsLicensePremium() (bool, error) {
 	}
 
 	if license == nil {
-		zap.L().Warn("GitLab license endpoint returned null; treating this instance as non-premium", zap.String(ROLE, g.Role))
+		zap.L().Warn("GitLab license endpoint returned null; treating this instance as non-premium", zap.String(RoleKey, g.Role))
 
 		return false, nil
 	}
 
-	zap.L().Info("GitLab Instance license", zap.String(ROLE, g.Role), zap.String("plan", license.Plan))
+	zap.L().Info("GitLab Instance license", zap.String(RoleKey, g.Role), zap.String("plan", license.Plan))
 
-	if license.Plan != ULTIMATE_PLAN && license.Plan != PREMIUM_PLAN || license.Expired {
+	if license.Plan != UltimatePlan && license.Plan != PremiumPlan || license.Expired {
 		return false, nil
 	}
 
@@ -241,8 +246,8 @@ func (g *GitlabInstance) IsLicensePremium() (bool, error) {
 // FetchAll retrieves all projects and groups from the GitLab instance
 // that match the filters and stores them in the instance cache.
 // Failures are logged as they happen (via helpers.Report).
-func (g *GitlabInstance) FetchAll(projectFilters, groupFilters map[string]struct{}, mirrorMapping *utils.MirrorMapping) {
-	zap.L().Info("Fetching all projects and groups from GitLab instance", zap.String(ROLE, g.Role), zap.String(INSTANCE_SIZE, g.InstanceSize), zap.Int("projects", len(projectFilters)), zap.Int("groups", len(groupFilters)))
+func (g *GitlabInstance) FetchAll(projectFilters, groupFilters map[string]struct{}, mirrorMapping *mirrorcfg.MirrorMapping) {
+	zap.L().Info("Fetching all projects and groups from GitLab instance", zap.String(RoleKey, g.Role), zap.String(InstanceSizeKey, g.InstanceSize), zap.Int("projects", len(projectFilters)), zap.Int("groups", len(groupFilters)))
 
 	waitGroup := sync.WaitGroup{}
 	waitGroup.Add(fetchWorkerCount)
@@ -250,12 +255,12 @@ func (g *GitlabInstance) FetchAll(projectFilters, groupFilters map[string]struct
 	go func() {
 		defer waitGroup.Done()
 
-		g.FetchAndProcessGroups(&groupFilters, mirrorMapping)
+		g.FetchAndProcessGroups(groupFilters, mirrorMapping)
 	}()
 	go func() {
 		defer waitGroup.Done()
 
-		g.FetchAndProcessProjects(&projectFilters, &groupFilters, mirrorMapping)
+		g.FetchAndProcessProjects(projectFilters, groupFilters, mirrorMapping)
 	}()
 
 	waitGroup.Wait()
@@ -269,7 +274,7 @@ func (g *GitlabInstance) GetParentNamespaceID(projectOrGroupPath string) (int64,
 	parentGroupID := int64(-1)
 	parentPath := filepath.Dir(projectOrGroupPath)
 
-	var err error = nil
+	var err error
 
 	if parentPath != "." && parentPath != "/" {
 		// Check if parent path is already in the instance groups cache

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
@@ -21,26 +21,26 @@ func TestFetchAll(t *testing.T) {
 	}{
 		{
 			name:          "Fetch all Destination with small instance size",
-			instanceSize:  INSTANCE_SIZE_SMALL,
-			role:          ROLE_DESTINATION,
+			instanceSize:  InstanceSizeSmall,
+			role:          RoleDestination,
 			expectedError: false,
 		},
 		{
 			name:          "Fetch all Destination with big instance size",
-			instanceSize:  INSTANCE_SIZE_BIG,
-			role:          ROLE_DESTINATION,
+			instanceSize:  InstanceSizeBig,
+			role:          RoleDestination,
 			expectedError: false,
 		},
 		{
 			name:          "Fetch all Source with small instance size",
-			instanceSize:  INSTANCE_SIZE_SMALL,
-			role:          ROLE_SOURCE,
+			instanceSize:  InstanceSizeSmall,
+			role:          RoleSource,
 			expectedError: false,
 		},
 		{
 			name:          "Fetch all Source with big instance size",
-			instanceSize:  INSTANCE_SIZE_BIG,
-			role:          ROLE_SOURCE,
+			instanceSize:  InstanceSizeBig,
+			role:          RoleSource,
 			expectedError: false,
 		},
 	}
@@ -51,14 +51,14 @@ func TestFetchAll(t *testing.T) {
 	groupFilters := map[string]struct{}{
 		TEST_GROUP_2.FullPath: {},
 	}
-	gitlabMirrorArgs := &utils.MirrorMapping{
-		Projects: map[string]*utils.MirroringOptions{},
-		Groups:   map[string]*utils.MirroringOptions{},
+	gitlabMirrorArgs := &mirrorcfg.MirrorMapping{
+		Projects: map[string]*mirrorcfg.MirroringOptions{},
+		Groups:   map[string]*mirrorcfg.MirroringOptions{},
 	}
-	gitlabMirrorArgs.Projects[TEST_PROJECT.PathWithNamespace] = &utils.MirroringOptions{
+	gitlabMirrorArgs.Projects[TEST_PROJECT.PathWithNamespace] = &mirrorcfg.MirroringOptions{
 		DestinationPath: TEST_PROJECT.PathWithNamespace,
 	}
-	gitlabMirrorArgs.Groups[TEST_GROUP_2.FullPath] = &utils.MirroringOptions{
+	gitlabMirrorArgs.Groups[TEST_GROUP_2.FullPath] = &mirrorcfg.MirroringOptions{
 		DestinationPath: TEST_GROUP_2.FullPath,
 	}
 
@@ -105,7 +105,7 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 	}{
 		{
 			name: "Test with source role, 1 project only, no error",
-			role: ROLE_SOURCE,
+			role: RoleSource,
 			projectFilters: map[string]struct{}{
 				TEST_PROJECT.PathWithNamespace: {},
 			},
@@ -116,7 +116,7 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 		},
 		{
 			name: "Test with destination role, 1 project only, no error",
-			role: ROLE_DESTINATION,
+			role: RoleDestination,
 			projectFilters: map[string]struct{}{
 				TEST_PROJECT.PathWithNamespace: {},
 			},
@@ -126,7 +126,7 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 		},
 		{
 			name: "Test with source role, 2 projects, no error",
-			role: ROLE_SOURCE,
+			role: RoleSource,
 			projectFilters: map[string]struct{}{
 				TEST_PROJECT.PathWithNamespace:   {},
 				TEST_PROJECT_2.PathWithNamespace: {},
@@ -139,7 +139,7 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 		},
 		{
 			name: "Test with destination role, 2 projects, no error",
-			role: ROLE_DESTINATION,
+			role: RoleDestination,
 			projectFilters: map[string]struct{}{
 				TEST_PROJECT.PathWithNamespace:   {},
 				TEST_PROJECT_2.PathWithNamespace: {},
@@ -151,7 +151,7 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 		},
 		{
 			name: "Test with source role, 1 project, 1 error",
-			role: ROLE_SOURCE,
+			role: RoleSource,
 			projectFilters: map[string]struct{}{
 				TEST_PROJECT.PathWithNamespace:    {},
 				INVALID_PROJECT.PathWithNamespace: {},
@@ -170,17 +170,17 @@ func TestFetchAndProcessProjectsBigInstance(t *testing.T) {
 			helpers.ResetReported()
 			t.Cleanup(helpers.ResetReported)
 
-			gitlabMirrorArgs := &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{
+			gitlabMirrorArgs := &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{
 					TEST_PROJECT.PathWithNamespace: {
 						DestinationPath: customDestination,
 					},
 				},
 			}
 
-			_, gitlabInstance := setupTestServer(t, test.role, INSTANCE_SIZE_BIG)
+			_, gitlabInstance := setupTestServer(t, test.role, InstanceSizeBig)
 
-			gitlabInstance.FetchAndProcessProjectsBigInstance(&test.projectFilters, gitlabMirrorArgs)
+			gitlabInstance.FetchAndProcessProjectsBigInstance(test.projectFilters, gitlabMirrorArgs)
 			if (helpers.ExitCode() != 0) != test.expectError {
 				t.Fatalf("Expected error: %v, got exit code: %d", test.expectError, helpers.ExitCode())
 			}
@@ -220,22 +220,22 @@ func TestFetchAndProcessProjectsSmallInstance(t *testing.T) {
 		role                       string
 		projectFilters             map[string]struct{}
 		groupFilters               map[string]struct{}
-		mirrorMapping              *utils.MirrorMapping
+		mirrorMapping              *mirrorcfg.MirrorMapping
 		expectedProjects           map[string]struct{}
 		expectedMappingDestination string
 	}{
 		{
 			name: "source role, project-only config (no groups), preserves destination path",
-			role: ROLE_SOURCE,
+			role: RoleSource,
 			projectFilters: map[string]struct{}{
 				TEST_PROJECT.PathWithNamespace: {},
 			},
 			groupFilters: map[string]struct{}{},
-			mirrorMapping: &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{
 					TEST_PROJECT.PathWithNamespace: {DestinationPath: customDestination},
 				},
-				Groups: map[string]*utils.MirroringOptions{},
+				Groups: map[string]*mirrorcfg.MirroringOptions{},
 			},
 			expectedProjects: map[string]struct{}{
 				TEST_PROJECT.PathWithNamespace: {},
@@ -244,14 +244,14 @@ func TestFetchAndProcessProjectsSmallInstance(t *testing.T) {
 		},
 		{
 			name:           "source role, group-only config, derives destination path from group",
-			role:           ROLE_SOURCE,
+			role:           RoleSource,
 			projectFilters: map[string]struct{}{},
 			groupFilters: map[string]struct{}{
 				TEST_GROUP.FullPath: {},
 			},
-			mirrorMapping: &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{},
-				Groups: map[string]*utils.MirroringOptions{
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{},
+				Groups: map[string]*mirrorcfg.MirroringOptions{
 					TEST_GROUP.FullPath: {DestinationPath: "mirror-group"},
 				},
 			},
@@ -265,14 +265,14 @@ func TestFetchAndProcessProjectsSmallInstance(t *testing.T) {
 		},
 		{
 			name: "destination role, project-only config, project in cache, mapping unchanged",
-			role: ROLE_DESTINATION,
+			role: RoleDestination,
 			projectFilters: map[string]struct{}{
 				TEST_PROJECT.PathWithNamespace: {},
 			},
 			groupFilters: map[string]struct{}{},
-			mirrorMapping: &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{},
-				Groups:   map[string]*utils.MirroringOptions{},
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{},
+				Groups:   map[string]*mirrorcfg.MirroringOptions{},
 			},
 			expectedProjects: map[string]struct{}{
 				TEST_PROJECT.PathWithNamespace: {},
@@ -286,9 +286,9 @@ func TestFetchAndProcessProjectsSmallInstance(t *testing.T) {
 			helpers.ResetReported()
 			t.Cleanup(helpers.ResetReported)
 
-			_, gitlabInstance := setupTestServer(t, tt.role, INSTANCE_SIZE_SMALL)
+			_, gitlabInstance := setupTestServer(t, tt.role, InstanceSizeSmall)
 
-			gitlabInstance.FetchAndProcessProjectsSmallInstance(&tt.projectFilters, &tt.groupFilters, tt.mirrorMapping)
+			gitlabInstance.FetchAndProcessProjectsSmallInstance(tt.projectFilters, tt.groupFilters, tt.mirrorMapping)
 			if got := helpers.ExitCode(); got != 0 {
 				t.Fatalf("unexpected errors: exit code %d", got)
 			}
@@ -317,31 +317,31 @@ func TestStoreProject(t *testing.T) {
 		name                    string
 		role                    string
 		parentGroupPath         string
-		mirrorMapping           *utils.MirrorMapping
+		mirrorMapping           *mirrorcfg.MirrorMapping
 		expectedDestinationPath string // empty means no entry expected in mirrorMapping.Projects
 	}{
 		{
 			// Core bug fix: a project listed directly in the config must not require
 			// a group entry and must preserve its configured destination path.
 			name:            "source role, project directly in mirror mapping, preserves destination without group",
-			role:            ROLE_SOURCE,
+			role:            RoleSource,
 			parentGroupPath: "",
-			mirrorMapping: &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{
 					TEST_PROJECT.PathWithNamespace: {DestinationPath: "custom/dest/project"},
 				},
-				Groups: map[string]*utils.MirroringOptions{},
+				Groups: map[string]*mirrorcfg.MirroringOptions{},
 			},
 			expectedDestinationPath: "custom/dest/project",
 		},
 		{
 			// Existing group-derived behaviour must still work.
 			name:            "source role, project matched via parent group, derives destination path",
-			role:            ROLE_SOURCE,
+			role:            RoleSource,
 			parentGroupPath: TEST_GROUP.FullPath,
-			mirrorMapping: &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{},
-				Groups: map[string]*utils.MirroringOptions{
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{},
+				Groups: map[string]*mirrorcfg.MirroringOptions{
 					TEST_GROUP.FullPath: {DestinationPath: "mirror-group"},
 				},
 			},
@@ -352,22 +352,22 @@ func TestStoreProject(t *testing.T) {
 			// Project not in mapping and no matching group: project enters the instance
 			// cache but is not added to the mirror mapping.
 			name:            "source role, no project or group entry, not added to mirror mapping",
-			role:            ROLE_SOURCE,
+			role:            RoleSource,
 			parentGroupPath: "nonexistent/group",
-			mirrorMapping: &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{},
-				Groups:   map[string]*utils.MirroringOptions{},
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{},
+				Groups:   map[string]*mirrorcfg.MirroringOptions{},
 			},
 			expectedDestinationPath: "",
 		},
 		{
 			// Destination role never touches the mirror mapping.
 			name:            "destination role, project stored in cache, mirror mapping unchanged",
-			role:            ROLE_DESTINATION,
+			role:            RoleDestination,
 			parentGroupPath: "",
-			mirrorMapping: &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{},
-				Groups:   map[string]*utils.MirroringOptions{},
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{},
+				Groups:   map[string]*mirrorcfg.MirroringOptions{},
 			},
 			expectedDestinationPath: "",
 		},
@@ -376,7 +376,7 @@ func TestStoreProject(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, gitlabInstance := setupTestServer(t, tt.role, INSTANCE_SIZE_BIG)
+			_, gitlabInstance := setupTestServer(t, tt.role, InstanceSizeBig)
 
 			gitlabInstance.storeProject(TEST_PROJECT, tt.parentGroupPath, tt.mirrorMapping)
 
@@ -410,22 +410,22 @@ func TestCreateProjectFromSource(t *testing.T) {
 		{
 			name:         "Small Destination Instance",
 			instanceSize: "small",
-			role:         ROLE_DESTINATION,
+			role:         RoleDestination,
 		},
 		{
 			name:         "Small Source Instance",
 			instanceSize: "small",
-			role:         ROLE_SOURCE,
+			role:         RoleSource,
 		},
 		{
 			name:         "Big Destination Instance",
 			instanceSize: "big",
-			role:         ROLE_DESTINATION,
+			role:         RoleDestination,
 		},
 		{
 			name:         "Big Source Instance",
 			instanceSize: "big",
-			role:         ROLE_SOURCE,
+			role:         RoleSource,
 		},
 	}
 	for _, tt := range tests {
@@ -433,13 +433,13 @@ func TestCreateProjectFromSource(t *testing.T) {
 			// Setup the test server
 			_, gitlabInstance := setupTestServer(t, tt.role, tt.instanceSize)
 			gitlabInstance.AddGroup(TEST_GROUP)
-			createdProject, err := gitlabInstance.CreateProjectFromSource(TEST_PROJECT, &utils.MirroringOptions{
+			createdProject, err := gitlabInstance.CreateProjectFromSource(TEST_PROJECT, &mirrorcfg.MirroringOptions{
 				DestinationPath:     TEST_PROJECT.PathWithNamespace,
 				MirrorIssues:        new(true),
 				MirrorReleases:      new(true),
 				MirrorTriggerBuilds: new(true),
 				Visibility:          new("public"),
-				CI_CD_Catalog:       new(true),
+				CICDCatalog:         new(true),
 			})
 			if err != nil {
 				t.Errorf("Unexpected error when creating project: %v", err)
@@ -455,10 +455,10 @@ func TestCreateProjectFromSource(t *testing.T) {
 }
 
 func TestCreateProjectFromSourceWithMinimalOptions(t *testing.T) {
-	_, gitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 	gitlabInstance.AddGroup(TEST_GROUP)
 
-	createdProject, err := gitlabInstance.CreateProjectFromSource(TEST_PROJECT, &utils.MirroringOptions{
+	createdProject, err := gitlabInstance.CreateProjectFromSource(TEST_PROJECT, &mirrorcfg.MirroringOptions{
 		DestinationPath: TEST_PROJECT.PathWithNamespace,
 	})
 	if err != nil {
@@ -473,8 +473,8 @@ func TestCreateProjectFromSourceWithMinimalOptions(t *testing.T) {
 }
 
 func TestCopyProjectAvatar(t *testing.T) {
-	_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
-	_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, sourceGitlabInstance := setupTestServer(t, RoleSource, InstanceSizeSmall)
+	_, destinationGitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 
 	t.Run("Copy Project Avatar", func(t *testing.T) {
 		sourceProject := *TEST_PROJECT_2
@@ -489,7 +489,7 @@ func TestCopyProjectAvatar(t *testing.T) {
 	t.Run("Source project without an avatar is skipped", func(t *testing.T) {
 		// The avatar endpoint answers 404 for avatar-less projects, so the download
 		// must not even be attempted.
-		_, isolatedSource := setupEmptyTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
+		_, isolatedSource := setupEmptyTestServer(t, RoleSource, InstanceSizeSmall)
 
 		err := isolatedSource.CopyProjectAvatar(destinationGitlabInstance, TEST_PROJECT, TEST_PROJECT_2)
 		if err != nil {
@@ -503,17 +503,17 @@ func TestCreateProjects(t *testing.T) {
 		helpers.ResetReported()
 		t.Cleanup(helpers.ResetReported)
 
-		_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
+		_, sourceGitlabInstance := setupTestServer(t, RoleSource, InstanceSizeSmall)
 		sourceGitlabInstance.AddGroup(TEST_GROUP)
 		sourceGitlabInstance.AddProject(TEST_PROJECT)
-		_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+		_, destinationGitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 		destinationGitlabInstance.AddGroup(TEST_GROUP)
 		destinationGitlabInstance.PullMirrorAvailable = true
-		mirrorMapping := &utils.MirrorMapping{
-			Projects: map[string]*utils.MirroringOptions{
+		mirrorMapping := &mirrorcfg.MirrorMapping{
+			Projects: map[string]*mirrorcfg.MirroringOptions{
 				TEST_PROJECT.PathWithNamespace: {
 					DestinationPath:     TEST_PROJECT.PathWithNamespace,
-					CI_CD_Catalog:       new(false),
+					CICDCatalog:         new(false),
 					MirrorIssues:        new(true),
 					MirrorTriggerBuilds: new(false),
 					Visibility:          new("public"),
@@ -532,7 +532,7 @@ func TestCreateProjects(t *testing.T) {
 }
 
 func TestAddProjectToCICDCatalog(t *testing.T) {
-	_, gitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 	t.Run("Add Project to CI/CD Catalog", func(t *testing.T) {
 		err := gitlabInstance.AddProjectToCICDCatalog(TEST_PROJECT)
 		if err != nil {
@@ -558,7 +558,7 @@ func TestAddProjectToCICDCatalog(t *testing.T) {
 }
 
 func TestClaimOwnershipToProject(t *testing.T) {
-	_, gitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 
 	err := gitlabInstance.ClaimOwnershipToProject(TEST_PROJECT)
 	if err != nil {
@@ -598,10 +598,10 @@ func TestCreateProjectClaimOwnershipOption(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
+			_, sourceGitlabInstance := setupTestServer(t, RoleSource, InstanceSizeSmall)
 			sourceGitlabInstance.AddProject(TEST_PROJECT_2)
 
-			mux, destinationGitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			mux, destinationGitlabInstance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 			destinationGitlabInstance.PullMirrorAvailable = true
 			destinationGitlabInstance.AddGroup(TEST_GROUP_2)
 
@@ -647,7 +647,7 @@ func TestCreateProjectClaimOwnershipOption(t *testing.T) {
 			helpers.ResetReported()
 			t.Cleanup(helpers.ResetReported)
 
-			createdProject := destinationGitlabInstance.CreateProject(TEST_PROJECT_2.PathWithNamespace, &utils.MirroringOptions{
+			createdProject := destinationGitlabInstance.CreateProject(TEST_PROJECT_2.PathWithNamespace, &mirrorcfg.MirroringOptions{
 				DestinationPath: TEST_PROJECT_2.PathWithNamespace,
 				ClaimOwnership:  tc.claimOwnership,
 			}, sourceGitlabInstance)
@@ -669,7 +669,7 @@ func TestSyncMirrorProjectAttributes(t *testing.T) {
 		name                     string
 		pullMirrorAvailable      bool
 		destinationProject       *gitlab.Project
-		copyOptions              *utils.MirroringOptions
+		copyOptions              *mirrorcfg.MirroringOptions
 		expectedMismatch         bool
 		expectedMirror           *bool
 		expectMirrorTriggerBuild bool
@@ -681,7 +681,7 @@ func TestSyncMirrorProjectAttributes(t *testing.T) {
 			name:                "freemium destination leaves the mirror attributes alone",
 			pullMirrorAvailable: false,
 			destinationProject:  &gitlab.Project{ID: 1, Mirror: false, MirrorTriggerBuilds: false},
-			copyOptions:         &utils.MirroringOptions{MirrorTriggerBuilds: new(true)},
+			copyOptions:         &mirrorcfg.MirroringOptions{MirrorTriggerBuilds: new(true)},
 			expectedMismatch:    false,
 			expectedMirror:      nil,
 		},
@@ -689,7 +689,7 @@ func TestSyncMirrorProjectAttributes(t *testing.T) {
 			name:                "freemium destination does not re-enable an existing pull mirror",
 			pullMirrorAvailable: false,
 			destinationProject:  &gitlab.Project{ID: 1, Mirror: true, MirrorOverwritesDivergedBranches: true},
-			copyOptions:         &utils.MirroringOptions{},
+			copyOptions:         &mirrorcfg.MirroringOptions{},
 			expectedMismatch:    false,
 			expectedMirror:      nil,
 		},
@@ -697,7 +697,7 @@ func TestSyncMirrorProjectAttributes(t *testing.T) {
 			name:                     "premium destination enables the pull mirror",
 			pullMirrorAvailable:      true,
 			destinationProject:       &gitlab.Project{ID: 1, Mirror: false},
-			copyOptions:              &utils.MirroringOptions{MirrorTriggerBuilds: new(true)},
+			copyOptions:              &mirrorcfg.MirroringOptions{MirrorTriggerBuilds: new(true)},
 			expectedMismatch:         true,
 			expectedMirror:           new(true),
 			expectMirrorTriggerBuild: true,
@@ -706,7 +706,7 @@ func TestSyncMirrorProjectAttributes(t *testing.T) {
 			name:                "premium destination already in sync",
 			pullMirrorAvailable: true,
 			destinationProject:  &gitlab.Project{ID: 1, Mirror: true, MirrorOverwritesDivergedBranches: true},
-			copyOptions:         &utils.MirroringOptions{},
+			copyOptions:         &mirrorcfg.MirroringOptions{},
 			expectedMismatch:    false,
 			expectedMirror:      nil,
 		},
@@ -716,7 +716,8 @@ func TestSyncMirrorProjectAttributes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			editOptions := &gitlab.EditProjectOptions{}
 
-			mismatch := syncMirrorProjectAttributes(tt.pullMirrorAvailable, tt.destinationProject, tt.copyOptions, editOptions)
+			// Callers only sync the mirror attributes when pull mirroring is available.
+			mismatch := tt.pullMirrorAvailable && syncMirrorProjectAttributes(tt.destinationProject, tt.copyOptions, editOptions)
 			if mismatch != tt.expectedMismatch {
 				t.Errorf("expected mismatch %v, got %v", tt.expectedMismatch, mismatch)
 			}
@@ -742,7 +743,7 @@ func TestCreateProjectFromSourceDoesNotRequestMirror(t *testing.T) {
 	// mirror user, neither of which exists when the project is being created.
 	for _, pullMirrorAvailable := range []bool{false, true} {
 		t.Run(fmt.Sprintf("pullMirrorAvailable=%v", pullMirrorAvailable), func(t *testing.T) {
-			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			mux, gitlabInstance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 			gitlabInstance.PullMirrorAvailable = pullMirrorAvailable
 			gitlabInstance.AddGroup(TEST_GROUP)
 
@@ -764,7 +765,7 @@ func TestCreateProjectFromSourceDoesNotRequestMirror(t *testing.T) {
 				fmt.Fprint(w, TEST_PROJECT_STRING)
 			})
 
-			_, err := gitlabInstance.CreateProjectFromSource(TEST_PROJECT, &utils.MirroringOptions{
+			_, err := gitlabInstance.CreateProjectFromSource(TEST_PROJECT, &mirrorcfg.MirroringOptions{
 				DestinationPath:     TEST_PROJECT.PathWithNamespace,
 				MirrorTriggerBuilds: new(true),
 			})
@@ -789,13 +790,13 @@ func TestMirrorPushOptions(t *testing.T) {
 
 	tests := []struct {
 		name              string
-		mirrorOptions     *utils.MirroringOptions
+		mirrorOptions     *mirrorcfg.MirroringOptions
 		wantSkipPipelines bool
 	}{
 		{"no mirroring options", nil, true},
-		{"mirror_trigger_builds unset", &utils.MirroringOptions{}, true},
-		{"mirror_trigger_builds disabled", &utils.MirroringOptions{MirrorTriggerBuilds: new(false)}, true},
-		{"mirror_trigger_builds enabled", &utils.MirroringOptions{MirrorTriggerBuilds: new(true)}, false},
+		{"mirror_trigger_builds unset", &mirrorcfg.MirroringOptions{}, true},
+		{"mirror_trigger_builds disabled", &mirrorcfg.MirroringOptions{MirrorTriggerBuilds: new(false)}, true},
+		{"mirror_trigger_builds enabled", &mirrorcfg.MirroringOptions{MirrorTriggerBuilds: new(true)}, false},
 	}
 
 	for _, tt := range tests {
@@ -812,7 +813,7 @@ func TestMirrorPushOptions(t *testing.T) {
 
 func TestDisableProjectMirrorPull(t *testing.T) {
 	t.Run("no call when the project is not a pull mirror", func(t *testing.T) {
-		_, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+		_, gitlabInstance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 
 		project := &gitlab.Project{ID: 1, PathWithNamespace: TEST_PROJECT.PathWithNamespace, Mirror: false}
 		if err := gitlabInstance.DisableProjectMirrorPull(project); err != nil {
@@ -821,7 +822,7 @@ func TestDisableProjectMirrorPull(t *testing.T) {
 	})
 
 	t.Run("turns an existing pull mirror off before pushing", func(t *testing.T) {
-		mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+		mux, gitlabInstance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 
 		var editBody map[string]any
 

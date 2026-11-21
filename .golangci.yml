@@ -21,6 +21,11 @@ formatters:
     gofmt:
       simplify: true
 
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: false
+
 linters:
   default: all
   disable:
@@ -31,13 +36,25 @@ linters:
     - gomodguard
     - ireturn
     - lll
-    - nonamedreturns
-    - revive
     - tagliatelle
     - wsl
   settings:
-    govet:
-      enable-all: true
+    copyloopvar:
+      check-alias: true
+    errcheck:
+      # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
+      check-type-assertions: true
+      # Report about assignment of errors to blank identifier: `num, _ := strconv.Atoi(numStr)`.
+      check-blank: true
+      # List of functions to exclude from checking, where each entry is a single function to exclude.
+      exclude-functions:
+        - io/ioutil.ReadFile
+        - io.Copy(*bytes.Buffer)
+        - io.Copy(os.Stdout)
+    fatcontext:
+      # Check for potential fat contexts in struct pointers.
+      # May generate false positives.
+      check-struct-pointers: true
     gci:
       custom-order: true
       sections:
@@ -45,11 +62,98 @@ linters:
         - default
         - prefix(github.com/boxboxjason/gitlab-sync)
       skip-generated: true
-    wsl_v5:
-      allow-first-in-block: true
-      allow-whole-block: false
-      branch-max-lines: 2
+    gocritic:
+      enable-all: true
     gosec:
       excludes:
         - G117 # secret pattern matches in exported structs (required for API client)
         - G704 # SSRF false positives on client HTTP calls (required for API client)
+    govet:
+      enable-all: true
+      settings:
+        shadow:
+          # Whether to be strict about shadowing; can be noisy.
+          strict: true
+    grouper:
+      # Require the use of grouped global 'const' declarations.
+      const-require-grouping: true
+      # Require the use of a single 'import' declaration only.
+      import-require-grouping: true
+      # Require the use of grouped global 'var' declarations.
+      var-require-grouping: true
+    ineffassign:
+      # Check escaping variables of type error, may cause false positives.
+      check-escaping-errors: true
+    nilnil:
+      # To check functions with only two return values (`return nil, nil`).
+      only-two: false
+      # In addition, detect opposite situation (simultaneous return of non-nil error and valid value).
+      detect-opposite: true
+    nolintlint:
+      # Enable to require an explanation of nonzero length after each nolint directive.
+      require-explanation: true
+      # Enable to require nolint directives to mention the specific linter being suppressed.
+      require-specific: true
+    nonamedreturns:
+      # Report named error if it is assigned inside defer.
+      report-error-in-defer: true
+    paralleltest:
+      # Check that `defer` is not used with `t.Parallel`.
+      # (use `t.Cleanup` instead to ensure cleanup runs after parallel subtests complete).
+      check-cleanup: true
+    revive:
+      enable-all-rules: true
+      rules:
+        - name: add-constant
+          disabled: true
+        - name: cognitive-complexity
+          disabled: true
+        - name: cyclomatic
+          disabled: true
+        - name: line-length-limit
+          disabled: true
+    testifylint:
+      enable-all: true
+    unconvert:
+      # Remove conversions that force intermediate rounding.
+      fast-math: true
+      # Be more conservative (experimental).
+      safe: true
+    unparam:
+      # Inspect exported functions.
+      # Set to true if no external program/library imports your code.
+      check-exported: true
+    unused:
+      # Treat IncDec statement (e.g. `i++` or `i--`) as both read and write operation instead of just write.
+      post-statements-are-reads: true
+      # Mark all exported fields as used.
+      exported-fields-are-used: false
+      # Mark all function parameters as used.
+      parameters-are-used: false
+      # Mark all local variables as used.
+      local-variables-are-used: false
+      # Mark all identifiers inside generated files as used.
+      generated-is-used: false
+    usestdlibvars:
+      # Suggest the use of time.Month in time.Date.
+      time-date-month: true
+      # Suggest the use of time.Weekday.String().
+      time-weekday: true
+      # Suggest the use of time.Month.String().
+      time-month: true
+      # Suggest the use of time.Layout.
+      time-layout: true
+      # Suggest the use of crypto.Hash.String().
+      crypto-hash: true
+      # Suggest the use of rpc.DefaultXXPath.
+      default-rpc-path: true
+      # Suggest the use of sql.LevelXX.String().
+      sql-isolation-level: true
+      # Suggest the use of tls.SignatureScheme.String().
+      tls-signature-scheme: true
+      # Suggest the use of constant.Kind.String().
+      constant-kind: true
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2

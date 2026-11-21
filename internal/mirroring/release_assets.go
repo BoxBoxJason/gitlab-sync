@@ -50,9 +50,11 @@ const (
 	signInPathSuffix = "/users/sign_in"
 )
 
-// errSourceAssetMissing is returned when the file a source release link points to
-// does not exist on the source instance (anymore).
-var errSourceAssetMissing = errors.New("the file does not exist on the source instance")
+var (
+	// errSourceAssetMissing is returned when the file a source release link points to
+	// does not exist on the source instance (anymore).
+	errSourceAssetMissing = errors.New("the file does not exist on the source instance")
+)
 
 // releaseAssetKind tells how a source release link is mirrored.
 type releaseAssetKind int
@@ -383,8 +385,8 @@ func (a spooledAsset) Len() int {
 // project generic package registry, and returns the URL of the copy. The file is
 // spooled to a temporary file rather than held in memory, as release assets can be
 // large binaries.
-func (destinationGitlab *GitlabInstance) copyReleaseAssetFile(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, plan *releaseAssetPlan) (string, error) {
-	release := destinationGitlab.acquireAssetTransfer()
+func (g *GitlabInstance) copyReleaseAssetFile(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, plan *releaseAssetPlan) (string, error) {
+	release := g.acquireAssetTransfer()
 	defer release()
 
 	spool, err := os.CreateTemp("", releaseAssetSpoolPattern)
@@ -393,8 +395,12 @@ func (destinationGitlab *GitlabInstance) copyReleaseAssetFile(sourceGitlab *Gitl
 	}
 
 	defer func() {
-		_ = spool.Close()
-		_ = os.Remove(spool.Name())
+		closeErr := spool.Close()
+		removeErr := os.Remove(spool.Name())
+
+		if closeErr != nil || removeErr != nil {
+			zap.L().Warn("Failed to clean up the temporary file of a release asset", zap.String("file", spool.Name()), zap.Error(errors.Join(closeErr, removeErr)))
+		}
 	}()
 
 	err = sourceGitlab.downloadReleaseAsset(plan, spool)
@@ -410,12 +416,12 @@ func (destinationGitlab *GitlabInstance) copyReleaseAssetFile(sourceGitlab *Gitl
 	packageFile := plan.Package
 	content := spooledAsset{io.NewSectionReader(spool, 0, size)}
 
-	_, _, err = destinationGitlab.Gitlab.GenericPackages.PublishPackageFile(destinationProject.ID, packageFile.Name, packageFile.Version, packageFile.FileName, content, nil)
+	_, _, err = g.Gitlab.GenericPackages.PublishPackageFile(destinationProject.ID, packageFile.Name, packageFile.Version, packageFile.FileName, content, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to publish generic package file %s/%s/%s: %w", packageFile.Name, packageFile.Version, packageFile.FileName, err)
 	}
 
-	return genericPackageFileURL(destinationGitlab.Gitlab, destinationProject, packageFile), nil
+	return genericPackageFileURL(g.Gitlab, destinationProject, packageFile), nil
 }
 
 // genericPackageFileURL returns the download URL of a generic package file of project.
@@ -471,9 +477,9 @@ func (g *GitlabInstance) listGenericPackageFiles(pid any, packageFile genericPac
 				continue
 			}
 
-			packageFiles, err := g.listPackageFilesNamed(pid, pkg.ID, packageFile.FileName)
-			if err != nil {
-				return nil, err
+			packageFiles, listErr := g.listPackageFilesNamed(pid, pkg.ID, packageFile.FileName)
+			if listErr != nil {
+				return nil, listErr
 			}
 
 			files = append(files, packageFiles...)
@@ -556,7 +562,7 @@ func (g *GitlabInstance) deletePackageFiles(project *gitlab.Project, files []pac
 	var errs []error
 
 	for _, file := range files {
-		zap.L().Info("Deleting package file", zap.String("file", file.File.FileName), zap.Int64("package", file.PackageID), zap.String(ROLE_DESTINATION, project.HTTPURLToRepo))
+		zap.L().Info("Deleting package file", zap.String("file", file.File.FileName), zap.Int64("package", file.PackageID), zap.String(RoleDestination, project.HTTPURLToRepo))
 
 		_, err := g.Gitlab.Packages.DeletePackageFile(project.ID, file.PackageID, file.File.ID)
 		if err != nil {
@@ -631,7 +637,7 @@ func (g *GitlabInstance) ownGenericPackageFile(project *gitlab.Project, linkURL 
 }
 
 // createReleaseLink creates the destination release link of plan, pointing to linkURL.
-func (destinationGitlab *GitlabInstance) createReleaseLink(destinationProject *gitlab.Project, tagName string, plan *releaseAssetPlan, linkURL string) error {
+func (g *GitlabInstance) createReleaseLink(destinationProject *gitlab.Project, tagName string, plan *releaseAssetPlan, linkURL string) error {
 	linkOptions := &gitlab.CreateReleaseLinkOptions{
 		Name: &plan.Link.Name,
 		URL:  &linkURL,
@@ -644,7 +650,7 @@ func (destinationGitlab *GitlabInstance) createReleaseLink(destinationProject *g
 		linkOptions.LinkType = &plan.Link.LinkType
 	}
 
-	_, _, err := destinationGitlab.Gitlab.ReleaseLinks.CreateReleaseLink(destinationProject.ID, tagName, linkOptions)
+	_, _, err := g.Gitlab.ReleaseLinks.CreateReleaseLink(destinationProject.ID, tagName, linkOptions)
 	if err != nil {
 		return fmt.Errorf("failed to create release link: %w", err)
 	}
@@ -653,7 +659,7 @@ func (destinationGitlab *GitlabInstance) createReleaseLink(destinationProject *g
 }
 
 // updateReleaseLink points the existing destination release link of plan to linkURL.
-func (destinationGitlab *GitlabInstance) updateReleaseLink(destinationProject *gitlab.Project, tagName string, plan *releaseAssetPlan, existingLink *gitlab.ReleaseLink, linkURL string) error {
+func (g *GitlabInstance) updateReleaseLink(destinationProject *gitlab.Project, tagName string, plan *releaseAssetPlan, existingLink *gitlab.ReleaseLink, linkURL string) error {
 	linkOptions := &gitlab.UpdateReleaseLinkOptions{
 		URL: &linkURL,
 	}
@@ -665,7 +671,7 @@ func (destinationGitlab *GitlabInstance) updateReleaseLink(destinationProject *g
 		linkOptions.LinkType = &plan.Link.LinkType
 	}
 
-	_, _, err := destinationGitlab.Gitlab.ReleaseLinks.UpdateReleaseLink(destinationProject.ID, tagName, existingLink.ID, linkOptions)
+	_, _, err := g.Gitlab.ReleaseLinks.UpdateReleaseLink(destinationProject.ID, tagName, existingLink.ID, linkOptions)
 	if err != nil {
 		return fmt.Errorf("failed to update release link: %w", err)
 	}
@@ -676,8 +682,8 @@ func (destinationGitlab *GitlabInstance) updateReleaseLink(destinationProject *g
 // syncGenericPackageFile makes the destination copy of the generic package file of
 // plan match the source file: it is copied when missing or when its checksum
 // differs, and its copies are deleted when the file no longer exists on the source.
-func (destinationGitlab *GitlabInstance) syncGenericPackageFile(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, tagName string, plan *releaseAssetPlan) error {
-	destinationFiles, err := destinationGitlab.listGenericPackageFiles(destinationProject.ID, plan.Package)
+func (g *GitlabInstance) syncGenericPackageFile(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, tagName string, plan *releaseAssetPlan) error {
+	destinationFiles, err := g.listGenericPackageFiles(destinationProject.ID, plan.Package)
 	if err != nil {
 		return fmt.Errorf("failed to look up the destination copy: %w", err)
 	}
@@ -689,19 +695,19 @@ func (destinationGitlab *GitlabInstance) syncGenericPackageFile(sourceGitlab *Gi
 
 	sourceFile := newestPackageFile(sourceFiles)
 	if packageFilesMatch(sourceFile, newestPackageFile(destinationFiles)) {
-		zap.L().Debug("generic package file is up to date", zap.String("release", tagName), zap.String("asset", plan.Link.Name), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+		zap.L().Debug("generic package file is up to date", zap.String("release", tagName), zap.String("asset", plan.Link.Name), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
 		return nil
 	}
 
-	_, err = destinationGitlab.copyReleaseAssetFile(sourceGitlab, destinationProject, plan)
+	_, err = g.copyReleaseAssetFile(sourceGitlab, destinationProject, plan)
 	// The file is only considered gone when the source package listing (which did
 	// succeed, so the project is readable) does not have it AND its download answers
 	// 404: a listing alone could miss a file stored under an unexpected name.
 	if sourceFile == nil && errors.Is(err, errSourceAssetMissing) {
-		zap.L().Warn("Release asset file no longer exists on the source, deleting its destination copies", zap.String("release", tagName), zap.String("asset", plan.Link.Name), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+		zap.L().Warn("Release asset file no longer exists on the source, deleting its destination copies", zap.String("release", tagName), zap.String("asset", plan.Link.Name), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
-		return destinationGitlab.deletePackageFiles(destinationProject, destinationFiles)
+		return g.deletePackageFiles(destinationProject, destinationFiles)
 	}
 
 	return err
@@ -710,19 +716,19 @@ func (destinationGitlab *GitlabInstance) syncGenericPackageFile(sourceGitlab *Gi
 // mirrorGenericPackageAsset mirrors a release link pointing to a generic package file
 // of the source instance (see syncGenericPackageFile). The link is then created, or
 // updated when it points somewhere else than the destination copy.
-func (destinationGitlab *GitlabInstance) mirrorGenericPackageAsset(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, tagName string, plan *releaseAssetPlan, existingLink *gitlab.ReleaseLink) error {
-	err := destinationGitlab.syncGenericPackageFile(sourceGitlab, destinationProject, tagName, plan)
+func (g *GitlabInstance) mirrorGenericPackageAsset(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, tagName string, plan *releaseAssetPlan, existingLink *gitlab.ReleaseLink) error {
+	err := g.syncGenericPackageFile(sourceGitlab, destinationProject, tagName, plan)
 	if err != nil {
 		return err
 	}
 
-	linkURL := genericPackageFileURL(destinationGitlab.Gitlab, destinationProject, plan.Package)
+	linkURL := genericPackageFileURL(g.Gitlab, destinationProject, plan.Package)
 
 	switch {
 	case existingLink == nil:
-		return destinationGitlab.createReleaseLink(destinationProject, tagName, plan, linkURL)
+		return g.createReleaseLink(destinationProject, tagName, plan, linkURL)
 	case existingLink.URL != linkURL:
-		return destinationGitlab.updateReleaseLink(destinationProject, tagName, plan, existingLink, linkURL)
+		return g.updateReleaseLink(destinationProject, tagName, plan, existingLink, linkURL)
 	default:
 		return nil
 	}
@@ -736,19 +742,19 @@ func (destinationGitlab *GitlabInstance) mirrorGenericPackageAsset(sourceGitlab 
 // they are copied again when they changed or went missing, and their copies are
 // deleted when they no longer exist on the source. Other links are only mirrored
 // when existingLink is nil: their source offers no checksum to compare.
-func (destinationGitlab *GitlabInstance) MirrorReleaseAsset(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, tagName string, plan *releaseAssetPlan, existingLink *gitlab.ReleaseLink) error {
+func (g *GitlabInstance) MirrorReleaseAsset(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, tagName string, plan *releaseAssetPlan, existingLink *gitlab.ReleaseLink) error {
 	if plan == nil || plan.Link == nil {
 		return errors.New("release asset link is nil")
 	}
 
-	zap.L().Debug("Mirroring release asset", zap.String("release", tagName), zap.String("asset", plan.Link.Name), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+	zap.L().Debug("Mirroring release asset", zap.String("release", tagName), zap.String("asset", plan.Link.Name), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
 	if plan.Kind == releaseAssetGenericPackage {
-		return destinationGitlab.mirrorGenericPackageAsset(sourceGitlab, destinationProject, tagName, plan, existingLink)
+		return g.mirrorGenericPackageAsset(sourceGitlab, destinationProject, tagName, plan, existingLink)
 	}
 
 	if existingLink != nil {
-		zap.L().Debug("release asset already exists", zap.String("release", tagName), zap.String("asset", plan.Link.Name), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+		zap.L().Debug("release asset already exists", zap.String("release", tagName), zap.String("asset", plan.Link.Name), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
 		return nil
 	}
@@ -756,7 +762,7 @@ func (destinationGitlab *GitlabInstance) MirrorReleaseAsset(sourceGitlab *Gitlab
 	linkURL := plan.Link.URL
 
 	if plan.Kind == releaseAssetInstanceFile {
-		copyURL, err := destinationGitlab.copyReleaseAssetFile(sourceGitlab, destinationProject, plan)
+		copyURL, err := g.copyReleaseAssetFile(sourceGitlab, destinationProject, plan)
 		if err != nil {
 			return err
 		}
@@ -764,43 +770,43 @@ func (destinationGitlab *GitlabInstance) MirrorReleaseAsset(sourceGitlab *Gitlab
 		linkURL = copyURL
 	}
 
-	return destinationGitlab.createReleaseLink(destinationProject, tagName, plan, linkURL)
+	return g.createReleaseLink(destinationProject, tagName, plan, linkURL)
 }
 
 // DeleteStaleReleaseAsset deletes a destination release link that the source release
 // no longer has, along with the file it points to (see deleteLinkedPackageFile).
-func (destinationGitlab *GitlabInstance) DeleteStaleReleaseAsset(destinationProject *gitlab.Project, tagName string, link *gitlab.ReleaseLink, referenced map[genericPackageFile]struct{}) error {
-	zap.L().Info("Deleting release asset that no longer exists on the source", zap.String("release", tagName), zap.String("asset", link.Name), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+func (g *GitlabInstance) DeleteStaleReleaseAsset(destinationProject *gitlab.Project, tagName string, link *gitlab.ReleaseLink, referenced map[genericPackageFile]struct{}) error {
+	zap.L().Info("Deleting release asset that no longer exists on the source", zap.String("release", tagName), zap.String("asset", link.Name), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
-	_, _, err := destinationGitlab.Gitlab.ReleaseLinks.DeleteReleaseLink(destinationProject.ID, tagName, link.ID)
+	_, _, err := g.Gitlab.ReleaseLinks.DeleteReleaseLink(destinationProject.ID, tagName, link.ID)
 	if err != nil {
 		return fmt.Errorf("failed to delete release link: %w", err)
 	}
 
-	return destinationGitlab.deleteLinkedPackageFile(destinationProject, link, referenced)
+	return g.deleteLinkedPackageFile(destinationProject, link, referenced)
 }
 
 // deleteLinkedPackageFile deletes the file a deleted destination release link points
 // to, when that file is a generic package file of the destination project that no
 // source link is copied to (referenced, see referencedPackageFiles).
-func (destinationGitlab *GitlabInstance) deleteLinkedPackageFile(destinationProject *gitlab.Project, link *gitlab.ReleaseLink, referenced map[genericPackageFile]struct{}) error {
-	packageFile, ok := destinationGitlab.ownGenericPackageFile(destinationProject, link.URL)
+func (g *GitlabInstance) deleteLinkedPackageFile(destinationProject *gitlab.Project, link *gitlab.ReleaseLink, referenced map[genericPackageFile]struct{}) error {
+	packageFile, ok := g.ownGenericPackageFile(destinationProject, link.URL)
 	if !ok {
 		return nil
 	}
 
 	if _, used := referenced[packageFile]; used {
-		zap.L().Debug("Keeping package file still used by another release asset", zap.String("file", packageFile.FileName), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+		zap.L().Debug("Keeping package file still used by another release asset", zap.String("file", packageFile.FileName), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
 		return nil
 	}
 
-	files, err := destinationGitlab.listGenericPackageFiles(destinationProject.ID, packageFile)
+	files, err := g.listGenericPackageFiles(destinationProject.ID, packageFile)
 	if err != nil {
 		return fmt.Errorf("failed to look up the files of deleted link %s: %w", link.Name, err)
 	}
 
-	return destinationGitlab.deletePackageFiles(destinationProject, files)
+	return g.deletePackageFiles(destinationProject, files)
 }
 
 // MirrorReleaseAssets mirrors the links of a source release to the destination
@@ -810,7 +816,7 @@ func (destinationGitlab *GitlabInstance) deleteLinkedPackageFile(destinationProj
 // package files used by the links of every source release of the project; when
 // nil, only the links of release are considered.
 // Every failure is logged as it happens via helpers.Report.
-func (destinationGitlab *GitlabInstance) MirrorReleaseAssets(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, release *gitlab.Release, existingLinks []*gitlab.ReleaseLink, referenced map[genericPackageFile]struct{}) {
+func (g *GitlabInstance) MirrorReleaseAssets(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, release *gitlab.Release, existingLinks []*gitlab.ReleaseLink, referenced map[genericPackageFile]struct{}) {
 	sourceRoot := instanceRootURL(sourceGitlab.Gitlab)
 	if referenced == nil {
 		referenced = referencedPackageFiles(sourceRoot, []*gitlab.Release{release})
@@ -824,7 +830,7 @@ func (destinationGitlab *GitlabInstance) MirrorReleaseAssets(sourceGitlab *Gitla
 	}
 
 	for _, plan := range planReleaseAssets(sourceRoot, release) {
-		err := destinationGitlab.MirrorReleaseAsset(sourceGitlab, destinationProject, release.TagName, plan, linksByName[plan.Link.Name])
+		err := g.MirrorReleaseAsset(sourceGitlab, destinationProject, release.TagName, plan, linksByName[plan.Link.Name])
 		if err != nil {
 			helpers.Report(fmt.Errorf("failed to mirror asset %s of release %s in project %s: %w", plan.Link.Name, release.TagName, destinationProject.HTTPURLToRepo, err))
 		}
@@ -834,7 +840,7 @@ func (destinationGitlab *GitlabInstance) MirrorReleaseAssets(sourceGitlab *Gitla
 
 	// What is left are the destination links the source release does not have.
 	for _, staleLink := range linksByName {
-		err := destinationGitlab.DeleteStaleReleaseAsset(destinationProject, release.TagName, staleLink, referenced)
+		err := g.DeleteStaleReleaseAsset(destinationProject, release.TagName, staleLink, referenced)
 		if err != nil {
 			helpers.Report(fmt.Errorf("failed to delete asset %s of release %s in project %s: %w", staleLink.Name, release.TagName, destinationProject.HTTPURLToRepo, err))
 		}

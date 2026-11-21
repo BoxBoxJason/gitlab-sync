@@ -9,8 +9,8 @@ import (
 )
 
 func TestMirrorReleases(t *testing.T) {
-	_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
-	_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, sourceGitlabInstance := setupTestServer(t, RoleSource, InstanceSizeSmall)
+	_, destinationGitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 	t.Run("Mirror Releases", func(t *testing.T) {
 		helpers.ResetReported()
 		t.Cleanup(helpers.ResetReported)
@@ -23,7 +23,7 @@ func TestMirrorReleases(t *testing.T) {
 }
 
 func TestFetchProjectReleases(t *testing.T) {
-	_, gitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 	t.Run("Fetch Project Releases", func(t *testing.T) {
 		releases, err := gitlabInstance.FetchProjectReleases(TEST_PROJECT)
 		if err != nil {
@@ -36,7 +36,7 @@ func TestFetchProjectReleases(t *testing.T) {
 }
 
 func TestFetchProjectReleasesTags(t *testing.T) {
-	_, gitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 	t.Run("Fetch Project Releases Tags", func(t *testing.T) {
 		releasesTags, err := gitlabInstance.FetchProjectReleasesTags(TEST_PROJECT)
 		if err != nil {
@@ -49,7 +49,7 @@ func TestFetchProjectReleasesTags(t *testing.T) {
 }
 
 func TestMirrorRelease(t *testing.T) {
-	_, gitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupTestServer(t, RoleSource, InstanceSizeSmall)
 	t.Run("Mirror Release", func(t *testing.T) {
 		release := &gitlab.Release{
 			Name:        "Test Release",

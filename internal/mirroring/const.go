@@ -1,17 +1,18 @@
+// Package mirroring mirrors GitLab groups, projects, releases and issues between instances.
 package mirroring
 
 const (
-	// ROLE is the logging key for GitLab instance role.
-	ROLE = "role"
-	// ROLE_SOURCE is the source GitLab instance role value.
-	ROLE_SOURCE = "source"
-	// ROLE_DESTINATION is the destination GitLab instance role value.
-	ROLE_DESTINATION = "destination"
+	// RoleKey is the logging key for GitLab instance role.
+	RoleKey = "role"
+	// RoleSource is the source GitLab instance role value.
+	RoleSource = "source"
+	// RoleDestination is the destination GitLab instance role value.
+	RoleDestination = "destination"
 
-	// INSTANCE_SIZE is the logging key for GitLab instance size.
-	INSTANCE_SIZE = "size"
-	// INSTANCE_SIZE_SMALL is the identifier for small instances.
-	INSTANCE_SIZE_SMALL = "small"
-	// INSTANCE_SIZE_BIG is the identifier for big instances.
-	INSTANCE_SIZE_BIG = "big"
+	// InstanceSizeKey is the logging key for GitLab instance size.
+	InstanceSizeKey = "size"
+	// InstanceSizeSmall is the identifier for small instances.
+	InstanceSizeSmall = "small"
+	// InstanceSizeBig is the identifier for big instances.
+	InstanceSizeBig = "big"
 )

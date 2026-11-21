@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	"go.uber.org/zap"
@@ -18,54 +18,60 @@ const (
 	processFilterWorkers = 2
 )
 
-func createMirroringInstances(gitlabMirrorArgs *utils.ParserArgs) (*GitlabInstance, *GitlabInstance, error) {
-	sourceGitlabSize := INSTANCE_SIZE_SMALL
+// mirroringInstances is the pair of GitLab instances taking part in a mirroring run.
+type mirroringInstances struct {
+	source      *GitlabInstance
+	destination *GitlabInstance
+}
+
+func createMirroringInstances(gitlabMirrorArgs *mirrorcfg.ParserArgs) (mirroringInstances, error) {
+	sourceGitlabSize := InstanceSizeSmall
 	if gitlabMirrorArgs.SourceGitlabIsBig {
-		sourceGitlabSize = INSTANCE_SIZE_BIG
+		sourceGitlabSize = InstanceSizeBig
 	}
 
 	sourceGitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:    gitlabMirrorArgs.SourceGitlabURL,
 		GitlabToken:  gitlabMirrorArgs.SourceGitlabToken,
-		Role:         ROLE_SOURCE,
+		Role:         RoleSource,
 		MaxRetries:   gitlabMirrorArgs.Retry,
 		InstanceSize: sourceGitlabSize,
 		UserAgent:    gitlabMirrorArgs.UserAgent,
 	})
 	if err != nil {
-		return nil, nil, err
+		return mirroringInstances{}, err
 	}
 
-	destinationGitlabSize := INSTANCE_SIZE_SMALL
+	destinationGitlabSize := InstanceSizeSmall
 	if gitlabMirrorArgs.DestinationGitlabIsBig {
-		destinationGitlabSize = INSTANCE_SIZE_BIG
+		destinationGitlabSize = InstanceSizeBig
 	}
 
 	destinationGitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:    gitlabMirrorArgs.DestinationGitlabURL,
 		GitlabToken:  gitlabMirrorArgs.DestinationGitlabToken,
-		Role:         ROLE_DESTINATION,
+		Role:         RoleDestination,
 		MaxRetries:   gitlabMirrorArgs.Retry,
 		InstanceSize: destinationGitlabSize,
 		UserAgent:    gitlabMirrorArgs.UserAgent,
 	})
 	if err != nil {
-		return nil, nil, err
+		return mirroringInstances{}, err
 	}
 
-	return sourceGitlabInstance, destinationGitlabInstance, nil
+	return mirroringInstances{source: sourceGitlabInstance, destination: destinationGitlabInstance}, nil
 }
 
-func setPullMirrorAvailability(destinationGitlabInstance *GitlabInstance, gitlabMirrorArgs *utils.ParserArgs) error {
-	pullMirrorAvailable, err := destinationGitlabInstance.IsPullMirrorAvailable(gitlabMirrorArgs.ForcePremium, gitlabMirrorArgs.ForceNonPremium)
+func setPullMirrorAvailability(destinationGitlabInstance *GitlabInstance, gitlabMirrorArgs *mirrorcfg.ParserArgs) error {
+	pullMirrorAvailable, err := destinationGitlabInstance.IsPullMirrorAvailable(gitlabMirrorArgs)
 	switch {
 	case err != nil:
 		return err
 	case pullMirrorAvailable:
-		zap.L().Info("GitLab instance is compatible with the pull mirroring process", zap.String(ROLE, destinationGitlabInstance.Role), zap.String(INSTANCE_SIZE, destinationGitlabInstance.InstanceSize))
+		zap.L().Info("GitLab instance is compatible with the pull mirroring process", zap.String(RoleKey, destinationGitlabInstance.Role), zap.String(InstanceSizeKey, destinationGitlabInstance.InstanceSize))
 	default:
-		zap.L().Warn("Destination GitLab instance is not compatible with the pull mirroring process (requires a >= 17.6 ; >= Premium destination GitLab instance)", zap.String(ROLE, destinationGitlabInstance.Role), zap.String(INSTANCE_SIZE, destinationGitlabInstance.InstanceSize))
-		zap.L().Warn("Will use local pull / push mirroring instead (takes a lot longer)", zap.String(ROLE, destinationGitlabInstance.Role), zap.String(INSTANCE_SIZE, destinationGitlabInstance.InstanceSize))
+		zap.L().Warn("Destination GitLab instance is not compatible with the pull mirroring process (requires a >= 17.6 ; >= Premium destination GitLab instance)", zap.String(RoleKey, destinationGitlabInstance.Role), zap.String(InstanceSizeKey, destinationGitlabInstance.InstanceSize))
+		zap.L().Warn("Will use local pull / push mirroring instead (takes a lot longer)", zap.String(RoleKey, destinationGitlabInstance.Role), zap.String(InstanceSizeKey, destinationGitlabInstance.InstanceSize))
 	}
 
 	destinationGitlabInstance.PullMirrorAvailable = pullMirrorAvailable
@@ -79,7 +85,7 @@ func setPullMirrorAvailability(destinationGitlabInstance *GitlabInstance, gitlab
 // The cache only ever backs the clone/push path, so it is skipped entirely on a
 // premium destination: pull mirroring never touches a local clone, and creating
 // the directory there would only leave an empty tree behind.
-func setupGitCache(destinationGitlabInstance *GitlabInstance, gitlabMirrorArgs *utils.ParserArgs) error {
+func setupGitCache(destinationGitlabInstance *GitlabInstance, gitlabMirrorArgs *mirrorcfg.ParserArgs) error {
 	cacheDir := strings.TrimSpace(gitlabMirrorArgs.CacheDir)
 	if cacheDir == "" {
 		return nil
@@ -106,7 +112,7 @@ func setupGitCache(destinationGitlabInstance *GitlabInstance, gitlabMirrorArgs *
 func fetchInitialData(
 	sourceGitlabInstance *GitlabInstance,
 	destinationGitlabInstance *GitlabInstance,
-	gitlabMirrorArgs *utils.ParserArgs,
+	gitlabMirrorArgs *mirrorcfg.ParserArgs,
 	sourceProjectFilters map[string]struct{},
 	sourceGroupFilters map[string]struct{},
 	destinationProjectFilters map[string]struct{},
@@ -137,15 +143,17 @@ func fetchInitialData(
 //
 // Errors are logged the moment they happen (via helpers.Report); callers read
 // the aggregate outcome through helpers.ExitCode.
-func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) {
-	zap.L().Info("Starting GitLab mirroring process", zap.String(ROLE_SOURCE, gitlabMirrorArgs.SourceGitlabURL), zap.String(ROLE_DESTINATION, gitlabMirrorArgs.DestinationGitlabURL))
+func MirrorGitlabs(gitlabMirrorArgs *mirrorcfg.ParserArgs) {
+	zap.L().Info("Starting GitLab mirroring process", zap.String(RoleSource, gitlabMirrorArgs.SourceGitlabURL), zap.String(RoleDestination, gitlabMirrorArgs.DestinationGitlabURL))
 
-	sourceGitlabInstance, destinationGitlabInstance, err := createMirroringInstances(gitlabMirrorArgs)
+	instances, err := createMirroringInstances(gitlabMirrorArgs)
 	if err != nil {
 		helpers.ReportBlocking(err)
 
 		return
 	}
+
+	sourceGitlabInstance, destinationGitlabInstance := instances.source, instances.destination
 
 	err = setPullMirrorAvailability(destinationGitlabInstance, gitlabMirrorArgs)
 	if err != nil {
@@ -165,15 +173,15 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) {
 		}
 	}
 
-	sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters := processFilters(gitlabMirrorArgs.MirrorMapping)
+	filters := processFilters(gitlabMirrorArgs.MirrorMapping)
 	fetchInitialData(
 		sourceGitlabInstance,
 		destinationGitlabInstance,
 		gitlabMirrorArgs,
-		sourceProjectFilters,
-		sourceGroupFilters,
-		destinationProjectFilters,
-		destinationGroupFilters,
+		filters.sourceProjects,
+		filters.sourceGroups,
+		filters.destinationProjects,
+		filters.destinationGroups,
 	)
 
 	zap.L().Debug("Fully Computed Mirror Mapping", zap.Any("MirrorMapping", gitlabMirrorArgs.MirrorMapping))
@@ -191,9 +199,17 @@ func MirrorGitlabs(gitlabMirrorArgs *utils.ParserArgs) {
 	destinationGitlabInstance.CreateProjects(sourceGitlabInstance, gitlabMirrorArgs.MirrorMapping)
 }
 
+// mirrorFilters holds the project and group paths to fetch on each side of the mirroring.
+type mirrorFilters struct {
+	sourceProjects      map[string]struct{}
+	sourceGroups        map[string]struct{}
+	destinationProjects map[string]struct{}
+	destinationGroups   map[string]struct{}
+}
+
 // processFilters processes the filters for groups and projects.
-// It returns four maps: sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, and destinationGroupFilters.
-func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[string]struct{}, map[string]struct{}, map[string]struct{}) {
+// It returns the source and destination project and group filters.
+func processFilters(filters *mirrorcfg.MirrorMapping) mirrorFilters {
 	zap.L().Info("Checking mirror mapping filters")
 
 	sourceProjectFilters := make(map[string]struct{})
@@ -241,11 +257,16 @@ func processFilters(filters *utils.MirrorMapping) (map[string]struct{}, map[stri
 
 	filterWaitGroup.Wait()
 
-	return sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters
+	return mirrorFilters{
+		sourceProjects:      sourceProjectFilters,
+		sourceGroups:        sourceGroupFilters,
+		destinationProjects: destinationProjectFilters,
+		destinationGroups:   destinationGroupFilters,
+	}
 }
 
 // DryRun prints the groups and projects that would be created or updated in dry run mode.
-func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *GitlabInstance, mirrorMapping *utils.MirrorMapping) {
+func (g *GitlabInstance) DryRun(sourceGitlabInstance *GitlabInstance, mirrorMapping *mirrorcfg.MirrorMapping) {
 	zap.L().Info("Dry run mode enabled, will not create groups or projects")
 	zap.L().Info("Groups that will be created (or updated if they already exist):")
 
@@ -272,7 +293,7 @@ func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *Gi
 			}
 
 			if helpers.Deref(copyOptions.MirrorReleases, false) {
-				err = destinationGitlabInstance.DryRunReleases(sourceGitlabInstance, sourceProject, copyOptions)
+				err = g.DryRunReleases(sourceGitlabInstance, sourceProject, copyOptions)
 				if err != nil {
 					helpers.ReportNonBlocking(fmt.Errorf("failed to dry run releases: %w", err))
 
@@ -290,7 +311,7 @@ func (destinationGitlabInstance *GitlabInstance) DryRun(sourceGitlabInstance *Gi
 // ===========================================================================
 
 // IsPullMirrorAvailable checks the destination GitLab instance for version and license compatibility.
-func (g *GitlabInstance) IsPullMirrorAvailable(forcePremium, forceNonPremium bool) (bool, error) {
+func (g *GitlabInstance) IsPullMirrorAvailable(args *mirrorcfg.ParserArgs) (bool, error) {
 	zap.L().Info("Checking destination GitLab instance")
 
 	thresholdOk, err := g.IsVersionGreaterThanThreshold()
@@ -300,10 +321,10 @@ func (g *GitlabInstance) IsPullMirrorAvailable(forcePremium, forceNonPremium boo
 
 	isPremium, err := g.IsLicensePremium()
 	if err != nil {
-		if !forcePremium && !forceNonPremium {
+		if !args.ForcePremium && !args.ForceNonPremium {
 			return false, fmt.Errorf("failed to check if destination GitLab instance is premium: %w", err)
 		}
 	}
 
-	return !forceNonPremium && (thresholdOk && (isPremium || forcePremium)), nil
+	return !args.ForceNonPremium && (thresholdOk && (isPremium || args.ForcePremium)), nil
 }

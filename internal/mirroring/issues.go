@@ -77,7 +77,7 @@ func (g *GitlabInstance) FetchProjectIssuesTitles(project *gitlab.Project) (map[
 
 // MirrorIssue creates an issue in the destination project.
 func (g *GitlabInstance) MirrorIssue(project *gitlab.Project, issue *gitlab.Issue) error {
-	zap.L().Debug("Creating issue in destination project", zap.String("issue", issue.Title), zap.String(ROLE_DESTINATION, project.HTTPURLToRepo))
+	zap.L().Debug("Creating issue in destination project", zap.String("issue", issue.Title), zap.String(RoleDestination, project.HTTPURLToRepo))
 
 	// Create the issue in the destination project
 	_, _, err := g.Gitlab.Issues.CreateIssue(project.ID, &gitlab.CreateIssueOptions{
@@ -101,7 +101,7 @@ func (g *GitlabInstance) MirrorIssue(project *gitlab.Project, issue *gitlab.Issu
 
 // CloseIssue closes an issue in the destination project.
 func (g *GitlabInstance) CloseIssue(project *gitlab.Project, issue *gitlab.Issue) error {
-	zap.L().Debug("Closing issue in destination project", zap.String("issue", issue.Title), zap.String(ROLE_DESTINATION, project.HTTPURLToRepo))
+	zap.L().Debug("Closing issue in destination project", zap.String("issue", issue.Title), zap.String(RoleDestination, project.HTTPURLToRepo))
 
 	_, _, err := g.Gitlab.Issues.UpdateIssue(project.ID, issue.IID, &gitlab.UpdateIssueOptions{
 		StateEvent: new(closeStateEvent),
@@ -119,18 +119,18 @@ func (g *GitlabInstance) CloseIssue(project *gitlab.Project, issue *gitlab.Issue
 
 // MirrorIssues mirrors issues from the source project to the destination project.
 // It fetches existing issues from the destination project and creates new issues for those that do not.
-func (destinationGitlab *GitlabInstance) MirrorIssues(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project) {
+func (g *GitlabInstance) MirrorIssues(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project) {
 	mirrorProjectEntities(
 		"issue",
 		sourceProject,
 		destinationProject,
-		destinationGitlab.FetchProjectIssuesTitles,
+		g.FetchProjectIssuesTitles,
 		sourceGitlab.FetchProjectIssues,
 		func(issue *gitlab.Issue) string {
 			return issue.Title
 		},
 		func(project *gitlab.Project, issue *gitlab.Issue) error {
-			return destinationGitlab.MirrorIssue(project, issue)
+			return g.MirrorIssue(project, issue)
 		},
 	)
 }

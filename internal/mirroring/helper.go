@@ -1,17 +1,24 @@
 package mirroring
 
 import (
-	"sort"
+	"slices"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 
 	"go.uber.org/zap"
 )
 
+// reversedGroupMap is the reversed group mirror mapping: the source group path of each
+// destination group, and the destination group paths sorted so parents come before children.
+type reversedGroupMap struct {
+	sourceByDestination map[string]string
+	destinationPaths    []string
+}
+
 // reverseGroupMirrorMap reverses the mirror mapping to get the source group path for each destination group.
 // It creates a map where the keys are the destination group paths and the values are the source group paths.
 // The function also returns a sorted list of destination group paths.
-func (g *GitlabInstance) reverseGroupMirrorMap(mirrorMapping *utils.MirrorMapping) (map[string]string, []string) {
+func (g *GitlabInstance) reverseGroupMirrorMap(mirrorMapping *mirrorcfg.MirrorMapping) reversedGroupMap {
 	var reversedMirrorMap map[string]string
 
 	destinationGroupPaths := make([]string, 0, g.GroupsLen())
@@ -33,8 +40,8 @@ func (g *GitlabInstance) reverseGroupMirrorMap(mirrorMapping *utils.MirrorMappin
 			destinationGroupPaths = append(destinationGroupPaths, createOptions.DestinationPath)
 		}
 
-		sort.Strings(destinationGroupPaths)
+		slices.Sort(destinationGroupPaths)
 	}
 
-	return reversedMirrorMap, destinationGroupPaths
+	return reversedGroupMap{sourceByDestination: reversedMirrorMap, destinationPaths: destinationGroupPaths}
 }

@@ -7,14 +7,16 @@ import (
 	"os"
 	"sync"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 	"go.uber.org/zap"
 )
 
-const releasesPerPage = 100
+const (
+	releasesPerPage = 100
+)
 
 // ===========================================================================
 //                   	RELEASES MIRRORING FUNCTIONS                        //
@@ -79,7 +81,7 @@ func (g *GitlabInstance) FetchProjectReleasesTags(project *gitlab.Project) (map[
 // It fetches the releases from the source project and prints them, along with
 // their asset links, and the destination releases and links that would be deleted,
 // when mirror_release_assets is enabled.
-func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInstance *GitlabInstance, sourceProject *gitlab.Project, copyOptions *utils.MirroringOptions) error {
+func (g *GitlabInstance) DryRunReleases(sourceGitlabInstance *GitlabInstance, sourceProject *gitlab.Project, copyOptions *mirrorcfg.MirroringOptions) error {
 	// Fetch releases from the source project
 	sourceReleases, err := sourceGitlabInstance.FetchProjectReleases(sourceProject)
 	if err != nil {
@@ -90,14 +92,14 @@ func (destinationGitlabInstance *GitlabInstance) DryRunReleases(sourceGitlabInst
 
 	mirrorAssets := helpers.Deref(copyOptions.MirrorReleaseAssets, false)
 	if mirrorAssets {
-		destinationReleases, err = destinationGitlabInstance.dryRunDestinationReleases(copyOptions.DestinationPath)
+		destinationReleases, err = g.dryRunDestinationReleases(copyOptions.DestinationPath)
 		if err != nil {
 			return err
 		}
 	}
 
 	sourceRoot := instanceRootURL(sourceGitlabInstance.Gitlab)
-	destinationURL := instanceRootURL(destinationGitlabInstance.Gitlab).String() + copyOptions.DestinationPath
+	destinationURL := instanceRootURL(g.Gitlab).String() + copyOptions.DestinationPath
 
 	// Print the releases that will be created in the destination project
 	for _, release := range sourceReleases {
@@ -140,13 +142,13 @@ func dryRunStaleReleases(destinationURL string, staleReleases map[string]*gitlab
 
 // dryRunDestinationReleases returns the releases of the destination project at
 // destinationPath by tag name. It is empty when the project does not exist yet.
-func (destinationGitlabInstance *GitlabInstance) dryRunDestinationReleases(destinationPath string) (map[string]*gitlab.Release, error) {
-	destinationProject := destinationGitlabInstance.GetProject(destinationPath)
+func (g *GitlabInstance) dryRunDestinationReleases(destinationPath string) (map[string]*gitlab.Release, error) {
+	destinationProject := g.GetProject(destinationPath)
 	if destinationProject == nil {
 		return make(map[string]*gitlab.Release), nil
 	}
 
-	releases, err := destinationGitlabInstance.FetchProjectReleases(destinationProject)
+	releases, err := g.FetchProjectReleases(destinationProject)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch releases for destination project %s: %w", destinationProject.HTTPURLToRepo, err)
 	}
@@ -196,7 +198,7 @@ func dryRunReleaseAssets(sourceRoot *url.URL, release, destinationRelease *gitla
 
 // MirrorRelease creates a release in the destination project.
 func (g *GitlabInstance) MirrorRelease(project *gitlab.Project, release *gitlab.Release) error {
-	zap.L().Debug("Creating release in destination project", zap.String("release", release.TagName), zap.String(ROLE_DESTINATION, project.HTTPURLToRepo))
+	zap.L().Debug("Creating release in destination project", zap.String("release", release.TagName), zap.String(RoleDestination, project.HTTPURLToRepo))
 
 	// Create the release in the destination project
 	_, _, err := g.Gitlab.Releases.CreateRelease(project.ID, &gitlab.CreateReleaseOptions{
@@ -220,7 +222,7 @@ func (g *GitlabInstance) MirrorRelease(project *gitlab.Project, release *gitlab.
 // project, along with the files its links point to (see CleanUpReleaseFiles).
 // The git tag of the release is left to the repository mirroring.
 func (g *GitlabInstance) DeleteStaleRelease(project *gitlab.Project, release *gitlab.Release, referenced map[genericPackageFile]struct{}) error {
-	zap.L().Info("Deleting release that no longer exists on the source", zap.String("release", release.TagName), zap.String(ROLE_DESTINATION, project.HTTPURLToRepo))
+	zap.L().Info("Deleting release that no longer exists on the source", zap.String("release", release.TagName), zap.String(RoleDestination, project.HTTPURLToRepo))
 
 	_, _, err := g.Gitlab.Releases.DeleteRelease(project.ID, release.TagName)
 	if err != nil {
@@ -272,9 +274,9 @@ type ReleasesMirroringOptions struct {
 // to on the source instance) are mirrored too, and the releases, links and files that
 // no longer exist on the source are deleted.
 // The function handles the API calls concurrently using goroutines.
-func (destinationGitlab *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project, options ReleasesMirroringOptions) {
+func (g *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project, options ReleasesMirroringOptions) {
 	if options.MirrorAssets {
-		destinationGitlab.mirrorReleasesWithAssets(sourceGitlab, sourceProject, destinationProject, options.DestinationReleasesBeforeGit)
+		g.mirrorReleasesWithAssets(sourceGitlab, sourceProject, destinationProject, options.DestinationReleasesBeforeGit)
 
 		return
 	}
@@ -283,13 +285,13 @@ func (destinationGitlab *GitlabInstance) MirrorReleases(sourceGitlab *GitlabInst
 		"release",
 		sourceProject,
 		destinationProject,
-		destinationGitlab.FetchProjectReleasesTags,
+		g.FetchProjectReleasesTags,
 		sourceGitlab.FetchProjectReleases,
 		func(release *gitlab.Release) string {
 			return release.TagName
 		},
 		func(project *gitlab.Project, release *gitlab.Release) error {
-			return destinationGitlab.MirrorRelease(project, release)
+			return g.MirrorRelease(project, release)
 		},
 	)
 }
@@ -314,10 +316,10 @@ func releasesByTag(releases []*gitlab.Release) map[string]*gitlab.Release {
 // releasesBeforeGit are the destination releases before the git mirroring ran (see
 // ReleasesMirroringOptions): the ones it made disappear are cleaned up like the others.
 // Every failure is logged as it happens via helpers.Report.
-func (destinationGitlab *GitlabInstance) mirrorReleasesWithAssets(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project, releasesBeforeGit []*gitlab.Release) {
-	zap.L().Info("Starting release mirroring (with assets)", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+func (g *GitlabInstance) mirrorReleasesWithAssets(sourceGitlab *GitlabInstance, sourceProject, destinationProject *gitlab.Project, releasesBeforeGit []*gitlab.Release) {
+	zap.L().Info("Starting release mirroring (with assets)", zap.String(RoleSource, sourceProject.HTTPURLToRepo), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
-	destinationReleases, err := destinationGitlab.FetchProjectReleases(destinationProject)
+	destinationReleases, err := g.FetchProjectReleases(destinationProject)
 	if err != nil {
 		helpers.Report(fmt.Errorf("failed to fetch existing release for destination project %s: %w", destinationProject.HTTPURLToRepo, err))
 
@@ -342,7 +344,7 @@ func (destinationGitlab *GitlabInstance) mirrorReleasesWithAssets(sourceGitlab *
 
 	for tagName, sourceRelease := range sourceReleasesByTag {
 		waitGroup.Go(func() {
-			destinationGitlab.mirrorReleaseWithAssets(sourceGitlab, destinationProject, sourceRelease, existingReleases[tagName], referenced)
+			g.mirrorReleaseWithAssets(sourceGitlab, destinationProject, sourceRelease, existingReleases[tagName], referenced)
 		})
 	}
 
@@ -353,22 +355,22 @@ func (destinationGitlab *GitlabInstance) mirrorReleasesWithAssets(sourceGitlab *
 		}
 
 		waitGroup.Go(func() {
-			helpers.Report(destinationGitlab.DeleteStaleRelease(destinationProject, destinationRelease, referenced))
+			helpers.Report(g.DeleteStaleRelease(destinationProject, destinationRelease, referenced))
 		})
 	}
 
 	// Releases the git mirroring already removed along with their tag: only their files are left.
 	for _, vanishedRelease := range vanishedReleases(sourceReleasesByTag, existingReleases, releasesBeforeGit) {
-		zap.L().Info("Cleaning up the files of a release deleted along with its tag", zap.String("release", vanishedRelease.TagName), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+		zap.L().Info("Cleaning up the files of a release deleted along with its tag", zap.String("release", vanishedRelease.TagName), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
 		waitGroup.Go(func() {
-			helpers.Report(destinationGitlab.CleanUpReleaseFiles(destinationProject, vanishedRelease, referenced))
+			helpers.Report(g.CleanUpReleaseFiles(destinationProject, vanishedRelease, referenced))
 		})
 	}
 
 	waitGroup.Wait()
 
-	zap.L().Info("release mirroring (with assets) completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+	zap.L().Info("release mirroring (with assets) completed", zap.String(RoleSource, sourceProject.HTTPURLToRepo), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 }
 
 // vanishedReleases returns the releases of releasesBeforeGit (see
@@ -393,15 +395,15 @@ func vanishedReleases(sourceReleases, existingReleases map[string]*gitlab.Releas
 
 // mirrorReleaseWithAssets creates sourceRelease in the destination project when
 // existingRelease (its destination counterpart) is nil, then mirrors its asset links.
-func (destinationGitlab *GitlabInstance) mirrorReleaseWithAssets(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, sourceRelease, existingRelease *gitlab.Release, referenced map[genericPackageFile]struct{}) {
+func (g *GitlabInstance) mirrorReleaseWithAssets(sourceGitlab *GitlabInstance, destinationProject *gitlab.Project, sourceRelease, existingRelease *gitlab.Release, referenced map[genericPackageFile]struct{}) {
 	var existingLinks []*gitlab.ReleaseLink
 
 	if existingRelease != nil {
-		zap.L().Debug("release already exists", zap.String("release", sourceRelease.TagName), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+		zap.L().Debug("release already exists", zap.String("release", sourceRelease.TagName), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
 		existingLinks = existingRelease.Assets.Links
 	} else {
-		err := destinationGitlab.MirrorRelease(destinationProject, sourceRelease)
+		err := g.MirrorRelease(destinationProject, sourceRelease)
 		if err != nil {
 			helpers.Report(fmt.Errorf("failed to create release %s in project %s: %w", sourceRelease.TagName, destinationProject.HTTPURLToRepo, err))
 
@@ -409,5 +411,5 @@ func (destinationGitlab *GitlabInstance) mirrorReleaseWithAssets(sourceGitlab *G
 		}
 	}
 
-	destinationGitlab.MirrorReleaseAssets(sourceGitlab, destinationProject, sourceRelease, existingLinks, referenced)
+	g.MirrorReleaseAssets(sourceGitlab, destinationProject, sourceRelease, existingLinks, referenced)
 }

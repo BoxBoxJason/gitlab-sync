@@ -34,7 +34,8 @@ func TestSplitRepoURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			host, path := splitRepoURL(tt.rawURL)
+			location := splitRepoURL(tt.rawURL)
+			host, path := location.host, location.path
 			if host != tt.wantHost || path != tt.wantPath {
 				t.Errorf("splitRepoURL(%q) = (%q, %q); want (%q, %q)", tt.rawURL, host, path, tt.wantHost, tt.wantPath)
 			}

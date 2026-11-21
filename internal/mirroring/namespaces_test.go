@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 )
 
@@ -139,7 +139,7 @@ func (api *fakeGroupsAPI) createdPaths() []string {
 var groupAA = &gitlab.Group{ID: 10, Name: "AA", Path: "AA", FullPath: "AA", Visibility: gitlab.InternalVisibility}
 
 func TestEnsureParentNamespaceIDCreatesMissingParent(t *testing.T) {
-	mux, instance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	mux, instance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 	api := newFakeGroupsAPI(t, mux, groupAA)
 	instance.AddGroup(groupAA)
 
@@ -173,7 +173,7 @@ func TestEnsureParentNamespaceIDCreatesMissingParent(t *testing.T) {
 }
 
 func TestEnsureParentNamespaceIDCreatesWholeChain(t *testing.T) {
-	mux, instance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	mux, instance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 	// AA exists on the instance but is not in the cache (it was not part of the fetch filters).
 	api := newFakeGroupsAPI(t, mux, groupAA)
 
@@ -192,7 +192,7 @@ func TestEnsureParentNamespaceIDCreatesWholeChain(t *testing.T) {
 }
 
 func TestEnsureParentNamespaceIDCreatesMissingTopLevelGroup(t *testing.T) {
-	mux, instance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	mux, instance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 	api := newFakeGroupsAPI(t, mux)
 
 	_, err := instance.EnsureParentNamespaceID("AA/CC", gitlab.PrivateVisibility)
@@ -210,7 +210,7 @@ func TestEnsureParentNamespaceIDCreatesMissingTopLevelGroup(t *testing.T) {
 }
 
 func TestEnsureParentNamespaceIDUsesExistingUncachedParent(t *testing.T) {
-	mux, instance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	mux, instance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 	groupBB := &gitlab.Group{ID: 11, Name: "BB", Path: "BB", FullPath: "AA/BB"}
 	api := newFakeGroupsAPI(t, mux, groupAA, groupBB)
 
@@ -229,7 +229,7 @@ func TestEnsureParentNamespaceIDUsesExistingUncachedParent(t *testing.T) {
 }
 
 func TestEnsureParentNamespaceIDTopLevelPath(t *testing.T) {
-	_, instance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, instance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 
 	parentID, err := instance.EnsureParentNamespaceID("AA", gitlab.PublicVisibility)
 	if err != nil || parentID != -1 {
@@ -238,7 +238,7 @@ func TestEnsureParentNamespaceIDTopLevelPath(t *testing.T) {
 }
 
 func TestEnsureParentNamespaceIDLookupFailure(t *testing.T) {
-	mux, instance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	mux, instance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 	api := newFakeGroupsAPI(t, mux)
 	api.lookupStatus = http.StatusInternalServerError
 
@@ -253,7 +253,7 @@ func TestEnsureParentNamespaceIDLookupFailure(t *testing.T) {
 }
 
 func TestEnsureParentNamespaceIDConcurrentCallers(t *testing.T) {
-	mux, instance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	mux, instance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 	api := newFakeGroupsAPI(t, mux, groupAA)
 	instance.AddGroup(groupAA)
 
@@ -285,7 +285,7 @@ func TestEnsureParentNamespaceIDConcurrentCallers(t *testing.T) {
 }
 
 func TestCreateProjectFromSourceCreatesMissingParentGroup(t *testing.T) {
-	mux, instance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	mux, instance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 	api := newFakeGroupsAPI(t, mux, groupAA)
 	instance.AddGroup(groupAA)
 
@@ -304,7 +304,7 @@ func TestCreateProjectFromSourceCreatesMissingParentGroup(t *testing.T) {
 
 	project, err := instance.CreateProjectFromSource(
 		&gitlab.Project{Name: "CC", Path: "CC"},
-		&utils.MirroringOptions{DestinationPath: "AA/BB/CC", Visibility: new(string(gitlab.InternalVisibility))},
+		&mirrorcfg.MirroringOptions{DestinationPath: "AA/BB/CC", Visibility: new(string(gitlab.InternalVisibility))},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -325,13 +325,13 @@ func TestCreateProjectFromSourceCreatesMissingParentGroup(t *testing.T) {
 }
 
 func TestCreateGroupFromSourceCreatesMissingParentGroup(t *testing.T) {
-	mux, instance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	mux, instance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 	api := newFakeGroupsAPI(t, mux, groupAA)
 	instance.AddGroup(groupAA)
 
 	group, err := instance.CreateGroupFromSource(
 		&gitlab.Group{Name: "CC", Path: "CC", Visibility: gitlab.InternalVisibility},
-		&utils.MirroringOptions{DestinationPath: "AA/BB/CC"},
+		&mirrorcfg.MirroringOptions{DestinationPath: "AA/BB/CC"},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

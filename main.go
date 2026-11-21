@@ -1,7 +1,12 @@
+// Package main is the entry point of the gitlab-sync binary.
 package main
 
-import appcmd "github.com/boxboxjason/gitlab-sync/cmd"
+import (
+	"os"
+
+	appcmd "github.com/boxboxjason/gitlab-sync/cmd"
+)
 
 func main() {
-	appcmd.Execute()
+	os.Exit(appcmd.Execute())
 }

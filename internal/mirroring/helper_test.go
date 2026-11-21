@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 )
 
@@ -719,14 +719,14 @@ func setupTestProject(mux *http.ServeMux, project *gitlab.Project, stringRespons
 func TestReverseGroupMirrorMap(t *testing.T) {
 	tests := []struct {
 		name                     string
-		mirrorMapping            *utils.MirrorMapping
+		mirrorMapping            *mirrorcfg.MirrorMapping
 		expectedReversedMap      map[string]string
 		expectedDestinationPaths []string
 	}{
 		{
 			name: "normal mapping",
-			mirrorMapping: &utils.MirrorMapping{
-				Groups: map[string]*utils.MirroringOptions{
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Groups: map[string]*mirrorcfg.MirroringOptions{
 					TEST_GROUP.FullPath:   {DestinationPath: TEST_GROUP.FullPath},
 					TEST_GROUP_2.FullPath: {DestinationPath: TEST_GROUP_2.FullPath},
 				},
@@ -745,16 +745,16 @@ func TestReverseGroupMirrorMap(t *testing.T) {
 		},
 		{
 			name: "empty groups in mirror mapping",
-			mirrorMapping: &utils.MirrorMapping{
-				Groups: map[string]*utils.MirroringOptions{},
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Groups: map[string]*mirrorcfg.MirroringOptions{},
 			},
 			expectedReversedMap:      map[string]string{},
 			expectedDestinationPaths: []string{},
 		},
 		{
 			name: "unsorted input paths",
-			mirrorMapping: &utils.MirrorMapping{
-				Groups: map[string]*utils.MirroringOptions{
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Groups: map[string]*mirrorcfg.MirroringOptions{
 					TEST_GROUP_2.FullPath: {DestinationPath: TEST_GROUP_2.FullPath},
 					TEST_GROUP.FullPath:   {DestinationPath: TEST_GROUP.FullPath},
 				},
@@ -774,7 +774,8 @@ func TestReverseGroupMirrorMap(t *testing.T) {
 				Groups: nil,
 			}
 
-			actualReversedMap, actualDestinationPaths := g.reverseGroupMirrorMap(tt.mirrorMapping)
+			actual := g.reverseGroupMirrorMap(tt.mirrorMapping)
+			actualReversedMap, actualDestinationPaths := actual.sourceByDestination, actual.destinationPaths
 
 			if !reflect.DeepEqual(actualReversedMap, tt.expectedReversedMap) {
 				t.Errorf("reversedMirrorMap = %v, want %v", actualReversedMap, tt.expectedReversedMap)

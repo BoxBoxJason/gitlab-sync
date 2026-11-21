@@ -1,6 +1,9 @@
+// Package helpers provides shared utilities: git operations, caching, error reporting and formatting.
 package helpers
 
-import "errors"
+import (
+	"errors"
+)
 
 // Severity represents the severity level of an error.
 type Severity int

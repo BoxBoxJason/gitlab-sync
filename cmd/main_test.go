@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	"go.uber.org/zap"
@@ -65,7 +65,12 @@ func TestSetupZapLogger(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Call the setup function with appropriate parameters.
-			SetupZapLogger(tc.verbose, tc.filename)
+			level := zap.InfoLevel
+			if tc.verbose {
+				level = zap.DebugLevel
+			}
+
+			SetupZapLogger(level, tc.filename)
 
 			// Check that the logger's log level for debug is set as expected.
 			if zap.L().Core().Enabled(zap.DebugLevel) != tc.debugExpected {
@@ -182,7 +187,7 @@ func TestPromptForInputEmpty(t *testing.T) {
 // the function returns it trimmed and does not prompt the user.
 func TestPromptForMandatoryInputWithDefault(t *testing.T) {
 	defaultVal := "   providedValue   "
-	res := promptForMandatoryInput(defaultVal, ENTER_VALUE, INPUT_REQUIRED, RECEIVED_INPUT, false, false)
+	res := promptForMandatoryInput(defaultVal, ENTER_VALUE, INPUT_REQUIRED, RECEIVED_INPUT, promptOptions{})
 	expected := "providedValue"
 	if res != expected {
 		t.Errorf("Expected %q but got %q", expected, res)
@@ -214,7 +219,7 @@ func TestPromptForMandatoryInputWithPrompt(t *testing.T) {
 	}
 	os.Stdin = tempFile
 
-	res := promptForMandatoryInput("", ENTER_VALUE, INPUT_REQUIRED, RECEIVED_INPUT, false, false)
+	res := promptForMandatoryInput("", ENTER_VALUE, INPUT_REQUIRED, RECEIVED_INPUT, promptOptions{})
 	expected := "userInput"
 	if res != expected {
 		t.Errorf("Expected %q but got %q", expected, res)
@@ -241,7 +246,7 @@ func TestPromptForMandatoryInputEmptyPrompt(t *testing.T) {
 		os.Stdin = tempFile
 
 		// This call is expected to trigger zap.L().Fatal and exit the process.
-		_ = promptForMandatoryInput("", ENTER_VALUE, INPUT_REQUIRED, RECEIVED_INPUT, false, false)
+		_ = promptForMandatoryInput("", ENTER_VALUE, INPUT_REQUIRED, RECEIVED_INPUT, promptOptions{})
 		// Should not reach here; exit with non-zero code if it does.
 		os.Exit(3)
 	}
@@ -260,7 +265,7 @@ func TestPromptForMandatoryInputEmptyPrompt(t *testing.T) {
 func TestPromptForMandatoryInputPromptDisabled(t *testing.T) {
 	if os.Getenv("BE_CRASHER_MANDATORY_DISABLED") == "1" {
 		// With prompting disabled, the function should log a fatal error immediately.
-		_ = promptForMandatoryInput("", ENTER_VALUE, INPUT_REQUIRED, RECEIVED_INPUT, true, false)
+		_ = promptForMandatoryInput("", ENTER_VALUE, INPUT_REQUIRED, RECEIVED_INPUT, promptOptions{disabled: true})
 		os.Exit(3)
 	}
 
@@ -288,7 +293,7 @@ func TestUserAgentFlag(t *testing.T) {
 	t.Run("defaults to the program version", func(t *testing.T) {
 		t.Setenv("GITLAB_SYNC_USER_AGENT", "")
 
-		var args utils.ParserArgs
+		var args mirrorcfg.ParserArgs
 
 		var mirrorMappingPath, logFile string
 
@@ -302,7 +307,7 @@ func TestUserAgentFlag(t *testing.T) {
 	t.Run("environment overrides the default", func(t *testing.T) {
 		t.Setenv("GITLAB_SYNC_USER_AGENT", "  my-sync-job/1.0  ")
 
-		var args utils.ParserArgs
+		var args mirrorcfg.ParserArgs
 
 		var mirrorMappingPath, logFile string
 
@@ -316,7 +321,7 @@ func TestUserAgentFlag(t *testing.T) {
 	t.Run("flag overrides the environment", func(t *testing.T) {
 		t.Setenv("GITLAB_SYNC_USER_AGENT", "my-sync-job/1.0")
 
-		var args utils.ParserArgs
+		var args mirrorcfg.ParserArgs
 
 		var mirrorMappingPath, logFile string
 
@@ -348,39 +353,8 @@ func TestResolveExitCode(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := resolveExitCode(test.code, test.exitSuccessOnNonBlocking); got != test.want {
+			if got := resolveExitCode(test.code, &mirrorcfg.ParserArgs{ExitSuccessOnNonBlocking: test.exitSuccessOnNonBlocking}); got != test.want {
 				t.Errorf("resolveExitCode(%d, %v) = %d, want %d", test.code, test.exitSuccessOnNonBlocking, got, test.want)
-			}
-		})
-	}
-}
-
-func TestEnvBool(t *testing.T) {
-	const name = "GITLAB_SYNC_TEST_ENV_BOOL"
-
-	tests := []struct {
-		value        string
-		defaultValue bool
-		want         bool
-	}{
-		{"", false, false},
-		{"", true, true},
-		{"  ", false, false},
-		{"true", false, true},
-		{"1", false, true},
-		{"false", true, false},
-		{"0", true, false},
-		{" true ", false, true},
-		{"nonsense", false, false},
-		{"nonsense", true, true},
-	}
-
-	for _, test := range tests {
-		t.Run(test.value, func(t *testing.T) {
-			t.Setenv(name, test.value)
-
-			if got := envBool(name, test.defaultValue); got != test.want {
-				t.Errorf("envBool(%q, %v) = %v, want %v", test.value, test.defaultValue, got, test.want)
 			}
 		})
 	}

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 )
@@ -18,22 +18,22 @@ func TestCreateGroupFromSource(t *testing.T) {
 		{
 			name:         "Small Destination Instance",
 			instanceSize: "small",
-			role:         ROLE_DESTINATION,
+			role:         RoleDestination,
 		},
 		{
 			name:         "Small Source Instance",
 			instanceSize: "small",
-			role:         ROLE_SOURCE,
+			role:         RoleSource,
 		},
 		{
 			name:         "Big Destination Instance",
 			instanceSize: "big",
-			role:         ROLE_DESTINATION,
+			role:         RoleDestination,
 		},
 		{
 			name:         "Big Source Instance",
 			instanceSize: "big",
-			role:         ROLE_SOURCE,
+			role:         RoleSource,
 		},
 	}
 	for _, tt := range tests {
@@ -41,7 +41,7 @@ func TestCreateGroupFromSource(t *testing.T) {
 			// Setup the test server
 			_, gitlabInstance := setupTestServer(t, tt.role, tt.instanceSize)
 			gitlabInstance.AddGroup(TEST_GROUP)
-			createdGroup, err := gitlabInstance.CreateGroupFromSource(TEST_GROUP_2, &utils.MirroringOptions{
+			createdGroup, err := gitlabInstance.CreateGroupFromSource(TEST_GROUP_2, &mirrorcfg.MirroringOptions{
 				DestinationPath: TEST_GROUP_2.FullPath,
 			})
 			if err != nil {
@@ -82,8 +82,8 @@ func TestCreateGroups(t *testing.T) {
 		},
 	}
 
-	mirrorMapping := &utils.MirrorMapping{
-		Groups: map[string]*utils.MirroringOptions{
+	mirrorMapping := &mirrorcfg.MirrorMapping{
+		Groups: map[string]*mirrorcfg.MirroringOptions{
 			TEST_GROUP.FullPath: {
 				DestinationPath: TEST_GROUP.FullPath,
 			},
@@ -99,13 +99,13 @@ func TestCreateGroups(t *testing.T) {
 			t.Cleanup(helpers.ResetReported)
 
 			// Setup the test server
-			_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, tt.destinationSize)
+			_, sourceGitlabInstance := setupTestServer(t, RoleSource, tt.destinationSize)
 			sourceGitlabInstance.AddGroup(TEST_GROUP)
 			sourceGitlabInstance.AddGroup(TEST_GROUP_2)
 			sourceGitlabInstance.AddProject(TEST_PROJECT)
 			sourceGitlabInstance.AddProject(TEST_PROJECT_2)
 
-			_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, tt.sourceSize)
+			_, destinationGitlabInstance := setupTestServer(t, RoleDestination, tt.sourceSize)
 			destinationGitlabInstance.AddGroup(&gitlab.Group{
 				FullPath: "test",
 			})
@@ -120,7 +120,7 @@ func TestCreateGroups(t *testing.T) {
 }
 
 func TestClaimOwnershipToGroup(t *testing.T) {
-	_, gitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 
 	err := gitlabInstance.ClaimOwnershipToGroup(TEST_GROUP)
 	if err != nil {
@@ -153,7 +153,7 @@ func TestCreateGroupFromSourceClaimOwnershipOption(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			mux, gitlabInstance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 			memberClaims := 0
 
 			mux.HandleFunc("/api/v4/groups", func(w http.ResponseWriter, r *http.Request) {
@@ -177,7 +177,7 @@ func TestCreateGroupFromSourceClaimOwnershipOption(t *testing.T) {
 				w.Write([]byte(`{"id": 1}`))
 			})
 
-			createdGroup, err := gitlabInstance.CreateGroupFromSource(TEST_GROUP_2, &utils.MirroringOptions{
+			createdGroup, err := gitlabInstance.CreateGroupFromSource(TEST_GROUP_2, &mirrorcfg.MirroringOptions{
 				DestinationPath: "group2",
 				ClaimOwnership:  tc.claimOwnership,
 			})

@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
@@ -28,8 +28,8 @@ const (
 // It also updates the mirror mapping with the corresponding group creation options.
 //
 // The function is run in a goroutine for each project, and a wait group is used to wait for all goroutines to finish.
-func (g *GitlabInstance) FetchAndProcessProjects(projectFilters, groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) {
-	zap.L().Debug("Fetching and processing projects from GitLab instance", zap.String(ROLE, g.Role), zap.String(INSTANCE_SIZE, g.InstanceSize), zap.Int("projects", len(*projectFilters)), zap.Int("groups", len(*groupFilters)))
+func (g *GitlabInstance) FetchAndProcessProjects(projectFilters, groupFilters map[string]struct{}, mirrorMapping *mirrorcfg.MirrorMapping) {
+	zap.L().Debug("Fetching and processing projects from GitLab instance", zap.String(RoleKey, g.Role), zap.String(InstanceSizeKey, g.InstanceSize), zap.Int("projects", len(projectFilters)), zap.Int("groups", len(groupFilters)))
 
 	if !g.IsBig() {
 		g.FetchAndProcessProjectsSmallInstance(projectFilters, groupFilters, mirrorMapping)
@@ -42,11 +42,11 @@ func (g *GitlabInstance) FetchAndProcessProjects(projectFilters, groupFilters *m
 
 // storeProject stores the project in the Gitlab instance projects cache
 // and updates the mirror mapping with the corresponding group creation options.
-func (g *GitlabInstance) storeProject(project *gitlab.Project, parentGroupPath string, mirrorMapping *utils.MirrorMapping) {
+func (g *GitlabInstance) storeProject(project *gitlab.Project, parentGroupPath string, mirrorMapping *mirrorcfg.MirrorMapping) {
 	// Add the project to the gitlab instance projects cache
 	g.AddProject(project)
 
-	if g.Role == ROLE_SOURCE {
+	if g.Role == RoleSource {
 		// If the project is directly listed in the mirror mapping config,
 		// its options are already set from the JSON; no group lookup needed.
 		if _, ok := mirrorMapping.GetProject(project.PathWithNamespace); ok {
@@ -71,9 +71,9 @@ func (g *GitlabInstance) storeProject(project *gitlab.Project, parentGroupPath s
 		}
 
 		// Add the project to the mirror mapping with the corresponding group creation options
-		mirrorMapping.AddProject(project.PathWithNamespace, &utils.MirroringOptions{
+		mirrorMapping.AddProject(project.PathWithNamespace, &mirrorcfg.MirroringOptions{
 			DestinationPath:     filepath.Join(groupCreationOptions.DestinationPath, relativePath),
-			CI_CD_Catalog:       groupCreationOptions.CI_CD_Catalog,
+			CICDCatalog:         groupCreationOptions.CICDCatalog,
 			MirrorIssues:        groupCreationOptions.MirrorIssues,
 			MirrorTriggerBuilds: groupCreationOptions.MirrorTriggerBuilds,
 			Visibility:          groupCreationOptions.Visibility,
@@ -90,7 +90,7 @@ func (g *GitlabInstance) storeProject(project *gitlab.Project, parentGroupPath s
 
 // FetchAndProcessProjectsSmallInstance retrieves all projects from the small GitLab instance
 // and processes them to store in the instance cache.
-func (g *GitlabInstance) FetchAndProcessProjectsSmallInstance(projectFilters, groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) {
+func (g *GitlabInstance) FetchAndProcessProjectsSmallInstance(projectFilters, groupFilters map[string]struct{}, mirrorMapping *mirrorcfg.MirrorMapping) {
 	allProjects, err := g.FetchAllProjectsSmallInstance()
 	if err != nil {
 		if len(allProjects) == 0 {
@@ -99,16 +99,16 @@ func (g *GitlabInstance) FetchAndProcessProjectsSmallInstance(projectFilters, gr
 			return
 		}
 
-		zap.L().Warn("Failed to fetch all projects from GitLab instance", zap.String(ROLE, g.Role), zap.Error(err))
+		zap.L().Warn("Failed to fetch all projects from GitLab instance", zap.String(RoleKey, g.Role), zap.Error(err))
 	}
 
 	g.processProjectsSmallInstance(allProjects, projectFilters, groupFilters, mirrorMapping)
-	zap.L().Debug("Found matching projects in the GitLab instance", zap.String(ROLE, g.Role), zap.Int("projects", g.ProjectsLen()))
+	zap.L().Debug("Found matching projects in the GitLab instance", zap.String(RoleKey, g.Role), zap.Int("projects", g.ProjectsLen()))
 }
 
 // FetchAllProjectsSmallInstance retrieves all projects from the small GitLab instance.
 func (g *GitlabInstance) FetchAllProjectsSmallInstance() ([]*gitlab.Project, error) {
-	zap.L().Debug("Fetching all projects from GitLab instance", zap.String(ROLE, g.Role))
+	zap.L().Debug("Fetching all projects from GitLab instance", zap.String(RoleKey, g.Role))
 
 	fetchOpts := &gitlab.ListProjectsOptions{
 		Archived:             new(false),
@@ -145,8 +145,8 @@ func (g *GitlabInstance) FetchAllProjectsSmallInstance() ([]*gitlab.Project, err
 //
 // The function is run in a goroutine for each project.
 // It returns an error if any of the goroutines fail.
-func (g *GitlabInstance) processProjectsSmallInstance(allProjects []*gitlab.Project, projectFilters, groupFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) {
-	zap.L().Debug("Processing projects from GitLab instance", zap.String(INSTANCE_SIZE, g.InstanceSize), zap.String(ROLE, g.Role), zap.Int("projects", len(allProjects)))
+func (g *GitlabInstance) processProjectsSmallInstance(allProjects []*gitlab.Project, projectFilters, groupFilters map[string]struct{}, mirrorMapping *mirrorcfg.MirrorMapping) {
+	zap.L().Debug("Processing projects from GitLab instance", zap.String(InstanceSizeKey, g.InstanceSize), zap.String(RoleKey, g.Role), zap.Int("projects", len(allProjects)))
 
 	// Create a wait group to wait for all goroutines to finish
 	var waitGroup sync.WaitGroup
@@ -176,14 +176,14 @@ func (g *GitlabInstance) processProjectsSmallInstance(allProjects []*gitlab.Proj
 //
 // It uses goroutines to fetch each project in parallel and a wait group to wait for all goroutines to finish.
 // It returns an error if any of the goroutines fail.
-func (g *GitlabInstance) FetchAndProcessProjectsBigInstance(projectFilters *map[string]struct{}, mirrorMapping *utils.MirrorMapping) {
+func (g *GitlabInstance) FetchAndProcessProjectsBigInstance(projectFilters map[string]struct{}, mirrorMapping *mirrorcfg.MirrorMapping) {
 	// Fetch each project in parallel
 	var waitGroup sync.WaitGroup
 
-	projectsChan := make(chan *gitlab.Project, len(*projectFilters))
-	waitGroup.Add(len(*projectFilters))
+	projectsChan := make(chan *gitlab.Project, len(projectFilters))
+	waitGroup.Add(len(projectFilters))
 
-	for project := range *projectFilters {
+	for project := range projectFilters {
 		go func(projectPath string) {
 			defer waitGroup.Done()
 
@@ -207,7 +207,7 @@ func (g *GitlabInstance) FetchAndProcessProjectsBigInstance(projectFilters *map[
 }
 
 // FetchAndProcessGroupProjects retrieves all projects from the group and processes them to store in the instance cache.
-func (g *GitlabInstance) FetchAndProcessGroupProjects(group *gitlab.Group, fetchOriginPath string, mirrorMapping *utils.MirrorMapping, wg *sync.WaitGroup) {
+func (g *GitlabInstance) FetchAndProcessGroupProjects(group *gitlab.Group, fetchOriginPath string, mirrorMapping *mirrorcfg.MirrorMapping, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	if group != nil {
@@ -245,8 +245,8 @@ func (g *GitlabInstance) FetchAndProcessGroupProjects(group *gitlab.Group, fetch
 
 // CreateProjects creates GitLab projects in the destination GitLab instance based on the mirror mapping.
 // It retrieves the source project path for each destination project and creates the project in the destination instance.
-func (destinationGitlab *GitlabInstance) CreateProjects(sourceGitlab *GitlabInstance, mirrorMapping *utils.MirrorMapping) {
-	zap.L().Info("Creating projects in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION))
+func (g *GitlabInstance) CreateProjects(sourceGitlab *GitlabInstance, mirrorMapping *mirrorcfg.MirrorMapping) {
+	zap.L().Info("Creating projects in GitLab Instance", zap.String(RoleKey, RoleDestination))
 
 	// Create a wait group to wait for all goroutines to finish
 	var creationWaitGroup sync.WaitGroup
@@ -254,7 +254,7 @@ func (destinationGitlab *GitlabInstance) CreateProjects(sourceGitlab *GitlabInst
 	projectsSnapshot := mirrorMapping.ProjectsSnapshot()
 
 	for sourceProjectPath, destinationProjectOptions := range projectsSnapshot {
-		zap.L().Debug("Mirroring project", zap.String(ROLE_SOURCE, sourceProjectPath), zap.String(ROLE_DESTINATION, destinationProjectOptions.DestinationPath))
+		zap.L().Debug("Mirroring project", zap.String(RoleSource, sourceProjectPath), zap.String(RoleDestination, destinationProjectOptions.DestinationPath))
 		// Retrieve the corresponding source project path
 		sourceProject := sourceGitlab.GetProject(sourceProjectPath)
 		if sourceProject == nil {
@@ -265,10 +265,10 @@ func (destinationGitlab *GitlabInstance) CreateProjects(sourceGitlab *GitlabInst
 
 		creationWaitGroup.Add(1)
 		// Create a goroutine to handle the project creation
-		go func(sourcePath string, destinationCopyOptions *utils.MirroringOptions) {
+		go func(sourcePath string, destinationCopyOptions *mirrorcfg.MirroringOptions) {
 			defer creationWaitGroup.Done()
 
-			destinationGitlab.CreateProject(sourcePath, destinationCopyOptions, sourceGitlab)
+			g.CreateProject(sourcePath, destinationCopyOptions, sourceGitlab)
 		}(sourceProjectPath, destinationProjectOptions)
 	}
 
@@ -279,10 +279,10 @@ func (destinationGitlab *GitlabInstance) CreateProjects(sourceGitlab *GitlabInst
 // CreateProject creates a GitLab project in the destination GitLab instance based on the source project and mirror mapping.
 // It checks if the project already exists in the destination instance and creates it if not.
 // The function also handles the copying of project avatars from the source to the destination instance.
-func (destinationGitlab *GitlabInstance) CreateProject(sourceProjectPath string, projectCreationOptions *utils.MirroringOptions, sourceGitlab *GitlabInstance) *gitlab.Project {
+func (g *GitlabInstance) CreateProject(sourceProjectPath string, projectCreationOptions *mirrorcfg.MirroringOptions, sourceGitlab *GitlabInstance) *gitlab.Project {
 	destinationProjectPath := projectCreationOptions.DestinationPath
 	// Check if the project already exists
-	destinationProject := destinationGitlab.GetProject(destinationProjectPath)
+	destinationProject := g.GetProject(destinationProjectPath)
 
 	var err error
 
@@ -296,7 +296,7 @@ func (destinationGitlab *GitlabInstance) CreateProject(sourceProjectPath string,
 	// Check if the project already exists in the destination GitLab instance
 	// If it does not exist, create it
 	if destinationProject == nil {
-		destinationProject, err = destinationGitlab.CreateProjectFromSource(sourceProject, projectCreationOptions)
+		destinationProject, err = g.CreateProjectFromSource(sourceProject, projectCreationOptions)
 		if err != nil || destinationProject == nil {
 			helpers.ReportBlocking(fmt.Errorf("failed to create project %s in destination GitLab instance: %w", destinationProjectPath, err))
 
@@ -309,16 +309,16 @@ func (destinationGitlab *GitlabInstance) CreateProject(sourceProjectPath string,
 	// reassign the mirror to itself, so re-claiming ownership here is what allows changing
 	// the user running the script on an already-mirrored project.
 	if helpers.Deref(projectCreationOptions.ClaimOwnership, false) {
-		ownershipErr := destinationGitlab.ClaimOwnershipToProject(destinationProject)
+		ownershipErr := g.ClaimOwnershipToProject(destinationProject)
 		if ownershipErr != nil {
 			zap.L().Warn("Failed to claim ownership of project", zap.String("project", destinationProject.PathWithNamespace), zap.Error(ownershipErr))
 		}
 	}
 
 	// If the project already exists, update it with the source project details
-	destinationGitlab.UpdateProjectFromSource(sourceGitlab, sourceProject, destinationProject, projectCreationOptions)
+	g.UpdateProjectFromSource(sourceGitlab, sourceProject, destinationProject, projectCreationOptions)
 
-	zap.L().Info("Completed project mirroring", zap.String(ROLE_SOURCE, sourceProjectPath), zap.String(ROLE_DESTINATION, destinationProjectPath))
+	zap.L().Info("Completed project mirroring", zap.String(RoleSource, sourceProjectPath), zap.String(RoleDestination, destinationProjectPath))
 
 	return destinationProject
 }
@@ -327,7 +327,7 @@ func (destinationGitlab *GitlabInstance) CreateProject(sourceProjectPath string,
 // It sets the project name, path, default branch, description, and visibility based on the source project.
 // The function also handles the setting of the namespace ID for the project.
 // It returns the created project or an error if the creation fails.
-func (g *GitlabInstance) CreateProjectFromSource(sourceProject *gitlab.Project, copyOptions *utils.MirroringOptions) (*gitlab.Project, error) {
+func (g *GitlabInstance) CreateProjectFromSource(sourceProject *gitlab.Project, copyOptions *mirrorcfg.MirroringOptions) (*gitlab.Project, error) {
 	// Define the API call logic.
 	//
 	// Mirror is deliberately not set here: GitLab only accepts `mirror=true`
@@ -346,21 +346,21 @@ func (g *GitlabInstance) CreateProjectFromSource(sourceProject *gitlab.Project, 
 		projectCreationArgs.MirrorTriggerBuilds = copyOptions.MirrorTriggerBuilds
 	}
 
-	zap.L().Debug("Retrieving project namespace ID", zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
+	zap.L().Debug("Retrieving project namespace ID", zap.String(RoleDestination, copyOptions.DestinationPath))
 
 	// Get the parent namespace ID for the project
 	// This is used to set the namespace ID for the project
-	parentNamespaceId, err := g.EnsureParentNamespaceID(copyOptions.DestinationPath, *projectCreationArgs.Visibility)
+	parentNamespaceID, err := g.EnsureParentNamespaceID(copyOptions.DestinationPath, *projectCreationArgs.Visibility)
 	if err != nil {
 		return nil, err
 	}
 
-	if parentNamespaceId >= 0 {
-		projectCreationArgs.NamespaceID = &parentNamespaceId
+	if parentNamespaceID >= 0 {
+		projectCreationArgs.NamespaceID = &parentNamespaceID
 	}
 
 	// Create the project in the destination GitLab instance
-	zap.L().Debug("Creating project in GitLab Instance", zap.String(ROLE, ROLE_DESTINATION), zap.String(ROLE_DESTINATION, copyOptions.DestinationPath))
+	zap.L().Debug("Creating project in GitLab Instance", zap.String(RoleKey, RoleDestination), zap.String(RoleDestination, copyOptions.DestinationPath))
 
 	destinationProject, _, err := g.Gitlab.Projects.CreateProject(projectCreationArgs)
 	if err != nil {
@@ -380,10 +380,10 @@ func enqueueOptionalProjectTasks(
 	sourceGitlabInstance *GitlabInstance,
 	sourceProject *gitlab.Project,
 	destinationProject *gitlab.Project,
-	copyOptions *utils.MirroringOptions,
+	copyOptions *mirrorcfg.MirroringOptions,
 	waitGroup *sync.WaitGroup,
 ) {
-	if helpers.Deref(copyOptions.CI_CD_Catalog, false) {
+	if helpers.Deref(copyOptions.CICDCatalog, false) {
 		waitGroup.Add(1)
 
 		go func(project *gitlab.Project) {
@@ -412,7 +412,7 @@ func enqueueOptionalProjectTasks(
 // It enables the project mirror pull, copies the project avatar, and optionally adds the project to the CI/CD catalog.
 // It also mirrors releases if the option is set.
 // The function uses goroutines to perform these tasks concurrently and waits for all of them to finish.
-func (destinationGitlabInstance *GitlabInstance) UpdateProjectFromSource(sourceGitlabInstance *GitlabInstance, sourceProject, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) {
+func (g *GitlabInstance) UpdateProjectFromSource(sourceGitlabInstance *GitlabInstance, sourceProject, destinationProject *gitlab.Project, copyOptions *mirrorcfg.MirroringOptions) {
 	// Immediately capture pointers in local variables to avoid any late overrides
 	srcProj := sourceProject
 
@@ -423,32 +423,32 @@ func (destinationGitlabInstance *GitlabInstance) UpdateProjectFromSource(sourceG
 		return
 	}
 
-	releasesOptions := destinationGitlabInstance.releasesMirroringOptions(dstProj, copyOptions)
+	releasesOptions := g.releasesMirroringOptions(dstProj, copyOptions)
 
 	waitGroup := sync.WaitGroup{}
 	waitGroup.Add(updateProjectBaseTasks)
 
-	destinationGitlabInstance.mirrorProjectGitFirst(sourceGitlabInstance, srcProj, dstProj, copyOptions)
+	g.mirrorProjectGitFirst(sourceGitlabInstance, srcProj, dstProj, copyOptions)
 
 	go func(sourceProj, destinationProj *gitlab.Project) {
 		defer waitGroup.Done()
 
-		helpers.Report(destinationGitlabInstance.SyncProjectAttributes(sourceProj, destinationProj, copyOptions))
+		helpers.Report(g.SyncProjectAttributes(sourceProj, destinationProj, copyOptions))
 	}(srcProj, dstProj)
 
 	go func(sourceProj, destinationProj *gitlab.Project) {
 		defer waitGroup.Done()
 
-		helpers.Report(sourceGitlabInstance.CopyProjectAvatar(destinationGitlabInstance, destinationProj, sourceProj))
+		helpers.Report(sourceGitlabInstance.CopyProjectAvatar(g, destinationProj, sourceProj))
 	}(srcProj, dstProj)
 
-	enqueueOptionalProjectTasks(destinationGitlabInstance, sourceGitlabInstance, srcProj, dstProj, copyOptions, &waitGroup)
+	enqueueOptionalProjectTasks(g, sourceGitlabInstance, srcProj, dstProj, copyOptions, &waitGroup)
 
 	// Wait for git duplication and the attribute/avatar/optional tasks to finish
 	waitGroup.Wait()
 
 	if helpers.Deref(copyOptions.MirrorReleases, false) {
-		destinationGitlabInstance.MirrorReleases(sourceGitlabInstance, srcProj, dstProj, releasesOptions)
+		g.MirrorReleases(sourceGitlabInstance, srcProj, dstProj, releasesOptions)
 	}
 }
 
@@ -457,7 +457,7 @@ func (destinationGitlabInstance *GitlabInstance) UpdateProjectFromSource(sourceG
 // the snapshot of the destination releases described in ReleasesMirroringOptions.
 // When that snapshot cannot be taken, the releases the git mirroring removes may
 // leave files behind, which is reported but does not stop the mirroring.
-func (destinationGitlabInstance *GitlabInstance) releasesMirroringOptions(destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) ReleasesMirroringOptions {
+func (g *GitlabInstance) releasesMirroringOptions(destinationProject *gitlab.Project, copyOptions *mirrorcfg.MirroringOptions) ReleasesMirroringOptions {
 	options := ReleasesMirroringOptions{
 		MirrorAssets: helpers.Deref(copyOptions.MirrorReleases, false) && helpers.Deref(copyOptions.MirrorReleaseAssets, false),
 	}
@@ -465,7 +465,7 @@ func (destinationGitlabInstance *GitlabInstance) releasesMirroringOptions(destin
 		return options
 	}
 
-	releases, err := destinationGitlabInstance.FetchProjectReleases(destinationProject)
+	releases, err := g.FetchProjectReleases(destinationProject)
 	if err != nil {
 		helpers.ReportNonBlocking(fmt.Errorf("failed to fetch the releases of destination project %s before the git mirroring, the files of the releases it removes may be left behind: %w", destinationProject.HTTPURLToRepo, err))
 
@@ -485,13 +485,13 @@ func (destinationGitlabInstance *GitlabInstance) releasesMirroringOptions(destin
 // On a premium destination it also guarantees the pull mirror (and with it the
 // import URL) is configured before SyncProjectAttributes asserts mirror=true, which
 // GitLab rejects while the import URL is missing.
-func (destinationGitlabInstance *GitlabInstance) mirrorProjectGitFirst(
+func (g *GitlabInstance) mirrorProjectGitFirst(
 	sourceGitlabInstance *GitlabInstance,
 	sourceProject *gitlab.Project,
 	destinationProject *gitlab.Project,
-	copyOptions *utils.MirroringOptions,
+	copyOptions *mirrorcfg.MirroringOptions,
 ) {
-	err := destinationGitlabInstance.MirrorProjectGit(sourceGitlabInstance, sourceProject, destinationProject, copyOptions)
+	err := g.MirrorProjectGit(sourceGitlabInstance, sourceProject, destinationProject, copyOptions)
 	if err == nil {
 		return
 	}
@@ -519,7 +519,7 @@ func syncStandardProjectAttributes(sourceProject, destinationProject *gitlab.Pro
 		mismatch = true
 	}
 
-	if !utils.StringArraysMatchValues(sourceProject.Topics, destinationProject.Topics) {
+	if !mirrorcfg.StringArraysMatchValues(sourceProject.Topics, destinationProject.Topics) {
 		gitlabEditOptions.Topics = &sourceProject.Topics
 		mismatch = true
 	}
@@ -534,12 +534,8 @@ func syncStandardProjectAttributes(sourceProject, destinationProject *gitlab.Pro
 // validations on the EE Project model). When pull mirroring is unavailable - either
 // the destination is a Free instance or --destination-force-freemium was passed -
 // gitlab-sync clones and pushes the repository itself, so the mirror attributes are
-// left untouched here; MirrorProjectGit is what turns an existing pull mirror off.
-func syncMirrorProjectAttributes(pullMirrorAvailable bool, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions, gitlabEditOptions *gitlab.EditProjectOptions) bool {
-	if !pullMirrorAvailable {
-		return false
-	}
-
+// left untouched (callers skip this function); MirrorProjectGit is what turns an existing pull mirror off.
+func syncMirrorProjectAttributes(destinationProject *gitlab.Project, copyOptions *mirrorcfg.MirroringOptions, gitlabEditOptions *gitlab.EditProjectOptions) bool {
 	mismatch := false
 
 	desiredMirrorTriggerBuilds := copyOptions.TriggerBuilds()
@@ -561,47 +557,49 @@ func syncMirrorProjectAttributes(pullMirrorAvailable bool, destinationProject *g
 	return mismatch
 }
 
-func (destinationGitlabInstance *GitlabInstance) SyncProjectAttributes(sourceProject, destinationProject *gitlab.Project, copyOptions *utils.MirroringOptions) error {
-	zap.L().Debug("Checking if project requires attributes resync", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+// SyncProjectAttributes updates the destination project attributes when they differ from the source.
+func (g *GitlabInstance) SyncProjectAttributes(sourceProject, destinationProject *gitlab.Project, copyOptions *mirrorcfg.MirroringOptions) error {
+	zap.L().Debug("Checking if project requires attributes resync", zap.String(RoleSource, sourceProject.HTTPURLToRepo), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
 	gitlabEditOptions := &gitlab.EditProjectOptions{}
 
 	missmatched := syncStandardProjectAttributes(sourceProject, destinationProject, gitlabEditOptions)
-	if syncMirrorProjectAttributes(destinationGitlabInstance.PullMirrorAvailable, destinationProject, copyOptions, gitlabEditOptions) {
+	if g.PullMirrorAvailable && syncMirrorProjectAttributes(destinationProject, copyOptions, gitlabEditOptions) {
 		missmatched = true
 	}
 
 	if copyOptions.Visibility != new(string(destinationProject.Visibility)) {
-		visibilityValue := utils.ConvertVisibility(copyOptions.Visibility)
+		visibilityValue := mirrorcfg.ConvertVisibility(copyOptions.Visibility)
 		gitlabEditOptions.Visibility = &visibilityValue
 		missmatched = true
 	}
 
 	if missmatched {
-		_, _, err := destinationGitlabInstance.Gitlab.Projects.EditProject(destinationProject.ID, gitlabEditOptions)
+		_, _, err := g.Gitlab.Projects.EditProject(destinationProject.ID, gitlabEditOptions)
 		if err != nil {
 			return fmt.Errorf("failed to edit project %s: %w", destinationProject.HTTPURLToRepo, err)
 		}
 
-		zap.L().Debug("Project attributes resync completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+		zap.L().Debug("Project attributes resync completed", zap.String(RoleSource, sourceProject.HTTPURLToRepo), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 	} else {
-		zap.L().Debug("Project attributes are already in sync, skipping", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+		zap.L().Debug("Project attributes are already in sync, skipping", zap.String(RoleSource, sourceProject.HTTPURLToRepo), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 	}
 
 	return nil
 }
 
-func (destinationGitlabInstance *GitlabInstance) MirrorProjectGit(sourceGitlabInstance *GitlabInstance, sourceProject, destinationProject *gitlab.Project, mirrorOptions *utils.MirroringOptions) error {
-	if destinationGitlabInstance.PullMirrorAvailable {
-		return destinationGitlabInstance.EnableProjectMirrorPull(sourceProject, destinationProject, mirrorOptions)
+// MirrorProjectGit mirrors the git content of the source project, by pull mirroring when available or by pushing otherwise.
+func (g *GitlabInstance) MirrorProjectGit(sourceGitlabInstance *GitlabInstance, sourceProject, destinationProject *gitlab.Project, mirrorOptions *mirrorcfg.MirroringOptions) error {
+	if g.PullMirrorAvailable {
+		return g.EnableProjectMirrorPull(sourceProject, destinationProject, mirrorOptions)
 	}
 
-	err := destinationGitlabInstance.DisableProjectMirrorPull(destinationProject)
+	err := g.DisableProjectMirrorPull(destinationProject)
 	if err != nil {
 		return err
 	}
 
-	err = helpers.MirrorRepo(destinationGitlabInstance.GitCache, sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, destinationGitlabInstance.GitAuth, mirrorPushOptions(mirrorOptions))
+	err = helpers.MirrorRepo(g.GitCache, sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, g.GitAuth, mirrorPushOptions(mirrorOptions))
 	if err != nil {
 		return fmt.Errorf("failed to mirror repository from %s to %s: %w", sourceProject.PathWithNamespace, destinationProject.PathWithNamespace, err)
 	}
@@ -614,7 +612,7 @@ func (destinationGitlabInstance *GitlabInstance) MirrorProjectGit(sourceGitlabIn
 // Like a pull mirror with mirror_trigger_builds off, the push must not run CI on
 // the destination for the branches and tags it updates, unless the option is
 // explicitly enabled. Missing options count as disabled.
-func mirrorPushOptions(mirrorOptions *utils.MirroringOptions) helpers.MirrorPushOptions {
+func mirrorPushOptions(mirrorOptions *mirrorcfg.MirroringOptions) helpers.MirrorPushOptions {
 	triggerBuilds := mirrorOptions != nil && mirrorOptions.TriggerBuilds()
 
 	return helpers.MirrorPushOptions{SkipPipelines: !triggerBuilds}
@@ -656,7 +654,7 @@ func (g *GitlabInstance) DisableProjectMirrorPull(destinationProject *gitlab.Pro
 // makes this call, so calling it every time is what allows changing the user running the script.
 // That reassignment only takes effect if the calling user has Maintainer+ access on the
 // destination project, which is why ClaimOwnershipToProject also needs to run on every run.
-func (g *GitlabInstance) EnableProjectMirrorPull(sourceProject, destinationProject *gitlab.Project, mirrorOptions *utils.MirroringOptions) error {
+func (g *GitlabInstance) EnableProjectMirrorPull(sourceProject, destinationProject *gitlab.Project, mirrorOptions *mirrorcfg.MirroringOptions) error {
 	zap.L().Debug("Reapplying project mirror pull", zap.String("sourceProject", sourceProject.HTTPURLToRepo), zap.String("destinationProject", destinationProject.HTTPURLToRepo))
 
 	desiredMirrorTriggerBuilds := mirrorOptions.TriggerBuilds()
@@ -680,7 +678,7 @@ func (g *GitlabInstance) EnableProjectMirrorPull(sourceProject, destinationProje
 // and uploads it to the destination project.
 // The avatar is saved with a unique filename based on the current timestamp.
 // The function returns an error if any step fails, including downloading or uploading the avatar.
-func (sourceGitlabInstance *GitlabInstance) CopyProjectAvatar(destinationGitlabInstance *GitlabInstance, destinationProject, sourceProject *gitlab.Project) error {
+func (g *GitlabInstance) CopyProjectAvatar(destinationGitlabInstance *GitlabInstance, destinationProject, sourceProject *gitlab.Project) error {
 	zap.L().Debug("Checking if project avatar is already set", zap.String("project", destinationProject.HTTPURLToRepo))
 
 	// Check if the destination project already has an avatar
@@ -694,15 +692,15 @@ func (sourceGitlabInstance *GitlabInstance) CopyProjectAvatar(destinationGitlabI
 	// answer 404 and report a failure for every single avatar-less project, drowning
 	// out the errors that actually matter.
 	if sourceProject.AvatarURL == "" {
-		zap.L().Debug("Source project has no avatar, skipping.", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo))
+		zap.L().Debug("Source project has no avatar, skipping.", zap.String(RoleSource, sourceProject.HTTPURLToRepo))
 
 		return nil
 	}
 
-	zap.L().Debug("Copying project avatar", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+	zap.L().Debug("Copying project avatar", zap.String(RoleSource, sourceProject.HTTPURLToRepo), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
 	// Download the source project avatar
-	sourceProjectAvatar, _, err := sourceGitlabInstance.Gitlab.Projects.DownloadAvatar(sourceProject.ID)
+	sourceProjectAvatar, _, err := g.Gitlab.Projects.DownloadAvatar(sourceProject.ID)
 	if err != nil {
 		return fmt.Errorf("failed to download avatar for project %s: %w", sourceProject.HTTPURLToRepo, err)
 	}

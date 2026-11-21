@@ -33,9 +33,9 @@ func TestNewGitlabInstance(t *testing.T) {
 	instance, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:    server.URL,
 		GitlabToken:  "test-token",
-		Role:         ROLE_SOURCE,
+		Role:         RoleSource,
 		MaxRetries:   3,
-		InstanceSize: INSTANCE_SIZE_SMALL,
+		InstanceSize: InstanceSizeSmall,
 	})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -76,7 +76,7 @@ func TestNewGitlabInstanceUserAgent(t *testing.T) {
 	_, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:   server.URL,
 		GitlabToken: "test-token",
-		Role:        ROLE_SOURCE,
+		Role:        RoleSource,
 		MaxRetries:  1,
 		UserAgent:   userAgent,
 	})
@@ -154,7 +154,7 @@ func TestGetGroup(t *testing.T) {
 }
 
 func TestGetParentNamespaceID(t *testing.T) {
-	_, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 	gitlabInstance.AddGroup(TEST_GROUP)
 	gitlabInstance.AddProject(TEST_PROJECT)
 
@@ -256,7 +256,7 @@ func TestIsVersionGreaterThanThreshold(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			mux, gitlabInstance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 			if !test.noApiResponse {
 				mux.HandleFunc("/api/v4/metadata", func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
@@ -288,13 +288,13 @@ func TestIsLicensePremium(t *testing.T) {
 	}{
 		{
 			name:             "Ultimate tier license",
-			license:          ULTIMATE_PLAN,
+			license:          UltimatePlan,
 			expectedError:    false,
 			expectedResponse: true,
 		},
 		{
 			name:             "Premium tier license",
-			license:          PREMIUM_PLAN,
+			license:          PremiumPlan,
 			expectedError:    false,
 			expectedResponse: true,
 		},
@@ -322,7 +322,7 @@ func TestIsLicensePremium(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			mux, gitlabInstance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 			if !test.expectedError {
 				mux.HandleFunc("/api/v4/license", func(w http.ResponseWriter, r *http.Request) {
 					w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)

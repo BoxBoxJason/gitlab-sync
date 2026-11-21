@@ -1,4 +1,4 @@
-package utils
+package mirrorcfg
 
 import (
 	"fmt"
@@ -24,7 +24,7 @@ var (
 		Projects: map[string]*MirroringOptions{
 			FAKE_VALID_PROJECT: {
 				DestinationPath:     FAKE_VALID_PROJECT,
-				CI_CD_Catalog:       new(true),
+				CICDCatalog:         new(true),
 				MirrorIssues:        new(true),
 				MirrorTriggerBuilds: new(false),
 				Visibility:          new("private"),
@@ -33,7 +33,7 @@ var (
 		Groups: map[string]*MirroringOptions{
 			FAKE_VALID_GROUP: {
 				DestinationPath:     FAKE_VALID_GROUP,
-				CI_CD_Catalog:       new(true),
+				CICDCatalog:         new(true),
 				MirrorIssues:        new(true),
 				MirrorTriggerBuilds: new(false),
 				Visibility:          new("private"),
@@ -67,7 +67,7 @@ var (
 func testMirroringOptions() *MirroringOptions {
 	return &MirroringOptions{
 		DestinationPath: "project",
-		CI_CD_Catalog:   new(true),
+		CICDCatalog:     new(true),
 		MirrorIssues:    new(true),
 	}
 }
@@ -172,14 +172,14 @@ func TestCheck(t *testing.T) {
 				Projects: map[string]*MirroringOptions{
 					FAKE_VALID_PROJECT: {
 						DestinationPath: FAKE_VALID_PROJECT,
-						CI_CD_Catalog:   new(true),
+						CICDCatalog:     new(true),
 						MirrorIssues:    new(true),
 					},
 				},
 				Groups: map[string]*MirroringOptions{
 					FAKE_VALID_GROUP: {
 						DestinationPath: FAKE_VALID_GROUP,
-						CI_CD_Catalog:   new(true),
+						CICDCatalog:     new(true),
 						MirrorIssues:    new(true),
 					},
 				},
@@ -437,7 +437,7 @@ func TestMirrorMappingGetProject(t *testing.T) {
 	// Prepare a mirror mapping with some project entries
 	opts1 := &MirroringOptions{
 		DestinationPath:     "dest1",
-		CI_CD_Catalog:       new(true),
+		CICDCatalog:         new(true),
 		MirrorIssues:        new(false),
 		MirrorTriggerBuilds: new(true),
 		Visibility:          new("public"),
@@ -445,7 +445,7 @@ func TestMirrorMappingGetProject(t *testing.T) {
 	}
 	opts2 := &MirroringOptions{
 		DestinationPath:     "dest2",
-		CI_CD_Catalog:       new(false),
+		CICDCatalog:         new(false),
 		MirrorIssues:        new(true),
 		MirrorTriggerBuilds: new(false),
 		Visibility:          new("private"),
@@ -504,7 +504,7 @@ func TestMirrorMappingGetGroup(t *testing.T) {
 	// Prepare a mirror mapping with some group entries
 	optsA := &MirroringOptions{
 		DestinationPath:     "groupDestA",
-		CI_CD_Catalog:       new(true),
+		CICDCatalog:         new(true),
 		MirrorIssues:        new(true),
 		MirrorTriggerBuilds: new(false),
 		Visibility:          new("internal"),
@@ -512,7 +512,7 @@ func TestMirrorMappingGetGroup(t *testing.T) {
 	}
 	optsB := &MirroringOptions{
 		DestinationPath:     "groupDestB",
-		CI_CD_Catalog:       new(false),
+		CICDCatalog:         new(false),
 		MirrorIssues:        new(false),
 		MirrorTriggerBuilds: new(true),
 		Visibility:          new("private"),

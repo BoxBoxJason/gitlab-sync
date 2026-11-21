@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -68,7 +68,7 @@ func newDocumentedRootCmd(t *testing.T) *cobra.Command {
 	t.Cleanup(func() { version = previousVersion })
 
 	var (
-		args              utils.ParserArgs
+		args              mirrorcfg.ParserArgs
 		mirrorMappingPath string
 		logFile           string
 	)
@@ -172,7 +172,7 @@ func TestDocsCoverEveryEnvVar(t *testing.T) {
 // TestDocsCoverEveryMappingOption fails when a mirror mapping option is added without being documented.
 func TestDocsCoverEveryMappingOption(t *testing.T) {
 	mapping := readDocsPage(t, mappingFile)
-	options := reflect.TypeFor[utils.MirroringOptions]()
+	options := reflect.TypeFor[mirrorcfg.MirroringOptions]()
 
 	for field := range options.Fields() {
 		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")

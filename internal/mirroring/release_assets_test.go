@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
@@ -256,8 +256,8 @@ func newReleaseAssetsTestServers(t *testing.T) *releaseAssetsTestServers {
 	t.Helper()
 
 	s := &releaseAssetsTestServers{uploads: make(map[string]string), destinationPackages: make(map[string]testPackage)}
-	s.sourceMux, s.source = setupEmptyTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
-	s.destinationMux, s.destination = setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	s.sourceMux, s.source = setupEmptyTestServer(t, RoleSource, InstanceSizeSmall)
+	s.destinationMux, s.destination = setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 
 	s.destinationMux.HandleFunc(fmt.Sprintf("POST /api/v4/projects/%d/releases", TEST_PROJECT_2.ID), func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
@@ -1011,7 +1011,7 @@ func TestDryRunReleasesWithAssets(t *testing.T) {
 	]`)
 	s.destination.AddProject(TEST_PROJECT_2)
 
-	err := s.destination.DryRunReleases(s.source, TEST_PROJECT, &utils.MirroringOptions{
+	err := s.destination.DryRunReleases(s.source, TEST_PROJECT, &mirrorcfg.MirroringOptions{
 		DestinationPath:     TEST_PROJECT_2.PathWithNamespace,
 		MirrorReleases:      new(true),
 		MirrorReleaseAssets: new(true),

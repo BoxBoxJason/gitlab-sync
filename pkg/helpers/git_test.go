@@ -30,8 +30,8 @@ func TestBuildHTTPAuth(t *testing.T) {
 		wantUser, wantPW string
 	}{
 		{"both provided", "alice", "secr3t", "alice", "secr3t"},
-		{"empty username", "", "tk", DEFAULT_GIT_USER, "tk"},
-		{"spaces username", "   ", "x", DEFAULT_GIT_USER, "x"},
+		{"empty username", "", "tk", DefaultGitUser, "tk"},
+		{"spaces username", "   ", "x", DefaultGitUser, "x"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

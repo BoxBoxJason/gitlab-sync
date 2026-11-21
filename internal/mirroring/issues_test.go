@@ -7,7 +7,7 @@ import (
 )
 
 func TestFetchProjectIssues(t *testing.T) {
-	_, gitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 	t.Run("Fetch Project Issues", func(t *testing.T) {
 		issues, err := gitlabInstance.FetchProjectIssues(TEST_PROJECT)
 		if err != nil {
@@ -20,7 +20,7 @@ func TestFetchProjectIssues(t *testing.T) {
 }
 
 func TestFetchProjectIssuesTitles(t *testing.T) {
-	_, gitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 	t.Run("Fetch Project Issues Titles", func(t *testing.T) {
 		issueTitles, err := gitlabInstance.FetchProjectIssuesTitles(TEST_PROJECT)
 		if err != nil {
@@ -33,7 +33,7 @@ func TestFetchProjectIssuesTitles(t *testing.T) {
 }
 
 func TestMirrorIssue(t *testing.T) {
-	_, gitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupTestServer(t, RoleSource, InstanceSizeSmall)
 	t.Run("Mirror Issue", func(t *testing.T) {
 		err := gitlabInstance.MirrorIssue(TEST_PROJECT, TEST_ISSUE)
 		if err != nil {
@@ -43,7 +43,7 @@ func TestMirrorIssue(t *testing.T) {
 }
 
 func TestCloseIssue(t *testing.T) {
-	_, gitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, gitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 	t.Run("Close Issue", func(t *testing.T) {
 		err := gitlabInstance.CloseIssue(TEST_PROJECT, TEST_ISSUE)
 		if err != nil {
@@ -53,8 +53,8 @@ func TestCloseIssue(t *testing.T) {
 }
 
 func TestMirrorIssues(t *testing.T) {
-	_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, INSTANCE_SIZE_SMALL)
-	_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+	_, sourceGitlabInstance := setupTestServer(t, RoleSource, InstanceSizeSmall)
+	_, destinationGitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
 	t.Run("Mirror Issues", func(t *testing.T) {
 		helpers.ResetReported()
 		t.Cleanup(helpers.ResetReported)

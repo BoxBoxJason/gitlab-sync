@@ -1,5 +1,5 @@
-// Package utils contains core types and helpers shared across the application.
-package utils
+// Package mirrorcfg contains core types and helpers shared across the application.
+package mirrorcfg
 
 import (
 	"encoding/json"
@@ -18,8 +18,10 @@ import (
 )
 
 const (
+	// PROJECT is the entity type of a GitLab project.
 	PROJECT = "project"
-	GROUP   = "group"
+	// GROUP is the entity type of a GitLab group.
+	GROUP = "group"
 )
 
 // ParserArgs defines the command line arguments
@@ -65,7 +67,7 @@ type ParserArgs struct {
 // - mirror_release_assets: whether to mirror the release asset links (and the files
 // they point to on the source instance). Only used when mirror_releases is enabled.
 type MirroringOptions struct {
-	CI_CD_Catalog       *bool   `json:"ci_cd_catalog"`
+	CICDCatalog         *bool   `json:"ci_cd_catalog"`
 	MirrorIssues        *bool   `json:"mirror_issues"`
 	MirrorTriggerBuilds *bool   `json:"mirror_trigger_builds"`
 	Visibility          *string `json:"visibility"`
@@ -327,20 +329,12 @@ func (m *MirrorMapping) checkGroups() int {
 // checkVisibility checks if the visibility string is valid
 // It checks if the visibility string is one of the valid GitLab visibility values.
 func checkVisibility(visibility string) bool {
-	var valid bool
-
 	switch visibility {
-	case string(gitlab.PublicVisibility):
-		valid = true
-	case string(gitlab.InternalVisibility):
-		valid = true
-	case string(gitlab.PrivateVisibility):
-		valid = true
+	case string(gitlab.PublicVisibility), string(gitlab.InternalVisibility), string(gitlab.PrivateVisibility):
+		return true
 	default:
-		valid = false
+		return false
 	}
-
-	return valid
 }
 
 // ConvertVisibility converts a visibility *string to a gitlab.VisibilityValue
@@ -351,8 +345,6 @@ func ConvertVisibility(visibility *string) gitlab.VisibilityValue {
 	}
 
 	switch *visibility {
-	case string(gitlab.PublicVisibility):
-		return gitlab.PublicVisibility
 	case string(gitlab.InternalVisibility):
 		return gitlab.InternalVisibility
 	case string(gitlab.PrivateVisibility):

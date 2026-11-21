@@ -22,7 +22,7 @@ func mirrorProjectEntities[T any](
 	getKey func(T) string,
 	createEntity func(*gitlab.Project, T) error,
 ) {
-	zap.L().Info("Starting "+entityName+" mirroring", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+	zap.L().Info("Starting "+entityName+" mirroring", zap.String(RoleSource, sourceProject.HTTPURLToRepo), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
 	existingKeys, err := fetchExisting(destinationProject)
 	if err != nil {
@@ -43,7 +43,7 @@ func mirrorProjectEntities[T any](
 	for _, sourceEntity := range sourceEntities {
 		entityKey := getKey(sourceEntity)
 		if _, exists := existingKeys[entityKey]; exists {
-			zap.L().Debug(entityName+" already exists", zap.String(entityName, entityKey), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+			zap.L().Debug(entityName+" already exists", zap.String(entityName, entityKey), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 
 			continue
 		}
@@ -62,5 +62,5 @@ func mirrorProjectEntities[T any](
 
 	waitGroup.Wait()
 
-	zap.L().Info(entityName+" mirroring completed", zap.String(ROLE_SOURCE, sourceProject.HTTPURLToRepo), zap.String(ROLE_DESTINATION, destinationProject.HTTPURLToRepo))
+	zap.L().Info(entityName+" mirroring completed", zap.String(RoleSource, sourceProject.HTTPURLToRepo), zap.String(RoleDestination, destinationProject.HTTPURLToRepo))
 }

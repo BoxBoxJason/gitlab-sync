@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	DEFAULT_GIT_USER = "git"
+	// DefaultGitUser is the user name used for git operations over SSH and HTTP.
+	DefaultGitUser = "git"
 	// mirrorRefSpec force-maps every ref - branches, tags, everything under
 	// refs/ - onto the same name on the other side. Pushes do not use it: see
 	// pushableRefSpecs.
@@ -62,15 +63,17 @@ type MirrorPushOptions struct {
 	SkipPipelines bool
 }
 
-// skipPipelinesGitOptions are the push options of a push that must not run CI.
-// They are shared by every push and must never be modified.
-//
-//nolint:gochecknoglobals // read-only, shared to avoid rebuilding it on every push
-var skipPipelinesGitOptions = map[string]string{
-	ciSkipPushOption:             "",
-	ciNoPipelinePushOption:       "",
-	integrationsSkipCIPushOption: "",
-}
+var (
+	// skipPipelinesGitOptions are the push options of a push that must not run CI.
+	// They are shared by every push and must never be modified.
+	//
+	//nolint:gochecknoglobals // read-only, shared to avoid rebuilding it on every push
+	skipPipelinesGitOptions = map[string]string{
+		ciSkipPushOption:             "",
+		ciNoPipelinePushOption:       "",
+		integrationsSkipCIPushOption: "",
+	}
+)
 
 // gitOptions returns the push options a mirroring push carries.
 //
@@ -350,7 +353,7 @@ func BuildHTTPAuth(username, token string) transport.AuthMethod {
 	}
 
 	if strings.TrimSpace(username) == "" {
-		username = DEFAULT_GIT_USER
+		username = DefaultGitUser
 	}
 
 	return &http.BasicAuth{

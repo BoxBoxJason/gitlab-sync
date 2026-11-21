@@ -5,14 +5,14 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 )
 
 func TestProcessFilters(t *testing.T) {
 	tests := []struct {
 		name                              string
-		mirrorMapping                     *utils.MirrorMapping
+		mirrorMapping                     *mirrorcfg.MirrorMapping
 		expectedSourceProjectFilters      map[string]struct{}
 		expectedSourceGroupFilters        map[string]struct{}
 		expectedDestinationProjectFilters map[string]struct{}
@@ -20,9 +20,9 @@ func TestProcessFilters(t *testing.T) {
 	}{
 		{
 			name: "EmptyMirrorMapping",
-			mirrorMapping: &utils.MirrorMapping{
-				Projects: make(map[string]*utils.MirroringOptions),
-				Groups:   make(map[string]*utils.MirroringOptions),
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Projects: make(map[string]*mirrorcfg.MirroringOptions),
+				Groups:   make(map[string]*mirrorcfg.MirroringOptions),
 			},
 			expectedSourceProjectFilters:      map[string]struct{}{},
 			expectedSourceGroupFilters:        map[string]struct{}{},
@@ -31,18 +31,18 @@ func TestProcessFilters(t *testing.T) {
 		},
 		{
 			name: "SingleProjectAndGroup",
-			mirrorMapping: &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{
 					"sourceProject": {
 						DestinationPath: "destinationGroupPath/destinationProjectPath",
-						CI_CD_Catalog:   new(true),
+						CICDCatalog:     new(true),
 						MirrorIssues:    new(true),
 					},
 				},
-				Groups: map[string]*utils.MirroringOptions{
+				Groups: map[string]*mirrorcfg.MirroringOptions{
 					"sourceGroup": {
 						DestinationPath: "destinationGroupPath",
-						CI_CD_Catalog:   new(true),
+						CICDCatalog:     new(true),
 						MirrorIssues:    new(true),
 					},
 				},
@@ -62,28 +62,28 @@ func TestProcessFilters(t *testing.T) {
 		},
 		{
 			name: "MultipleProjectsAndGroups",
-			mirrorMapping: &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{
 					"sourceProject1": {
 						DestinationPath: "destinationGroupPath1/destinationProjectPath1",
-						CI_CD_Catalog:   new(true),
+						CICDCatalog:     new(true),
 						MirrorIssues:    new(true),
 					},
 					"sourceProject2": {
 						DestinationPath: "destinationGroupPath2/destinationProjectPath2",
-						CI_CD_Catalog:   new(false),
+						CICDCatalog:     new(false),
 						MirrorIssues:    new(false),
 					},
 				},
-				Groups: map[string]*utils.MirroringOptions{
+				Groups: map[string]*mirrorcfg.MirroringOptions{
 					"sourceGroup1": {
 						DestinationPath: "destinationGroupPath3",
-						CI_CD_Catalog:   new(true),
+						CICDCatalog:     new(true),
 						MirrorIssues:    new(true),
 					},
 					"sourceGroup2": {
 						DestinationPath: "destinationGroupPath4",
-						CI_CD_Catalog:   new(false),
+						CICDCatalog:     new(false),
 						MirrorIssues:    new(false),
 					},
 				},
@@ -109,13 +109,13 @@ func TestProcessFilters(t *testing.T) {
 		},
 		{
 			name: "ProjectDestinationWithoutNamespaceDoesNotCreateDestinationGroupFilter",
-			mirrorMapping: &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{
 					"sourceProject": {
 						DestinationPath: "destinationProjectPath",
 					},
 				},
-				Groups: map[string]*utils.MirroringOptions{},
+				Groups: map[string]*mirrorcfg.MirroringOptions{},
 			},
 			expectedSourceProjectFilters: map[string]struct{}{
 				"sourceProject": {},
@@ -128,13 +128,13 @@ func TestProcessFilters(t *testing.T) {
 		},
 		{
 			name: "DuplicateDestinationGroupFromProjectAndGroupIsDeduplicated",
-			mirrorMapping: &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{
 					"sourceProject": {
 						DestinationPath: "destinationGroupPath/destinationProjectPath",
 					},
 				},
-				Groups: map[string]*utils.MirroringOptions{
+				Groups: map[string]*mirrorcfg.MirroringOptions{
 					"sourceGroup": {
 						DestinationPath: "destinationGroupPath",
 					},
@@ -158,7 +158,9 @@ func TestProcessFilters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			sourceProjectFilters, sourceGroupFilters, destinationProjectFilters, destinationGroupFilters := processFilters(tt.mirrorMapping)
+			filters := processFilters(tt.mirrorMapping)
+			sourceProjectFilters, sourceGroupFilters := filters.sourceProjects, filters.sourceGroups
+			destinationProjectFilters, destinationGroupFilters := filters.destinationProjects, filters.destinationGroups
 
 			if !reflect.DeepEqual(sourceProjectFilters, tt.expectedSourceProjectFilters) {
 				t.Errorf("expected sourceProjectFilters %v, got %v", tt.expectedSourceProjectFilters, sourceProjectFilters)
@@ -186,26 +188,26 @@ func TestDryRun(t *testing.T) {
 	}{
 		{
 			name:       "Dry Run Source Small",
-			sourceSize: INSTANCE_SIZE_SMALL,
+			sourceSize: InstanceSizeSmall,
 		},
 		{
 			name:       "Dry Run Source Big",
-			sourceSize: INSTANCE_SIZE_BIG,
+			sourceSize: InstanceSizeBig,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, sourceGitlabInstance := setupTestServer(t, ROLE_SOURCE, tt.sourceSize)
-			_, destinationGitlabInstance := setupTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
-			gitlabMirrorArgs := &utils.MirrorMapping{
-				Projects: map[string]*utils.MirroringOptions{
+			_, sourceGitlabInstance := setupTestServer(t, RoleSource, tt.sourceSize)
+			_, destinationGitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
+			gitlabMirrorArgs := &mirrorcfg.MirrorMapping{
+				Projects: map[string]*mirrorcfg.MirroringOptions{
 					TEST_PROJECT.PathWithNamespace: {
 						DestinationPath: TEST_PROJECT.PathWithNamespace,
 						MirrorReleases:  new(true),
 					},
 				},
-				Groups: map[string]*utils.MirroringOptions{
+				Groups: map[string]*mirrorcfg.MirroringOptions{
 					TEST_GROUP_2.FullPath: {
 						DestinationPath: TEST_GROUP_2.FullPath,
 						MirrorReleases:  new(true),
@@ -234,13 +236,13 @@ func TestIsPullMirrorAvailable(t *testing.T) {
 	}{
 		{
 			name:           "Premium license, good version",
-			licensePlan:    PREMIUM_PLAN,
+			licensePlan:    PremiumPlan,
 			version:        supportedVersion,
 			expectedResult: true,
 		},
 		{
 			name:           "Ultimate license, good version",
-			licensePlan:    ULTIMATE_PLAN,
+			licensePlan:    UltimatePlan,
 			version:        supportedVersion,
 			expectedResult: true,
 		},
@@ -259,13 +261,13 @@ func TestIsPullMirrorAvailable(t *testing.T) {
 		},
 		{
 			name:           "Premium license, bad version",
-			licensePlan:    PREMIUM_PLAN,
+			licensePlan:    PremiumPlan,
 			version:        unsupportedVersion,
 			expectedResult: false,
 		},
 		{
 			name:           "Ultimate license, bad version",
-			licensePlan:    ULTIMATE_PLAN,
+			licensePlan:    UltimatePlan,
 			version:        unsupportedVersion,
 			expectedResult: false,
 		},
@@ -292,7 +294,7 @@ func TestIsPullMirrorAvailable(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			mux, gitlabInstance := setupEmptyTestServer(t, ROLE_DESTINATION, INSTANCE_SIZE_SMALL)
+			mux, gitlabInstance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
 			if !tt.expectedError {
 				mux.HandleFunc("/api/v4/license", func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(200)
@@ -304,7 +306,7 @@ func TestIsPullMirrorAvailable(t *testing.T) {
 				})
 			}
 
-			pullMirrorAvailable, err := gitlabInstance.IsPullMirrorAvailable(tt.forcePremium, false)
+			pullMirrorAvailable, err := gitlabInstance.IsPullMirrorAvailable(&mirrorcfg.ParserArgs{ForcePremium: tt.forcePremium})
 			if (err != nil) != tt.expectedError {
 				t.Fatalf("CheckDestinationInstance() error = %v, expectedError %v", err, tt.expectedError)
 			}
@@ -320,12 +322,12 @@ func TestMirrorGitlabsReportsBlockingError(t *testing.T) {
 	helpers.ResetReported()
 	t.Cleanup(helpers.ResetReported)
 
-	args := &utils.ParserArgs{
+	args := &mirrorcfg.ParserArgs{
 		SourceGitlabURL:        "invalid-url",
 		SourceGitlabToken:      "token",
 		DestinationGitlabURL:   "https://example.com",
 		DestinationGitlabToken: "token",
-		MirrorMapping:          &utils.MirrorMapping{},
+		MirrorMapping:          &mirrorcfg.MirrorMapping{},
 		Retry:                  1,
 	}
 

@@ -8,8 +8,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 )
 
 // fakeGroupsAPI is a minimal in-memory GitLab groups API: it answers

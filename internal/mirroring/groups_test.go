@@ -4,9 +4,10 @@ import (
 	"net/http"
 	"testing"
 
+	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
+
 	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
-	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 )
 
 func TestCreateGroupFromSource(t *testing.T) {

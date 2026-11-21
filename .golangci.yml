@@ -110,6 +110,12 @@ linters:
           disabled: true
         - name: cyclomatic
           disabled: true
+        - name: file-length-limit
+          severity: warning
+          disabled: false
+          exclude: [""]
+          arguments:
+            - max: 300
         - name: line-length-limit
           disabled: true
     testifylint:

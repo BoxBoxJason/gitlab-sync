@@ -7,11 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
+
+	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 )
 
 const (

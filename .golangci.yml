@@ -2,7 +2,7 @@ version: 2
 
 run:
   timeout: 5m
-  tests: false
+  tests: true
 
 # Output format to generate checkstyle report (used by CI)
 output:
@@ -28,8 +28,36 @@ issues:
 
 linters:
   default: all
+  exclusions:
+    rules:
+      # Style-only linters that add noise to tests without catching bugs.
+      - path: _test\.go
+        linters:
+          - dupl
+          - funlen
+          - gosec
+          - gochecknoglobals
+          - goconst
+          - nlreturn
+          - noinlineerr
+          - varnamelen
+          - wsl_v5
+      # Table-driven tests are inherently long and branchy.
+      - path: _test\.go
+        linters:
+          - cyclop
+          - gocognit
+          - gocyclo
+          - maintidx
+      - path: _test\.go
+        linters:
+          - revive
+        text: "function-length"
+      # Tests exercise unexported identifiers (white-box), so they must live in the package under test.
+      - path: _test\.go
+        linters:
+          - testpackage
   disable:
-    - depguard
     - err113
     - exhaustruct
     - exhaustruct_v5
@@ -41,6 +69,23 @@ linters:
   settings:
     copyloopvar:
       check-alias: true
+    depguard:
+      rules:
+        main:
+          # Whitelist: only the listed packages may be imported.
+          list-mode: strict
+          files:
+            - $all
+          allow:
+            - $gostd
+            - github.com/boxboxjason/gitlab-sync
+            - github.com/go-git/go-git/v5
+            - github.com/hashicorp/go-retryablehttp
+            - github.com/Masterminds/semver/v3
+            - github.com/spf13/cobra
+            - github.com/spf13/pflag
+            - gitlab.com/gitlab-org/api/client-go/v3
+            - go.uber.org/zap
     errcheck:
       # Report about not checking of errors in type assertions: `a := b.(MyStruct)`.
       check-type-assertions: true
@@ -111,9 +156,6 @@ linters:
         - name: cyclomatic
           disabled: true
         - name: file-length-limit
-          severity: warning
-          disabled: false
-          exclude: [""]
           arguments:
             - max: 300
         - name: line-length-limit

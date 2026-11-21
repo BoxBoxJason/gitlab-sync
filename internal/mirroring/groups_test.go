@@ -2,6 +2,7 @@ package mirroring
 
 import (
 	"net/http"
+	"reflect"
 	"testing"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
@@ -11,6 +12,8 @@ import (
 )
 
 func TestCreateGroupFromSource(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name         string
 		instanceSize string
@@ -39,23 +42,25 @@ func TestCreateGroupFromSource(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			// Setup the test server
-			_, gitlabInstance := setupTestServer(t, tt.role, tt.instanceSize)
-			gitlabInstance.AddGroup(TEST_GROUP)
-			createdGroup, err := gitlabInstance.CreateGroupFromSource(TEST_GROUP_2, &mirrorcfg.MirroringOptions{
-				DestinationPath: TEST_GROUP_2.FullPath,
+			gitlabInstance := setupTestServer(t, tt.role, tt.instanceSize)
+			gitlabInstance.AddGroup(testGroup)
+			createdGroup, err := gitlabInstance.CreateGroupFromSource(testGroup2, &mirrorcfg.MirroringOptions{
+				DestinationPath: testGroup2.FullPath,
 			})
 			if err != nil {
 				t.Errorf("Unexpected error when creating group: %v", err)
 			}
 			if createdGroup == nil {
-				t.Errorf("Expected created group to be non-nil")
+				t.Error("Expected created group to be non-nil")
 			}
 		})
 	}
 }
 
-func TestCreateGroups(t *testing.T) {
+func TestCreateGroups(t *testing.T) { //nolint:paralleltest // asserts on the process-wide error tally (helpers.ExitCode)
 	tests := []struct {
 		name            string
 		destinationSize string
@@ -85,28 +90,28 @@ func TestCreateGroups(t *testing.T) {
 
 	mirrorMapping := &mirrorcfg.MirrorMapping{
 		Groups: map[string]*mirrorcfg.MirroringOptions{
-			TEST_GROUP.FullPath: {
-				DestinationPath: TEST_GROUP.FullPath,
+			testGroup.FullPath: {
+				DestinationPath: testGroup.FullPath,
 			},
-			TEST_GROUP_2.FullPath: {
-				DestinationPath: TEST_GROUP_2.FullPath,
+			testGroup2.FullPath: {
+				DestinationPath: testGroup2.FullPath,
 			},
 		},
 	}
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // asserts on the process-wide error tally (helpers.ExitCode)
 		t.Run(tt.name, func(t *testing.T) {
 			// Not parallel: the assertion below reads the process-wide error tally.
 			helpers.ResetReported()
 			t.Cleanup(helpers.ResetReported)
 
 			// Setup the test server
-			_, sourceGitlabInstance := setupTestServer(t, RoleSource, tt.destinationSize)
-			sourceGitlabInstance.AddGroup(TEST_GROUP)
-			sourceGitlabInstance.AddGroup(TEST_GROUP_2)
-			sourceGitlabInstance.AddProject(TEST_PROJECT)
-			sourceGitlabInstance.AddProject(TEST_PROJECT_2)
+			sourceGitlabInstance := setupTestServer(t, RoleSource, tt.destinationSize)
+			sourceGitlabInstance.AddGroup(testGroup)
+			sourceGitlabInstance.AddGroup(testGroup2)
+			sourceGitlabInstance.AddProject(testProject)
+			sourceGitlabInstance.AddProject(testProject2)
 
-			_, destinationGitlabInstance := setupTestServer(t, RoleDestination, tt.sourceSize)
+			destinationGitlabInstance := setupTestServer(t, RoleDestination, tt.sourceSize)
 			destinationGitlabInstance.AddGroup(&gitlab.Group{
 				FullPath: "test",
 			})
@@ -121,18 +126,22 @@ func TestCreateGroups(t *testing.T) {
 }
 
 func TestClaimOwnershipToGroup(t *testing.T) {
-	_, gitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
+	t.Parallel()
 
-	err := gitlabInstance.ClaimOwnershipToGroup(TEST_GROUP)
+	gitlabInstance := setupTestServer(t, RoleDestination, InstanceSizeSmall)
+
+	err := gitlabInstance.ClaimOwnershipToGroup(testGroup)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 }
 
 func TestCreateGroupFromSourceClaimOwnershipOption(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name                 string
 		claimOwnership       *bool
+		name                 string
 		expectedMemberClaims int
 	}{
 		{
@@ -154,7 +163,9 @@ func TestCreateGroupFromSourceClaimOwnershipOption(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			mux, gitlabInstance := setupEmptyTestServer(t, RoleDestination, InstanceSizeSmall)
+			t.Parallel()
+
+			mux, gitlabInstance := setupEmptyTestServer(t, RoleDestination)
 			memberClaims := 0
 
 			mux.HandleFunc("/api/v4/groups", func(w http.ResponseWriter, r *http.Request) {
@@ -162,9 +173,9 @@ func TestCreateGroupFromSourceClaimOwnershipOption(t *testing.T) {
 					w.WriteHeader(http.StatusMethodNotAllowed)
 					return
 				}
-				w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+				w.Header().Set(headerContentType, headerAccept)
 				w.WriteHeader(http.StatusCreated)
-				w.Write([]byte(TEST_GROUP_2_STRING))
+				writeBody(w, testGroup2String)
 			})
 
 			mux.HandleFunc("/api/v4/groups/2/members", func(w http.ResponseWriter, r *http.Request) {
@@ -173,12 +184,12 @@ func TestCreateGroupFromSourceClaimOwnershipOption(t *testing.T) {
 					return
 				}
 				memberClaims++
-				w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+				w.Header().Set(headerContentType, headerAccept)
 				w.WriteHeader(http.StatusCreated)
-				w.Write([]byte(`{"id": 1}`))
+				writeBody(w, `{"id": 1}`)
 			})
 
-			createdGroup, err := gitlabInstance.CreateGroupFromSource(TEST_GROUP_2, &mirrorcfg.MirroringOptions{
+			createdGroup, err := gitlabInstance.CreateGroupFromSource(testGroup2, &mirrorcfg.MirroringOptions{
 				DestinationPath: "group2",
 				ClaimOwnership:  tc.claimOwnership,
 			})
@@ -190,6 +201,79 @@ func TestCreateGroupFromSourceClaimOwnershipOption(t *testing.T) {
 			}
 			if memberClaims != tc.expectedMemberClaims {
 				t.Fatalf("expected %d ownership claims, got %d", tc.expectedMemberClaims, memberClaims)
+			}
+		})
+	}
+}
+func TestReverseGroupMirrorMap(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                     string
+		mirrorMapping            *mirrorcfg.MirrorMapping
+		expectedReversedMap      map[string]string
+		expectedDestinationPaths []string
+	}{
+		{
+			name: "normal mapping",
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Groups: map[string]*mirrorcfg.MirroringOptions{
+					testGroup.FullPath:  {DestinationPath: testGroup.FullPath},
+					testGroup2.FullPath: {DestinationPath: testGroup2.FullPath},
+				},
+			},
+			expectedReversedMap: map[string]string{
+				testGroup.FullPath:  testGroup.FullPath,
+				testGroup2.FullPath: testGroup2.FullPath,
+			},
+			expectedDestinationPaths: []string{testGroup.FullPath, testGroup2.FullPath},
+		},
+		{
+			name:                     "nil mirror mapping",
+			mirrorMapping:            nil,
+			expectedReversedMap:      nil,
+			expectedDestinationPaths: []string{},
+		},
+		{
+			name: "empty groups in mirror mapping",
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Groups: map[string]*mirrorcfg.MirroringOptions{},
+			},
+			expectedReversedMap:      map[string]string{},
+			expectedDestinationPaths: []string{},
+		},
+		{
+			name: "unsorted input paths",
+			mirrorMapping: &mirrorcfg.MirrorMapping{
+				Groups: map[string]*mirrorcfg.MirroringOptions{
+					testGroup2.FullPath: {DestinationPath: testGroup2.FullPath},
+					testGroup.FullPath:  {DestinationPath: testGroup.FullPath},
+				},
+			},
+			expectedReversedMap: map[string]string{
+				testGroup.FullPath:  testGroup.FullPath,
+				testGroup2.FullPath: testGroup2.FullPath,
+			},
+			expectedDestinationPaths: []string{testGroup.FullPath, testGroup2.FullPath},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			g := &GitlabInstance{
+				Groups: nil,
+			}
+
+			actual := g.reverseGroupMirrorMap(tt.mirrorMapping)
+			actualReversedMap, actualDestinationPaths := actual.sourceByDestination, actual.destinationPaths
+
+			if !reflect.DeepEqual(actualReversedMap, tt.expectedReversedMap) {
+				t.Errorf("reversedMirrorMap = %v, want %v", actualReversedMap, tt.expectedReversedMap)
+			}
+
+			if !reflect.DeepEqual(actualDestinationPaths, tt.expectedDestinationPaths) {
+				t.Errorf("destinationGroupPaths = %v, want %v", actualDestinationPaths, tt.expectedDestinationPaths)
 			}
 		})
 	}

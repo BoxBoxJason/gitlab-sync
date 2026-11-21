@@ -4,25 +4,44 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"reflect"
 	"testing"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
-
-	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 )
 
 const (
-	HEADER_CONTENT_TYPE = "Content-Type"
-	HEADER_ACCEPT       = "application/json"
+	headerContentType = "Content-Type"
+	headerAccept      = "application/json"
 )
 
-// Helper functions for common HTTP responses
+// writeBytes writes body to w and aborts the handler if the write fails.
+func writeBytes(w http.ResponseWriter, body []byte) {
+	if _, err := w.Write(body); err != nil {
+		panic(err)
+	}
+}
+
+// writeBody writes body to w and aborts the handler if the write fails.
+func writeBody(w http.ResponseWriter, body string) {
+	writeBytes(w, []byte(body))
+}
+
+// requireGet reports whether r is a GET request, and answers 405 otherwise.
+func requireGet(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		writeMethodNotAllowed(w)
+
+		return false
+	}
+
+	return true
+}
+
+// Helper functions for common HTTP responses.
 func writeJSONResponse(w http.ResponseWriter, status int, body string) {
-	w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+	w.Header().Set(headerContentType, headerAccept)
 	w.WriteHeader(status)
-	fmt.Fprint(w, body)
+	writeBody(w, body)
 }
 
 func writeMethodNotAllowed(w http.ResponseWriter) {
@@ -30,362 +49,102 @@ func writeMethodNotAllowed(w http.ResponseWriter) {
 }
 
 var (
-	// TEST_PROJECT is a test project used in unit tests.
-	TEST_PROJECT = &gitlab.Project{
+	// testProject is a test project used in unit tests.
+	testProject = &gitlab.Project{
 		Name:              "Test Project",
 		PathWithNamespace: "test/group/project",
 		Path:              "project",
 		ID:                1,
 	}
 
-	// TEST_PROJECT_STRING is the string representation of TEST_PROJECT.
+	// testProjectString is the string representation of testProject.
 	// It is used for testing purposes.
 	// It is a JSON string that contains the ID, name, path_with_namespace, and path of the project.
-	TEST_PROJECT_STRING = fmt.Sprintf(`{
+	testProjectString = fmt.Sprintf(`{
 		"id": %d,
 		"name": "%s",
 		"path_with_namespace": "%s",
 		"path": "%s"
-		}`, TEST_PROJECT.ID, TEST_PROJECT.Name, TEST_PROJECT.PathWithNamespace, TEST_PROJECT.Path)
+		}`, testProject.ID, testProject.Name, testProject.PathWithNamespace, testProject.Path)
 
-	// TEST_PROJECT_2 is a second test project used for testing.
-	TEST_PROJECT_2 = &gitlab.Project{
+	// testProject2 is a second test project used for testing.
+	testProject2 = &gitlab.Project{
 		Name:              "Test Project 2",
 		PathWithNamespace: "test/group/group2/project2",
 		Path:              "project2",
 		ID:                2,
 	}
 
-	// TEST_PROJECT_2_STRING is the string representation of TEST_PROJECT_2.
+	// testProject2String is the string representation of testProject2.
 	// It is used for testing purposes.
 	// It is a JSON string that contains the ID, name, path_with_namespace, and path of the project.
-	TEST_PROJECT_2_STRING = fmt.Sprintf(`{
+	testProject2String = fmt.Sprintf(`{
 		"id": %d,
 		"name": "%s",
 		"path_with_namespace": "%s",
 		"path": "%s"
-		}`, TEST_PROJECT_2.ID, TEST_PROJECT_2.Name, TEST_PROJECT_2.PathWithNamespace, TEST_PROJECT_2.Path)
+		}`, testProject2.ID, testProject2.Name, testProject2.PathWithNamespace, testProject2.Path)
 
-	// TEST_PROJECTS_STRING is a string representation of multiple test projects.
+	// testProjectsString is a string representation of multiple test projects.
 	// It is used for testing purposes.
 	// It is a JSON string that contains an array of project strings.
-	TEST_PROJECTS_STRING = fmt.Sprintf(`[
+	testProjectsString = fmt.Sprintf(`[
 		%s,
 		%s
-	]`, TEST_PROJECT_STRING, TEST_PROJECT_2_STRING)
+	]`, testProjectString, testProject2String)
 
-	// INVALID_PROJECT is an invalid project used for testing.
-	INVALID_PROJECT = &gitlab.Project{
+	// invalidProject is an invalid project used for testing.
+	invalidProject = &gitlab.Project{
 		Name:              "Invalid Project",
 		PathWithNamespace: "test/group/invalid_project",
 		ID:                -1,
 		Path:              "invalid_project",
 	}
 
-	// TEST_GROUP is a test group used in unit tests.
-	TEST_GROUP = &gitlab.Group{
+	// testGroup is a test group used in unit tests.
+	testGroup = &gitlab.Group{
 		Name:     "Test Group",
 		FullPath: "test/group",
 		ID:       1,
 	}
 
-	// TEST_GROUP_STRING is the string representation of TEST_GROUP.
+	// testGroupString is the string representation of testGroup.
 	// It is used for testing purposes.
 	// It is a JSON string that contains the ID, name, and full_path of the group.
-	TEST_GROUP_STRING = fmt.Sprintf(`{
+	testGroupString = fmt.Sprintf(`{
 		"id": %d,
 		"name": "%s",
 		"full_path": "%s"
-		}`, TEST_GROUP.ID, TEST_GROUP.Name, TEST_GROUP.FullPath)
+		}`, testGroup.ID, testGroup.Name, testGroup.FullPath)
 
-	// TEST_GROUP_2 is a second test group used for testing.
-	TEST_GROUP_2 = &gitlab.Group{
+	// testGroup2 is a second test group used for testing.
+	testGroup2 = &gitlab.Group{
 		Name:     "Test Group 2",
 		FullPath: "test/group/group2",
 		ID:       2,
 	}
 
-	// TEST_GROUP_2_STRING is the string representation of TEST_GROUP_2.
+	// testGroup2String is the string representation of testGroup2.
 	// It is used for testing purposes.
 	// It is a JSON string that contains the ID, name, and full_path of the group.
-	TEST_GROUP_2_STRING = fmt.Sprintf(`{
+	testGroup2String = fmt.Sprintf(`{
 		"id": %d,
 		"name": "%s",
 		"full_path": "%s"
-		}`, TEST_GROUP_2.ID, TEST_GROUP_2.Name, TEST_GROUP_2.FullPath)
+		}`, testGroup2.ID, testGroup2.Name, testGroup2.FullPath)
 
-	// TEST_GROUPS_STRING is a string representation of multiple test groups.
+	// testGroupsString is a string representation of multiple test groups.
 	// It is used for testing purposes.
 	// It is a JSON string that contains an array of group strings.
-	TEST_GROUPS_STRING = fmt.Sprintf(`[
+	testGroupsString = fmt.Sprintf(`[
 		%s,
 		%s
-	]`, TEST_GROUP_STRING, TEST_GROUP_2_STRING)
-
-	// INVALID_GROUP is an invalid group used for testing.
-	INVALID_GROUP = &gitlab.Group{
-		Name:     "Invalid Group",
-		FullPath: "test/group/invalid_group",
-	}
-
-	// TEST_RELEASE is a test release used in unit tests.
-	TEST_RELEASE_STRING = `{
-		"tag_name": "v0.1",
-		"description": "description",
-		"name": "Awesome app v0.1 alpha",
-		"description_html": "description_html",
-		"created_at": "2019-01-03T01:55:18.203Z",
-		"author": {
-			"id": 1,
-			"name": "Administrator",
-			"username": "root",
-			"state": "active",
-			"avatar_url": "https://www.gravatar.com/avatar/",
-			"web_url": "http://localhost:3000/root"
-		},
-		"commit": {
-			"id": "f8d3d94cbd347e924aa7b715845e439d00e80ca4",
-			"short_id": "f8d3d94c",
-			"title": "Initial commit",
-			"created_at": "2019-01-03T01:53:28.000Z",
-			"parent_ids": [],
-			"message": "Initial commit",
-			"author_name": "Administrator",
-			"author_email": "admin@example.com",
-			"authored_date": "2019-01-03T01:53:28.000Z",
-			"committer_name": "Administrator",
-			"committer_email": "admin@example.com",
-			"committed_date": "2019-01-03T01:53:28.000Z"
-		},
-		"assets": {
-			"count": 2,
-			"sources": [
-			{
-				"format": "zip",
-				"url": "http://localhost:3000/archive/v0.1/awesome-app-v0.1.zip"
-			},
-			{
-				"format": "tar.gz",
-				"url": "http://localhost:3000/archive/v0.1/awesome-app-v0.1.tar.gz"
-			}
-			],
-			"links": []
-		}
-	}`
-
-	// TEST_RELEASES_STRING is a string representation of multiple test releases.
-	TEST_RELEASES_STRING = []string{
-		`{
-			"tag_name": "v0.2",
-			"description": "description",
-			"name": "Awesome app v0.2 beta",
-			"description_html": "html",
-			"created_at": "2019-01-03T01:56:19.539Z",
-			"author": {
-			"id": 1,
-			"name": "Administrator",
-			"username": "root",
-			"state": "active",
-			"avatar_url": "https://www.gravatar.com/avatar",
-			"web_url": "http://localhost:3000/root"
-			},
-			"commit": {
-			"id": "079e90101242458910cccd35eab0e211dfc359c0",
-			"short_id": "079e9010",
-			"title": "Update README.md",
-			"created_at": "2019-01-03T01:55:38.000Z",
-			"parent_ids": [
-				"f8d3d94cbd347e924aa7b715845e439d00e80ca4"
-			],
-			"message": "Update README.md",
-			"author_name": "Administrator",
-			"author_email": "admin@example.com",
-			"authored_date": "2019-01-03T01:55:38.000Z",
-			"committer_name": "Administrator",
-			"committer_email": "admin@example.com",
-			"committed_date": "2019-01-03T01:55:38.000Z"
-			},
-			"assets": {
-			"count": 4,
-			"sources": [
-				{
-				"format": "zip",
-				"url": "http://localhost:3000/archive/v0.2/awesome-app-v0.2.zip"
-				},
-				{
-				"format": "tar.gz",
-				"url": "http://localhost:3000/archive/v0.2/awesome-app-v0.2.tar.gz"
-				}
-			],
-			"links": [
-				{
-				"id": 2,
-				"name": "awesome-v0.2.msi",
-				"url": "http://192.168.10.15:3000/msi",
-				"external": true
-				},
-				{
-				"id": 1,
-				"name": "awesome-v0.2.dmg",
-				"url": "http://192.168.10.15:3000",
-				"external": true
-				}
-			]
-			}
-		}`,
-		`{
-			"tag_name": "v0.1",
-			"description": "description",
-			"name": "Awesome app v0.1 alpha",
-			"description_html": "description_html",
-			"created_at": "2019-01-03T01:55:18.203Z",
-			"author": {
-			"id": 1,
-			"name": "Administrator",
-			"username": "root",
-			"state": "active",
-			"avatar_url": "https://www.gravatar.com/avatar",
-			"web_url": "http://localhost:3000/root"
-			},
-			"commit": {
-			"id": "f8d3d94cbd347e924aa7b715845e439d00e80ca4",
-			"short_id": "f8d3d94c",
-			"title": "Initial commit",
-			"created_at": "2019-01-03T01:53:28.000Z",
-			"parent_ids": [],
-			"message": "Initial commit",
-			"author_name": "Administrator",
-			"author_email": "admin@example.com",
-			"authored_date": "2019-01-03T01:53:28.000Z",
-			"committer_name": "Administrator",
-			"committer_email": "admin@example.com",
-			"committed_date": "2019-01-03T01:53:28.000Z"
-			},
-			"assets": {
-			"count": 2,
-			"sources": [
-				{
-				"format": "zip",
-				"url": "http://localhost:3000/archive/v0.1/awesome-app-v0.1.zip"
-				},
-				{
-				"format": "tar.gz",
-				"url": "http://localhost:3000/archive/v0.1/awesome-app-v0.1.tar.gz"
-				}
-			],
-			"links": []
-			}
-		}`,
-	}
-
-	issue_string = "issue"
-
-	TEST_ISSUE = &gitlab.Issue{
-		IID:          1,
-		Title:        "Test Issue",
-		Description:  "This is a test issue",
-		Labels:       []string{"bug", "urgent"},
-		Confidential: false,
-		Weight:       3,
-		IssueType:    &issue_string,
-	}
-
-	// TEST_ISSUE_STRING is the string representation of TEST_ISSUE.
-	TEST_ISSUE_STRING = `{
-      "project_id" : 1,
-      "milestone" : {
-         "due_date" : null,
-         "project_id" : 4,
-         "state" : "closed",
-         "description" : "Rerum est voluptatem provident consequuntur molestias similique ipsum dolor.",
-         "iid" : 3,
-         "id" : 11,
-         "title" : "v3.0",
-         "created_at" : "2016-01-04T15:31:39.788Z",
-         "updated_at" : "2016-01-04T15:31:39.788Z"
-      },
-      "author" : {
-         "state" : "active",
-         "web_url" : "https://gitlab.example.com/root",
-         "avatar_url" : null,
-         "username" : "root",
-         "id" : 1,
-         "name" : "Administrator"
-      },
-      "description" : "Omnis vero earum sunt corporis dolor et placeat.",
-      "state" : "closed",
-      "iid" : 1,
-      "assignees" : [{
-         "avatar_url" : null,
-         "web_url" : "https://gitlab.example.com/lennie",
-         "state" : "active",
-         "username" : "lennie",
-         "id" : 9,
-         "name" : "Dr. Luella Kovacek"
-      }],
-      "assignee" : {
-         "avatar_url" : null,
-         "web_url" : "https://gitlab.example.com/lennie",
-         "state" : "active",
-         "username" : "lennie",
-         "id" : 9,
-         "name" : "Dr. Luella Kovacek"
-      },
-      "type" : "ISSUE",
-      "labels" : ["foo", "bar"],
-      "upvotes": 4,
-      "downvotes": 0,
-      "merge_requests_count": 0,
-      "id" : 41,
-      "title" : "Ut commodi ullam eos dolores perferendis nihil sunt.",
-      "updated_at" : "2016-01-04T15:31:46.176Z",
-      "created_at" : "2016-01-04T15:31:46.176Z",
-      "closed_at" : "2016-01-05T15:31:46.176Z",
-      "closed_by" : {
-         "state" : "active",
-         "web_url" : "https://gitlab.example.com/root",
-         "avatar_url" : null,
-         "username" : "root",
-         "id" : 1,
-         "name" : "Administrator"
-      },
-      "user_notes_count": 1,
-      "due_date": "2016-07-22",
-      "imported": false,
-      "imported_from": "none",
-      "web_url": "http://gitlab.example.com/my-group/my-project/issues/1",
-      "references": {
-        "short": "#1",
-        "relative": "#1",
-        "full": "my-group/my-project#1"
-      },
-      "time_stats": {
-         "time_estimate": 0,
-         "total_time_spent": 0,
-         "human_time_estimate": null,
-         "human_total_time_spent": null
-      },
-      "has_tasks": true,
-      "task_status": "10 of 15 tasks completed",
-      "confidential": false,
-      "discussion_locked": false,
-      "issue_type": "issue",
-      "severity": "UNKNOWN",
-      "_links":{
-         "self":"http://gitlab.example.com/api/v4/projects/4/issues/41",
-         "notes":"http://gitlab.example.com/api/v4/projects/4/issues/41/notes",
-         "award_emoji":"http://gitlab.example.com/api/v4/projects/4/issues/41/award_emoji",
-         "project":"http://gitlab.example.com/api/v4/projects/4",
-         "closed_as_duplicate_of": "http://gitlab.example.com/api/v4/projects/1/issues/75"
-      },
-      "task_completion_status":{
-         "count":0,
-         "completed_count":0
-      }
-   }`
+	]`, testGroupString, testGroup2String)
 )
 
-func setupEmptyTestServer(t *testing.T, role, instanceSize string) (*http.ServeMux, *GitlabInstance) {
+func setupEmptyTestServer(t *testing.T, role string) (*http.ServeMux, *GitlabInstance) {
+	t.Helper()
+
 	// mux is the HTTP request multiplexer used with the test server.
 	mux := http.NewServeMux()
 
@@ -399,17 +158,17 @@ func setupEmptyTestServer(t *testing.T, role, instanceSize string) (*http.ServeM
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+		w.Header().Set(headerContentType, headerAccept)
 		w.WriteHeader(http.StatusOK)
 		// Return mock current user with ID 1
-		fmt.Fprint(w, `{"id": 1, "username": "testuser", "name": "Test User", "state": "active"}`)
+		writeBody(w, `{"id": 1, "username": "testuser", "name": "Test User", "state": "active"}`)
 	})
 
 	gitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:    server.URL,
 		GitlabToken:  "test-token",
 		Role:         role,
-		InstanceSize: instanceSize,
+		InstanceSize: InstanceSizeSmall,
 		MaxRetries:   0,
 	})
 	if err != nil {
@@ -422,7 +181,9 @@ func setupEmptyTestServer(t *testing.T, role, instanceSize string) (*http.ServeM
 // setup sets up a test HTTP server along with a gitlab.Client that is
 // configured to talk to that test server.  Tests should register handlers on
 // mux which provide mock responses for the API method being tested.
-func setupTestServer(t *testing.T, role, instanceSize string) (*http.ServeMux, *GitlabInstance) {
+func setupTestServer(t *testing.T, role, instanceSize string) *GitlabInstance {
+	t.Helper()
+
 	// mux is the HTTP request multiplexer used with the test server.
 	mux := http.NewServeMux()
 
@@ -440,10 +201,10 @@ func setupTestServer(t *testing.T, role, instanceSize string) (*http.ServeMux, *
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
-		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
+		w.Header().Set(headerContentType, headerAccept)
 		w.WriteHeader(http.StatusOK)
 		// Return mock current user with ID 1
-		fmt.Fprint(w, `{"id": 1, "username": "testuser", "name": "Test User", "state": "active"}`)
+		writeBody(w, `{"id": 1, "username": "testuser", "name": "Test User", "state": "active"}`)
 	})
 
 	// Catch-all handler for undefined routes
@@ -462,329 +223,5 @@ func setupTestServer(t *testing.T, role, instanceSize string) (*http.ServeMux, *
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	return mux, gitlabInstance
-}
-
-// setupTestGroups sets up the test HTTP server with handlers for group-related
-func setupTestGroups(mux *http.ServeMux) {
-	// Setup the get groups endpoint to return a list of groups.
-	mux.HandleFunc("/api/v4/groups", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			// Set response status to 200 OK
-			w.WriteHeader(http.StatusOK)
-			// Return a mock response for the list of groups
-			fmt.Fprint(w, TEST_GROUPS_STRING)
-		case http.MethodPost:
-			// Set response status to 201 Created
-			w.WriteHeader(http.StatusCreated)
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			// Return a mock response for the created group
-			fmt.Fprint(w, TEST_GROUP_STRING)
-		default:
-			// Set response status to 405 Method Not Allowed
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	})
-
-	// Setup the get group for each group endpoint to return the group details.
-	setupTestGroup(mux, TEST_GROUP, TEST_GROUP_STRING)
-	setupTestGroup(mux, TEST_GROUP_2, TEST_GROUP_2_STRING)
-}
-
-// setupTestGroupGet sets up the test HTTP server with handlers for group-related
-func setupTestGroup(mux *http.ServeMux, group *gitlab.Group, stringResponse string) {
-	// Setup the get group response from the group path
-	mux.HandleFunc(fmt.Sprintf("/api/v4/groups/%s", url.QueryEscape(group.FullPath)), func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, stringResponse)
-	})
-	// Setup the get group response from the group ID
-	mux.HandleFunc(fmt.Sprintf("/api/v4/groups/%d", group.ID), func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			writeJSONResponse(w, http.StatusOK, stringResponse)
-		case http.MethodPut:
-			writeJSONResponse(w, http.StatusOK, stringResponse)
-		default:
-			writeMethodNotAllowed(w)
-			return
-		}
-	})
-	// Setup the get group avatar response from the group ID
-	mux.HandleFunc(fmt.Sprintf("/api/v4/groups/%d/avatar", group.ID), func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		// Write a fake image response
-		w.Header().Set(HEADER_CONTENT_TYPE, "image/png")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}) // PNG header
-	})
-	// Setup the add group member endpoint
-	mux.HandleFunc(fmt.Sprintf("/api/v4/groups/%d/members", group.ID), func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-		w.WriteHeader(http.StatusCreated)
-		// Return a mock member response
-		fmt.Fprint(w, `{"id": 1, "username": "testuser", "name": "Test User", "state": "active", "access_level": 50}`)
-	})
-}
-
-// setupTestProjects sets up the test HTTP server with handlers for project-related
-func setupTestProjects(mux *http.ServeMux) {
-	// Setup the get projects endpoint to return a list of projects.
-	mux.HandleFunc("/api/v4/projects", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			// Set response status to 200 OK
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, TEST_PROJECTS_STRING)
-		case http.MethodPost:
-			// Set response status to 201 Created
-			w.WriteHeader(http.StatusCreated)
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			// Return a mock response for the created project
-			fmt.Fprint(w, TEST_PROJECT_STRING)
-		default:
-			// Set response status to 405 Method Not Allowed
-			w.WriteHeader(http.StatusMethodNotAllowed)
-		}
-	})
-
-	// Setup the get project for each project endpoint to return the project details.
-	setupTestProject(mux, TEST_PROJECT, TEST_PROJECT_STRING)
-	setupTestProject(mux, TEST_PROJECT_2, TEST_PROJECT_2_STRING)
-
-	// ========== Setup the list subgroups endpoint for both groups ==========
-
-	// Subgroups of the TEST_GROUP
-	mux.HandleFunc(fmt.Sprintf("/api/v4/groups/%d/subgroups", TEST_GROUP.ID), func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-		fmt.Fprintf(w, `[%s]`, TEST_GROUP_2_STRING)
-	})
-
-	// Subgroups of the TEST_GROUP_2
-	mux.HandleFunc(fmt.Sprintf("/api/v4/groups/%d/subgroups", TEST_GROUP_2.ID), func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-		fmt.Fprint(w, "[]")
-	})
-
-	// ========== Setup the list projects endpoint for each group ==========
-	// Projects of the TEST_GROUP
-	mux.HandleFunc(fmt.Sprintf("/api/v4/groups/%d/projects", TEST_GROUP.ID), func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-		fmt.Fprintf(w, `[%s]`, TEST_PROJECT_STRING)
-	})
-
-	// Projects of the TEST_GROUP_2
-	mux.HandleFunc(fmt.Sprintf("/api/v4/groups/%d/projects", TEST_GROUP_2.ID), func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-		fmt.Fprintf(w, "[%s]", TEST_PROJECT_2_STRING)
-	})
-}
-
-// setupTestProject sets up the test HTTP server with handlers for project-related actions.
-func setupTestProject(mux *http.ServeMux, project *gitlab.Project, stringResponse string) {
-	// Setup the get project response from the project path
-	mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%s", url.QueryEscape(project.PathWithNamespace)), func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, stringResponse)
-	})
-	// Setup the get and put project response from the project ID
-	mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%d", project.ID), func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			fmt.Fprint(w, stringResponse)
-		case http.MethodPut:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprint(w, stringResponse)
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-	})
-	// Setup the get project avatar response from the project ID
-	mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%d/avatar", project.ID), func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		// Write a fake image response
-		w.Header().Set(HEADER_CONTENT_TYPE, "image/png")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}) // PNG header
-	})
-	// Setup the get project releases response from the project ID
-	mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%d/releases", project.ID), func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, "[%s]", TEST_RELEASES_STRING[project.ID%2])
-		case http.MethodPost:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			w.WriteHeader(http.StatusCreated)
-			fmt.Fprint(w, TEST_RELEASE_STRING)
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-	})
-	// setup the put project mirror pull response from the project ID
-	mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%d/mirror/pull", project.ID), func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPut {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "{}")
-	})
-	// Setup the get project issues response from the project ID
-	mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%d/issues", project.ID), func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, "[%s]", TEST_ISSUE_STRING)
-		case http.MethodPost:
-			w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-			w.WriteHeader(http.StatusCreated)
-			fmt.Fprint(w, TEST_ISSUE_STRING)
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-	})
-	// Setup the get project issue response from the project ID and issue IID
-	mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%d/issues/%d", project.ID, TEST_ISSUE.IID), func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			writeJSONResponse(w, http.StatusOK, TEST_ISSUE_STRING)
-		case http.MethodPut:
-			writeJSONResponse(w, http.StatusOK, TEST_ISSUE_STRING)
-		default:
-			writeMethodNotAllowed(w)
-			return
-		}
-	})
-
-	mux.HandleFunc(fmt.Sprintf("/api/v4/projects/%d/members", project.ID), func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-		w.Header().Set(HEADER_CONTENT_TYPE, HEADER_ACCEPT)
-		w.WriteHeader(http.StatusCreated)
-		// Return a mock member response
-		fmt.Fprint(w, `{"id": 1, "username": "testuser", "name": "Test User", "state": "active", "access_level": 50}`)
-	})
-	// Setup the get project issue notes response from the project ID and issue IID
-}
-
-func TestReverseGroupMirrorMap(t *testing.T) {
-	tests := []struct {
-		name                     string
-		mirrorMapping            *mirrorcfg.MirrorMapping
-		expectedReversedMap      map[string]string
-		expectedDestinationPaths []string
-	}{
-		{
-			name: "normal mapping",
-			mirrorMapping: &mirrorcfg.MirrorMapping{
-				Groups: map[string]*mirrorcfg.MirroringOptions{
-					TEST_GROUP.FullPath:   {DestinationPath: TEST_GROUP.FullPath},
-					TEST_GROUP_2.FullPath: {DestinationPath: TEST_GROUP_2.FullPath},
-				},
-			},
-			expectedReversedMap: map[string]string{
-				TEST_GROUP.FullPath:   TEST_GROUP.FullPath,
-				TEST_GROUP_2.FullPath: TEST_GROUP_2.FullPath,
-			},
-			expectedDestinationPaths: []string{TEST_GROUP.FullPath, TEST_GROUP_2.FullPath},
-		},
-		{
-			name:                     "nil mirror mapping",
-			mirrorMapping:            nil,
-			expectedReversedMap:      nil,
-			expectedDestinationPaths: []string{},
-		},
-		{
-			name: "empty groups in mirror mapping",
-			mirrorMapping: &mirrorcfg.MirrorMapping{
-				Groups: map[string]*mirrorcfg.MirroringOptions{},
-			},
-			expectedReversedMap:      map[string]string{},
-			expectedDestinationPaths: []string{},
-		},
-		{
-			name: "unsorted input paths",
-			mirrorMapping: &mirrorcfg.MirrorMapping{
-				Groups: map[string]*mirrorcfg.MirroringOptions{
-					TEST_GROUP_2.FullPath: {DestinationPath: TEST_GROUP_2.FullPath},
-					TEST_GROUP.FullPath:   {DestinationPath: TEST_GROUP.FullPath},
-				},
-			},
-			expectedReversedMap: map[string]string{
-				TEST_GROUP.FullPath:   TEST_GROUP.FullPath,
-				TEST_GROUP_2.FullPath: TEST_GROUP_2.FullPath,
-			},
-			expectedDestinationPaths: []string{TEST_GROUP.FullPath, TEST_GROUP_2.FullPath},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			g := &GitlabInstance{
-				Groups: nil,
-			}
-
-			actual := g.reverseGroupMirrorMap(tt.mirrorMapping)
-			actualReversedMap, actualDestinationPaths := actual.sourceByDestination, actual.destinationPaths
-
-			if !reflect.DeepEqual(actualReversedMap, tt.expectedReversedMap) {
-				t.Errorf("reversedMirrorMap = %v, want %v", actualReversedMap, tt.expectedReversedMap)
-			}
-
-			if !reflect.DeepEqual(actualDestinationPaths, tt.expectedDestinationPaths) {
-				t.Errorf("destinationGroupPaths = %v, want %v", actualDestinationPaths, tt.expectedDestinationPaths)
-			}
-		})
-	}
+	return gitlabInstance
 }

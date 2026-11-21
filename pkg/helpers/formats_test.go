@@ -1,8 +1,12 @@
 package helpers
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestMatchPathAgainstFilters(t *testing.T) {
+	t.Parallel()
+
 	allowList := map[string]struct{}{
 		"/allowed/path": {},
 	}
@@ -27,10 +31,6 @@ func TestMatchPathAgainstFilters(t *testing.T) {
 		}
 	}
 }
-
-const (
-	EXPECTED_ERROR_MESSAGE = "expected error: %v, got: %v"
-)
 
 func TestEnvBool(t *testing.T) {
 	const name = "GITLAB_SYNC_TEST_ENV_BOOL"

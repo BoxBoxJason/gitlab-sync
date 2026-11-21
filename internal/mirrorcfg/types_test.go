@@ -2,29 +2,20 @@ package mirrorcfg
 
 import (
 	"fmt"
-	"os"
 	"reflect"
-	"strings"
 	"testing"
-
-	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
-
-	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 )
 
 const (
-	FAKE_VALID_PROJECT = "namespace/project"
-	FAKE_VALID_GROUP   = "group1"
+	fakeValidProject = "namespace/project"
+	fakeValidGroup   = "group1"
 )
 
 var (
-	FAKE_VALID_MAPPPING = &MirrorMapping{
+	fakeValidMapping = &MirrorMapping{
 		Projects: map[string]*MirroringOptions{
-			FAKE_VALID_PROJECT: {
-				DestinationPath:     FAKE_VALID_PROJECT,
+			fakeValidProject: {
+				DestinationPath:     fakeValidProject,
 				CICDCatalog:         new(true),
 				MirrorIssues:        new(true),
 				MirrorTriggerBuilds: new(false),
@@ -32,8 +23,8 @@ var (
 			},
 		},
 		Groups: map[string]*MirroringOptions{
-			FAKE_VALID_GROUP: {
-				DestinationPath:     FAKE_VALID_GROUP,
+			fakeValidGroup: {
+				DestinationPath:     fakeValidGroup,
 				CICDCatalog:         new(true),
 				MirrorIssues:        new(true),
 				MirrorTriggerBuilds: new(false),
@@ -42,7 +33,7 @@ var (
 		},
 	}
 
-	FAKE_VALID_MAPPING_RAW = fmt.Sprintf(`{
+	fakeValidMappingRaw = fmt.Sprintf(`{
 		"projects": {
 			"%s": {
 				"destination_path": "%s",
@@ -61,10 +52,10 @@ var (
 				"visibility": "private"
 			}
 		}
-	}`, FAKE_VALID_PROJECT, FAKE_VALID_PROJECT, FAKE_VALID_GROUP, FAKE_VALID_GROUP)
+	}`, fakeValidProject, fakeValidProject, fakeValidGroup, fakeValidGroup)
 )
 
-// testMirroringOptions is a helper function to create a MirroringOptions instance for testing
+// testMirroringOptions is a helper function to create a MirroringOptions instance for testing.
 func testMirroringOptions() *MirroringOptions {
 	return &MirroringOptions{
 		DestinationPath: "project",
@@ -73,8 +64,10 @@ func testMirroringOptions() *MirroringOptions {
 	}
 }
 
-// TestAddProject tests adding a project to the MirrorMapping
+// TestAddProject tests adding a project to the MirrorMapping.
 func TestAddProject(t *testing.T) {
+	t.Parallel()
+
 	m := &MirrorMapping{
 		Projects: make(map[string]*MirroringOptions),
 	}
@@ -91,8 +84,10 @@ func TestAddProject(t *testing.T) {
 	}
 }
 
-// TestAddGroup tests adding a group to the MirrorMapping
+// TestAddGroup tests adding a group to the MirrorMapping.
 func TestAddGroup(t *testing.T) {
+	t.Parallel()
+
 	m := &MirrorMapping{
 		Groups: make(map[string]*MirroringOptions),
 	}
@@ -109,332 +104,9 @@ func TestAddGroup(t *testing.T) {
 	}
 }
 
-// TestOpenMirrorMapping tests opening and parsing a JSON file into a MirrorMapping
-func TestOpenMirrorMapping(t *testing.T) {
-	file := createTempTestFile(FAKE_VALID_MAPPING_RAW, t)
-	defer os.Remove(file.Name())
-
-	mapping, err := OpenMirrorMapping(file.Name())
-	if err != nil {
-		t.Fatalf("OpenMirrorMapping() error = %v", err)
-	}
-
-	// Check if projects and groups are equal
-	if len(mapping.Projects) != len(FAKE_VALID_MAPPPING.Projects) || len(mapping.Groups) != len(FAKE_VALID_MAPPPING.Groups) {
-		t.Fatalf("expected mapping to have %d projects and %d groups, got %d projects and %d groups", len(FAKE_VALID_MAPPPING.Projects), len(FAKE_VALID_MAPPPING.Groups), len(mapping.Projects), len(mapping.Groups))
-	}
-	for k, v := range mapping.Projects {
-		if expected, ok := FAKE_VALID_MAPPPING.Projects[k]; ok {
-			if !reflect.DeepEqual(v, expected) {
-				t.Errorf("expected project %s options %v, got %v", k, expected, v)
-			}
-		} else {
-			t.Errorf("unexpected project %s in mapping", k)
-		}
-	}
-	for k, v := range mapping.Groups {
-		if expected, ok := FAKE_VALID_MAPPPING.Groups[k]; ok {
-			if !reflect.DeepEqual(v, expected) {
-				t.Errorf("expected group %s options %v, got %v", k, expected, v)
-			}
-		} else {
-			t.Errorf("unexpected group %s in mapping", k)
-		}
-	}
-}
-
-func createTempTestFile(fileContent string, t *testing.T) *os.File {
-	file, err := os.CreateTemp("", "testfile")
-	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
-
-	if _, err := file.Write([]byte(fileContent)); err != nil {
-		t.Fatalf("failed to write to temp file: %v", err)
-	}
-
-	err = file.Close()
-	if err != nil {
-		t.Fatalf("failed to close temp file: %v", err)
-	}
-	return file
-}
-
-// TestCheck tests the check method of MirrorMapping
-func TestCheck(t *testing.T) {
-	tests := []struct {
-		name     string
-		mapping  *MirrorMapping
-		wantMsgs []string
-	}{
-		{
-			name: "ValidMapping",
-			mapping: &MirrorMapping{
-				Projects: map[string]*MirroringOptions{
-					FAKE_VALID_PROJECT: {
-						DestinationPath: FAKE_VALID_PROJECT,
-						CICDCatalog:     new(true),
-						MirrorIssues:    new(true),
-					},
-				},
-				Groups: map[string]*MirroringOptions{
-					FAKE_VALID_GROUP: {
-						DestinationPath: FAKE_VALID_GROUP,
-						CICDCatalog:     new(true),
-						MirrorIssues:    new(true),
-					},
-				},
-			},
-			// no errors expected
-			wantMsgs: nil,
-		},
-		{
-			name: "ValidMappingWithOptionalFieldsOmitted",
-			mapping: &MirrorMapping{
-				Projects: map[string]*MirroringOptions{
-					FAKE_VALID_PROJECT: {
-						DestinationPath: FAKE_VALID_PROJECT,
-					},
-				},
-				Groups: map[string]*MirroringOptions{
-					FAKE_VALID_GROUP: {
-						DestinationPath: FAKE_VALID_GROUP,
-					},
-				},
-			},
-			wantMsgs: nil,
-		},
-		{
-			name: "InvalidMappingNoProjectsOrGroups",
-			mapping: &MirrorMapping{
-				Projects: map[string]*MirroringOptions{},
-				Groups:   map[string]*MirroringOptions{},
-			},
-			wantMsgs: []string{
-				"no projects or groups defined in the mapping",
-			},
-		},
-		{
-			name: "InvalidProjectMapping",
-			mapping: &MirrorMapping{
-				Projects: map[string]*MirroringOptions{
-					"": {
-						DestinationPath: "",
-					},
-				},
-				Groups: map[string]*MirroringOptions{},
-			},
-			wantMsgs: []string{
-				"invalid (empty) string in project mapping",
-			},
-		},
-		{
-			name: "InvalidGroupMapping",
-			mapping: &MirrorMapping{
-				Projects: map[string]*MirroringOptions{},
-				Groups: map[string]*MirroringOptions{
-					"": {
-						DestinationPath: "",
-					},
-				},
-			},
-			wantMsgs: []string{
-				"invalid (empty) string in group mapping",
-			},
-		},
-		{
-			name: "MultipleErrors",
-			mapping: &MirrorMapping{
-				Projects: map[string]*MirroringOptions{
-					"": {
-						DestinationPath: "",
-					},
-				},
-				Groups: map[string]*MirroringOptions{
-					"": {
-						DestinationPath: "",
-					},
-				},
-			},
-			wantMsgs: []string{
-				"invalid (empty) string in project mapping",
-				"invalid (empty) string in group mapping",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// check() logs every problem as it finds it; capture those logs.
-			core, recorded := observer.New(zapcore.ErrorLevel)
-			restore := zap.ReplaceGlobals(zap.New(core))
-			defer restore()
-
-			problems := tt.mapping.check()
-
-			var got []string
-			for _, entry := range recorded.All() {
-				got = append(got, strings.TrimPrefix(entry.Message, "invalid mirror mapping: "))
-			}
-
-			if problems != len(tt.wantMsgs) {
-				t.Errorf("check() problems = %d, want %d", problems, len(tt.wantMsgs))
-			}
-			if !reflect.DeepEqual(got, tt.wantMsgs) {
-				t.Errorf("check() logged = %v, want %v", got, tt.wantMsgs)
-			}
-		})
-	}
-}
-
-func TestStringArraysMatchValues(t *testing.T) {
-	tests := []struct {
-		name string
-		a, b []string
-		want bool
-	}{
-		{
-			name: "both empty",
-			a:    []string{},
-			b:    []string{},
-			want: true,
-		},
-		{
-			name: "same order",
-			a:    []string{"foo", "bar", "baz"},
-			b:    []string{"foo", "bar", "baz"},
-			want: true,
-		},
-		{
-			name: "different order",
-			a:    []string{"foo", "bar", "baz"},
-			b:    []string{"baz", "foo", "bar"},
-			want: true,
-		},
-		{
-			name: "duplicate values",
-			a:    []string{"x", "x", "y"},
-			b:    []string{"y", "x", "x"},
-			want: true,
-		},
-		{
-			name: "different lengths",
-			a:    []string{"one", "two"},
-			b:    []string{"one"},
-			want: false,
-		},
-		{
-			name: "mismatched values",
-			a:    []string{"a", "b", "c"},
-			b:    []string{"a", "b", "d"},
-			want: false,
-		},
-	}
-
-	for _, tc := range tests {
-		tc := tc // capture range variable
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got := StringArraysMatchValues(tc.a, tc.b)
-			if got != tc.want {
-				t.Errorf("StringArraysMatchValues(%v, %v) = %v; want %v",
-					tc.a, tc.b, got, tc.want)
-			}
-		})
-	}
-}
-
-func TestConvertVisibility(t *testing.T) {
-	tests := []struct {
-		name  string
-		input *string
-		want  gitlab.VisibilityValue
-	}{
-		{
-			name:  "public visibility",
-			input: new(string(gitlab.PublicVisibility)),
-			want:  gitlab.PublicVisibility,
-		},
-		{
-			name:  "internal visibility",
-			input: new(string(gitlab.InternalVisibility)),
-			want:  gitlab.InternalVisibility,
-		},
-		{
-			name:  "private visibility",
-			input: new(string(gitlab.PrivateVisibility)),
-			want:  gitlab.PrivateVisibility,
-		},
-		{
-			name:  "unknown defaults to public",
-			input: new("something-else"),
-			want:  gitlab.PublicVisibility,
-		},
-		{
-			name:  "nil defaults to public",
-			input: nil,
-			want:  gitlab.PublicVisibility,
-		},
-	}
-
-	for _, tc := range tests {
-		tc := tc // capture range variable
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got := ConvertVisibility(tc.input)
-			if got != tc.want {
-				t.Errorf("ConvertVisibility(%v) = %v; want %v", tc.input, got, tc.want)
-			}
-		})
-	}
-}
-
-func TestCheckVisibility(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  bool
-	}{
-		{
-			name:  "public visibility is valid",
-			input: string(gitlab.PublicVisibility),
-			want:  true,
-		},
-		{
-			name:  "internal visibility is valid",
-			input: string(gitlab.InternalVisibility),
-			want:  true,
-		},
-		{
-			name:  "private visibility is valid",
-			input: string(gitlab.PrivateVisibility),
-			want:  true,
-		},
-		{
-			name:  "unknown visibility is invalid",
-			input: "some-other",
-			want:  false,
-		},
-		{
-			name:  "empty string is invalid",
-			input: "",
-			want:  false,
-		},
-	}
-
-	for _, tc := range tests {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			got := checkVisibility(tc.input)
-			if got != tc.want {
-				t.Errorf("checkVisibility(%q) = %v; want %v", tc.input, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestMirrorMappingGetProject(t *testing.T) {
+	t.Parallel()
+
 	// Prepare a mirror mapping with some project entries
 	opts1 := &MirroringOptions{
 		DestinationPath:     "dest1",
@@ -461,9 +133,9 @@ func TestMirrorMappingGetProject(t *testing.T) {
 	}
 
 	tests := []struct {
+		want   *MirroringOptions
 		name   string
 		key    string
-		want   *MirroringOptions
 		wantOk bool
 	}{
 		{
@@ -487,7 +159,6 @@ func TestMirrorMappingGetProject(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc // capture range variable
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got, ok := mm.GetProject(tc.key)
@@ -502,6 +173,8 @@ func TestMirrorMappingGetProject(t *testing.T) {
 }
 
 func TestMirrorMappingGetGroup(t *testing.T) {
+	t.Parallel()
+
 	// Prepare a mirror mapping with some group entries
 	optsA := &MirroringOptions{
 		DestinationPath:     "groupDestA",
@@ -528,9 +201,9 @@ func TestMirrorMappingGetGroup(t *testing.T) {
 	}
 
 	tests := []struct {
+		want   *MirroringOptions
 		name   string
 		key    string
-		want   *MirroringOptions
 		wantOk bool
 	}{
 		{
@@ -554,7 +227,6 @@ func TestMirrorMappingGetGroup(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc // capture range variable
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got, ok := mm.GetGroup(tc.key)
@@ -568,44 +240,18 @@ func TestMirrorMappingGetGroup(t *testing.T) {
 	}
 }
 
-func TestCheckSetsDefaultVisibilityWhenOptionalFieldsOmitted(t *testing.T) {
-	mapping := &MirrorMapping{
-		Projects: map[string]*MirroringOptions{
-			FAKE_VALID_PROJECT: {
-				DestinationPath: FAKE_VALID_PROJECT,
-			},
-		},
-		Groups: map[string]*MirroringOptions{
-			FAKE_VALID_GROUP: {
-				DestinationPath: FAKE_VALID_GROUP,
-			},
-		},
-	}
-
-	if problems := mapping.check(); problems != 0 {
-		t.Fatalf("expected no problems, got %d", problems)
-	}
-
-	if got := helpers.Deref(mapping.Projects[FAKE_VALID_PROJECT].Visibility, ""); got != string(gitlab.PublicVisibility) {
-		t.Errorf("expected default project visibility %q, got %q", string(gitlab.PublicVisibility), got)
-	}
-	if got := helpers.Deref(mapping.Groups[FAKE_VALID_GROUP].Visibility, ""); got != string(gitlab.PublicVisibility) {
-		t.Errorf("expected default group visibility %q, got %q", string(gitlab.PublicVisibility), got)
-	}
-}
-
 func TestMirroringOptionsTriggerBuilds(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
 		options *MirroringOptions
+		name    string
 		want    bool
 	}{
-		{"no options", nil, false},
-		{"mirror_trigger_builds unset", &MirroringOptions{}, false},
-		{"mirror_trigger_builds disabled", &MirroringOptions{MirrorTriggerBuilds: new(false)}, false},
-		{"mirror_trigger_builds enabled", &MirroringOptions{MirrorTriggerBuilds: new(true)}, true},
+		{nil, "no options", false},
+		{&MirroringOptions{}, "mirror_trigger_builds unset", false},
+		{&MirroringOptions{MirrorTriggerBuilds: new(false)}, "mirror_trigger_builds disabled", false},
+		{&MirroringOptions{MirrorTriggerBuilds: new(true)}, "mirror_trigger_builds enabled", true},
 	}
 
 	for _, tt := range tests {

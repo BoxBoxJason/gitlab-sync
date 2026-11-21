@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestExitCodeReflectsHighestSeverity(t *testing.T) {
+func TestExitCodeReflectsHighestSeverity(t *testing.T) { //nolint:paralleltest // asserts on the process-wide error tally (helpers.ExitCode)
 	tests := []struct {
-		name     string
 		report   func()
+		name     string
 		wantCode int
 	}{
 		{
@@ -42,7 +42,7 @@ func TestExitCodeReflectsHighestSeverity(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range tests { //nolint:paralleltest // asserts on the process-wide error tally (helpers.ExitCode)
 		t.Run(tt.name, func(t *testing.T) {
 			ResetReported()
 			t.Cleanup(ResetReported)
@@ -56,7 +56,7 @@ func TestExitCodeReflectsHighestSeverity(t *testing.T) {
 	}
 }
 
-func TestResetReported(t *testing.T) {
+func TestResetReported(t *testing.T) { //nolint:paralleltest // asserts on the process-wide error tally (helpers.ExitCode)
 	ReportBlocking(errors.New("boom"))
 	if ExitCode() != ExitBlocking {
 		t.Fatalf("precondition failed: expected exit code %d", ExitBlocking)

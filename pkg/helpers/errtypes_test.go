@@ -10,9 +10,11 @@ const (
 )
 
 func TestNewBlocking(t *testing.T) {
+	t.Parallel()
+
 	err := errors.New(testErrorMsg)
 	mirrorErr := NewBlocking(err)
-	if mirrorErr.Err != err {
+	if !errors.Is(mirrorErr.Err, err) {
 		t.Errorf("Expected Err to be %v, got %v", err, mirrorErr.Err)
 	}
 	if mirrorErr.Severity != SeverityBlocking {
@@ -21,9 +23,11 @@ func TestNewBlocking(t *testing.T) {
 }
 
 func TestNewNonBlocking(t *testing.T) {
+	t.Parallel()
+
 	err := errors.New(testErrorMsg)
 	mirrorErr := NewNonBlocking(err)
-	if mirrorErr.Err != err {
+	if !errors.Is(mirrorErr.Err, err) {
 		t.Errorf("Expected Err to be %v, got %v", err, mirrorErr.Err)
 	}
 	if mirrorErr.Severity != SeverityNonBlocking {
@@ -32,6 +36,8 @@ func TestNewNonBlocking(t *testing.T) {
 }
 
 func TestMirrorErrorError(t *testing.T) {
+	t.Parallel()
+
 	err := errors.New(testErrorMsg)
 	mirrorErr := MirrorError{Err: err, Severity: SeverityBlocking}
 	if mirrorErr.Error() != testErrorMsg {
@@ -40,17 +46,21 @@ func TestMirrorErrorError(t *testing.T) {
 }
 
 func TestMirrorErrorUnwrap(t *testing.T) {
+	t.Parallel()
+
 	err := errors.New(testErrorMsg)
 	mirrorErr := MirrorError{Err: err, Severity: SeverityBlocking}
-	if mirrorErr.Unwrap() != err {
+	if !errors.Is(mirrorErr.Unwrap(), err) {
 		t.Errorf("Expected Unwrap() to return %v, got %v", err, mirrorErr.Unwrap())
 	}
 }
 
 func TestSeverityOf(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name     string
 		err      error
+		name     string
 		expected Severity
 	}{
 		{
@@ -76,6 +86,8 @@ func TestSeverityOf(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			if got := SeverityOf(tt.err); got != tt.expected {
 				t.Errorf("SeverityOf() = %v, want %v", got, tt.expected)
 			}

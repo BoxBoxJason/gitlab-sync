@@ -14,16 +14,17 @@ Feature: The destination is missing or unreachable
     And the output matches "failed to get current user"
     And the source received no write request
 
-  Scenario: the namespace of the destination project does not exist
+  Scenario: the missing parent group of the destination project is created
     Given the mirror mapping:
       """
       {"projects": {"team/a": {"destination_path": "missing/a"}}}
       """
     When I run gitlab-sync
-    Then the exit code is 1
-    And the output matches "parent group not found for path: missing"
-    And the destination contains no project "missing/a"
-    And the destination received no POST request on "/api/v4/projects"
+    Then the exit code is 0
+    And the output matches "Creating missing parent group"
+    And the destination contains the group "missing"
+    And the destination contains the project "missing/a"
+    And the destination project "missing/a" has the same refs as the source project "team/a"
 
   Scenario: the destination group of a mapped group is created when it is missing
     Given the source group "team" has an avatar

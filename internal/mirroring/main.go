@@ -29,6 +29,8 @@ func createMirroringInstances(gitlabMirrorArgs *mirrorcfg.ParserArgs) (mirroring
 		sourceGitlabSize = InstanceSizeBig
 	}
 
+	apiSlots := sharedAPISlots(gitlabMirrorArgs.SourceGitlabURL, gitlabMirrorArgs.DestinationGitlabURL, gitlabMirrorArgs.APIConcurrency)
+
 	sourceGitlabInstance, err := NewGitlabInstance(&GitlabInstanceOpts{
 		GitlabURL:      gitlabMirrorArgs.SourceGitlabURL,
 		GitlabToken:    gitlabMirrorArgs.SourceGitlabToken,
@@ -38,6 +40,7 @@ func createMirroringInstances(gitlabMirrorArgs *mirrorcfg.ParserArgs) (mirroring
 		GitConcurrency: gitlabMirrorArgs.GitConcurrency,
 		InstanceSize:   sourceGitlabSize,
 		UserAgent:      gitlabMirrorArgs.UserAgent,
+		apiSlots:       apiSlots,
 	})
 	if err != nil {
 		return mirroringInstances{}, err
@@ -57,6 +60,7 @@ func createMirroringInstances(gitlabMirrorArgs *mirrorcfg.ParserArgs) (mirroring
 		GitConcurrency: gitlabMirrorArgs.GitConcurrency,
 		InstanceSize:   destinationGitlabSize,
 		UserAgent:      gitlabMirrorArgs.UserAgent,
+		apiSlots:       apiSlots,
 	})
 	if err != nil {
 		return mirroringInstances{}, err

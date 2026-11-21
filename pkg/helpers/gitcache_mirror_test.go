@@ -4,7 +4,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -47,7 +49,7 @@ func TestGitCacheMirrorRepo(t *testing.T) {
 	sourceURL := fileScheme + sourceDir
 	destinationURL := fileScheme + destinationDir
 
-	if err = MirrorRepo(cache, sourceURL, destinationURL, nil, nil, MirrorPushOptions{}); err != nil {
+	if err = MirrorRepo(cache, sourceURL, destinationURL, nil, nil, MirrorPushOptions{}, nil); err != nil {
 		t.Fatalf("first MirrorRepo failed: %v", err)
 	}
 
@@ -79,7 +81,7 @@ func TestGitCacheMirrorRepo(t *testing.T) {
 	removeRef(t, sourceRepo, "refs/heads/feature")
 	setRef(t, sourceRepo, "refs/heads/other", head.Hash())
 
-	if err = MirrorRepo(cache, sourceURL, destinationURL, nil, nil, MirrorPushOptions{}); err != nil {
+	if err = MirrorRepo(cache, sourceURL, destinationURL, nil, nil, MirrorPushOptions{}, nil); err != nil {
 		t.Fatalf("second MirrorRepo failed: %v", err)
 	}
 
@@ -128,12 +130,74 @@ func TestGitCacheMirrorRepoRebuildsBrokenEntry(t *testing.T) {
 		t.Fatalf("failed to write the broken entry: %v", err)
 	}
 
-	if err = MirrorRepo(cache, sourceURL, fileScheme+destinationDir, nil, nil, MirrorPushOptions{}); err != nil {
+	if err = MirrorRepo(cache, sourceURL, fileScheme+destinationDir, nil, nil, MirrorPushOptions{}, nil); err != nil {
 		t.Fatalf("MirrorRepo failed on a broken cache entry: %v", err)
 	}
 
 	if _, err = git.PlainOpen(entryPath); err != nil {
 		t.Errorf("the broken cache entry was not rebuilt: %v", err)
+	}
+}
+
+// TestGitCacheMirrorRepoTakesSlotAfterLock checks that a mirroring waiting for
+// the cache entry lock holds no transfer slot: the slot is only taken once the
+// lock is free, and released when the mirroring is over.
+func TestGitCacheMirrorRepoTakesSlotAfterLock(t *testing.T) {
+	t.Parallel()
+
+	sourceDir := filepath.Join(t.TempDir(), "source.git")
+	seedBareRepo(t, sourceDir)
+
+	destinationDir := filepath.Join(t.TempDir(), "destination.git")
+	if _, err := git.PlainInit(destinationDir, true); err != nil {
+		t.Fatalf("failed to initialize the destination repository: %v", err)
+	}
+
+	cache, err := NewGitCache(t.TempDir(), 0)
+	if err != nil {
+		t.Fatalf("NewGitCache failed: %v", err)
+	}
+
+	sourceURL := fileScheme + sourceDir
+
+	entryPath, err := cache.repoPath(sourceURL)
+	if err != nil {
+		t.Fatalf("repoPath failed: %v", err)
+	}
+
+	releaseLock, err := cache.lock(entryPath)
+	if err != nil {
+		t.Fatalf("failed to lock the cache entry: %v", err)
+	}
+
+	var acquired, released atomic.Bool
+
+	acquireSlot := func() func() {
+		acquired.Store(true)
+
+		return func() { released.Store(true) }
+	}
+
+	done := make(chan error, 1)
+
+	go func() {
+		done <- MirrorRepo(cache, sourceURL, fileScheme+destinationDir, nil, nil, MirrorPushOptions{}, acquireSlot)
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+
+	if acquired.Load() {
+		t.Fatal("the slot was taken while the cache entry was still locked")
+	}
+
+	releaseLock()
+
+	if err = <-done; err != nil {
+		t.Fatalf("MirrorRepo failed: %v", err)
+	}
+
+	if !acquired.Load() || !released.Load() {
+		t.Errorf("slot acquired = %t, released = %t; want both", acquired.Load(), released.Load())
 	}
 }
 

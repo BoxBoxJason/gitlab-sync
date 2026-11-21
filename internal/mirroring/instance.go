@@ -74,6 +74,9 @@ type GitlabInstance struct {
 
 // GitlabInstanceOpts holds the options used to create a GitlabInstance.
 type GitlabInstanceOpts struct {
+	// apiSlots, when set, are the API request slots shared with another instance
+	// of the same server (see sharedAPISlots); its capacity replaces APIConcurrency.
+	apiSlots     chan struct{}
 	GitlabURL    string
 	GitlabToken  string
 	Role         string

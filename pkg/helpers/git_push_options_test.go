@@ -116,7 +116,7 @@ func TestMirrorRepoPushOptions(t *testing.T) {
 			initRecordingDestination(t, destDir, recordFile)
 
 			pushOptions := MirrorPushOptions{SkipPipelines: tt.skipPipelines}
-			if err := MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, pushOptions); err != nil {
+			if err := MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, pushOptions, nil); err != nil {
 				t.Fatalf("MirrorRepo failed: %v", err)
 			}
 

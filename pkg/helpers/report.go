@@ -64,16 +64,17 @@ func ReportNonBlocking(err error) {
 
 // ExitCode returns the process exit code implied by the errors reported so far.
 func ExitCode() int {
-	switch Severity(reportedSeverity.Load()) {
-	case SeverityBlocking:
+	severity := Severity(reportedSeverity.Load())
+
+	if severity == SeverityBlocking {
 		return ExitBlocking
-	case SeverityNonBlocking:
-		return ExitNonBlocking
-	case SeverityNone:
-		return ExitOK
-	default:
-		return ExitOK
 	}
+
+	if severity == SeverityNonBlocking {
+		return ExitNonBlocking
+	}
+
+	return ExitOK
 }
 
 // ResetReported clears the reported-severity tally. It is intended for tests

@@ -84,7 +84,7 @@ func (g *GitlabInstance) ensureGroup(groupPath string, fallbackVisibility gitlab
 
 	createOptions.Visibility = &visibility
 
-	zap.L().Info("Creating missing parent group", zap.String(ROLE, g.Role), zap.String("group", groupPath), zap.String("visibility", string(visibility)))
+	zap.L().Info("Creating missing parent group", zap.String(RoleKey, g.Role), zap.String("group", groupPath), zap.String("visibility", string(visibility)))
 
 	createdGroup, _, err := g.Gitlab.Groups.CreateGroup(createOptions)
 	if err != nil {

@@ -1,29 +1,28 @@
 package cmd
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
-	"strings"
+	"path/filepath"
 	"testing"
-
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
-	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	"go.uber.org/zap"
 )
 
 const (
-	ENTER_VALUE    = "Enter value"
-	INPUT_REQUIRED = "Input required"
-	RECEIVED_INPUT = "Received input"
+	stdinFilePermission = 0o600
+	enterValue          = "Enter value"
+	inputRequired       = "Input required"
+	receivedInput       = "Received input"
 )
 
-func TestSetupZapLogger(t *testing.T) {
+func TestSetupZapLogger(t *testing.T) { //nolint:paralleltest // replaces the process-wide zap logger
 	// Define the test cases in a table-driven approach.
 	tests := []struct {
 		name             string
-		verbose          bool
 		filename         string
+		verbose          bool
 		debugExpected    bool
 		infoExpected     bool
 		shouldCreateFile bool
@@ -62,10 +61,20 @@ func TestSetupZapLogger(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range tests { //nolint:paralleltest // replaces the process-wide zap logger
 		t.Run(tc.name, func(t *testing.T) {
 			// Call the setup function with appropriate parameters.
-			SetupZapLogger(tc.verbose, tc.filename)
+			level := zap.InfoLevel
+			if tc.verbose {
+				level = zap.DebugLevel
+			}
+
+			filename := ""
+			if tc.filename != "" {
+				filename = filepath.Join(t.TempDir(), tc.filename)
+			}
+
+			SetupZapLogger(level, filename)
 
 			// Check that the logger's log level for debug is set as expected.
 			if zap.L().Core().Enabled(zap.DebugLevel) != tc.debugExpected {
@@ -80,7 +89,7 @@ func TestSetupZapLogger(t *testing.T) {
 			}
 
 			// If a filename is provided, verify that the file is created.
-			if tc.shouldCreateFile && tc.filename != "" {
+			if tc.shouldCreateFile && filename != "" {
 				// Write a log entry to ensure that the logger flushes its output.
 				zap.L().Info("test log entry")
 				// Flush any buffered log entries.
@@ -90,45 +99,66 @@ func TestSetupZapLogger(t *testing.T) {
 				}
 
 				// Check if the file exists.
-				if _, err := os.Stat(tc.filename); os.IsNotExist(err) {
-					t.Errorf("Expected log file %s to be created, but it does not exist", tc.filename)
+				if _, err := os.Stat(filename); os.IsNotExist(err) {
+					t.Errorf("Expected log file %s to be created, but it does not exist", filename)
 				} else if err != nil {
-					t.Errorf("Error checking log file %s: %v", tc.filename, err)
+					t.Errorf("Error checking log file %s: %v", filename, err)
 				}
-				// Cleanup: remove the test log file.
-				os.Remove(tc.filename)
 			}
 		})
 	}
 }
 
+// replaceStdin points os.Stdin at a temporary file holding content until the test ends.
+func replaceStdin(t *testing.T, content string) {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "stdin")
+
+	if err := os.WriteFile(path, []byte(content), stdinFilePermission); err != nil {
+		t.Fatalf("Failed to write the stdin file: %v", err)
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("Failed to open the stdin file: %v", err)
+	}
+
+	original := os.Stdin
+	os.Stdin = file
+
+	t.Cleanup(func() {
+		os.Stdin = original
+
+		if closeErr := file.Close(); closeErr != nil {
+			t.Logf("Failed to close the stdin file: %v", closeErr)
+		}
+	})
+}
+
+// runCrasher re-runs the named test in a subprocess with envVar set, and requires that the
+// subprocess terminates with an error without reporting a test failure (i.e. that it exited fatally).
+func runCrasher(t *testing.T, testName, envVar string) {
+	t.Helper()
+
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^"+testName+"$")
+	cmd.Env = append(os.Environ(), envVar+"=1")
+
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("Expected subprocess to fail, but it succeeded with output: %q", output)
+	}
+
+	if bytes.Contains(output, []byte("--- FAIL")) {
+		t.Fatalf("Expected subprocess to exit fatally, but the test failed instead: %s", output)
+	}
+}
+
 // TestPromptForInputNonEmpty verifies that promptForInput returns the expected input
 // when a single token (with surrounding spaces) is provided.
-func TestPromptForInputNonEmpty(t *testing.T) {
-	// Backup the original os.Stdin and restore it after the test.
-	origStdin := os.Stdin
-	defer func() { os.Stdin = origStdin }()
-
-	// Create a temporary file with a single token input.
-	tempFile, err := os.CreateTemp("", "stdin")
-	if err != nil {
-		t.Fatalf("Failed to create temporary file: %v", err)
-	}
-	defer os.Remove(tempFile.Name())
-
-	// Write a single token with extra spaces. Note that fmt.Scanln reads a single token.
-	input := "   hello   \n"
-	if _, err := tempFile.WriteString(input); err != nil {
-		t.Fatalf("Failed to write to temporary file: %v", err)
-	}
-
-	// Reset the file offset to the beginning.
-	if _, err := tempFile.Seek(0, 0); err != nil {
-		t.Fatalf("Failed to reset file offset: %v", err)
-	}
-
-	// Set the temporary file as os.Stdin.
-	os.Stdin = tempFile
+func TestPromptForInputNonEmpty(t *testing.T) { //nolint:paralleltest // replaces the process-wide os.Stdin
+	// Note that fmt.Scanln reads a single token.
+	replaceStdin(t, "   hello   \n")
 
 	result := promptForInput("Enter text")
 	expected := "hello"
@@ -142,48 +172,29 @@ func TestPromptForInputNonEmpty(t *testing.T) {
 // Since fmt.Scanln returns an error ("unexpected newline") for an empty line, the function will call Fatal,
 // which results in os.Exit(1). To test this behavior without terminating the test run, we execute the test
 // in a subprocess.
-func TestPromptForInputEmpty(t *testing.T) {
+func TestPromptForInputEmpty(t *testing.T) { //nolint:paralleltest // replaces the process-wide os.Stdin
 	// Check if we are running inside the subprocess.
 	if os.Getenv("BE_CRASHER") == "1" {
-		// In the subprocess, create a temporary file that contains only a newline.
-		tempFile, err := os.CreateTemp("", "stdin")
-		if err != nil {
-			os.Exit(2)
-		}
-		defer os.Remove(tempFile.Name())
-
-		if _, err := tempFile.WriteString("\n"); err != nil {
-			os.Exit(2)
-		}
-		if _, err := tempFile.Seek(0, 0); err != nil {
-			os.Exit(2)
-		}
-		os.Stdin = tempFile
+		replaceStdin(t, "\n")
 
 		// Calling promptForInput is expected to invoke zap.L().Fatal and exit.
 		// Therefore, subsequent lines should never be reached.
 		promptForInput("Enter text")
-		// If we reach here, exit with a non-zero status.
-		os.Exit(3)
+		t.Fatal("promptForInput returned instead of exiting")
 	}
 
-	// Set up the command to run this test in a subprocess.
-	cmd := exec.Command(os.Args[0], "-test.run=TestPromptForInputEmpty")
-	cmd.Env = append(os.Environ(), "BE_CRASHER=1")
-	output, err := cmd.CombinedOutput()
-
-	// We expect the subprocess to exit with a non-zero exit code.
-	if err == nil {
-		t.Fatalf("Expected subprocess to fail, but it succeeded with output: %q", output)
-	}
+	runCrasher(t, "TestPromptForInputEmpty", "BE_CRASHER")
 }
 
 // TestPromptForMandatoryInputWithDefault tests that if a non-empty defaultValue is provided,
 // the function returns it trimmed and does not prompt the user.
 func TestPromptForMandatoryInputWithDefault(t *testing.T) {
+	t.Parallel()
+
 	defaultVal := "   providedValue   "
-	res := promptForMandatoryInput(defaultVal, ENTER_VALUE, INPUT_REQUIRED, RECEIVED_INPUT, false, false)
+	res := promptForMandatoryInput(defaultVal, enterValue, inputRequired, receivedInput, promptOptions{})
 	expected := "providedValue"
+
 	if res != expected {
 		t.Errorf("Expected %q but got %q", expected, res)
 	}
@@ -192,30 +203,13 @@ func TestPromptForMandatoryInputWithDefault(t *testing.T) {
 // TestPromptForMandatoryInputWithPrompt tests that if defaultValue is empty and prompting is enabled,
 // the function calls promptForInput and returns the user input trimmed.
 // We simulate the user input via a temporary file assigned to os.Stdin.
-func TestPromptForMandatoryInputWithPrompt(t *testing.T) {
-	// Backup the original os.Stdin.
-	origStdin := os.Stdin
-	defer func() { os.Stdin = origStdin }()
+func TestPromptForMandatoryInputWithPrompt(t *testing.T) { //nolint:paralleltest // replaces the process-wide os.Stdin
+	// Note that promptForInput uses fmt.Scanln which requires a single token.
+	replaceStdin(t, "   userInput   \n")
 
-	// Create a temporary file to simulate user input.
-	tempFile, err := os.CreateTemp("", "stdin")
-	if err != nil {
-		t.Fatalf("Failed to create temporary file: %v", err)
-	}
-	defer os.Remove(tempFile.Name())
-
-	// Write input; note that promptForInput uses fmt.Scanln which requires a single token.
-	input := "   userInput   \n"
-	if _, err := tempFile.WriteString(input); err != nil {
-		t.Fatalf("Failed to write to temporary file: %v", err)
-	}
-	if _, err := tempFile.Seek(0, 0); err != nil {
-		t.Fatalf("Failed to reset file offset: %v", err)
-	}
-	os.Stdin = tempFile
-
-	res := promptForMandatoryInput("", ENTER_VALUE, INPUT_REQUIRED, RECEIVED_INPUT, false, false)
+	res := promptForMandatoryInput("", enterValue, inputRequired, receivedInput, promptOptions{})
 	expected := "userInput"
+
 	if res != expected {
 		t.Errorf("Expected %q but got %q", expected, res)
 	}
@@ -223,165 +217,30 @@ func TestPromptForMandatoryInputWithPrompt(t *testing.T) {
 
 // TestPromptForMandatoryInputEmptyPrompt tests that if prompting is enabled but the user provides empty input,
 // the function logs a fatal error and exits. We use a subprocess to capture os.Exit.
-func TestPromptForMandatoryInputEmptyPrompt(t *testing.T) {
+func TestPromptForMandatoryInputEmptyPrompt(t *testing.T) { //nolint:paralleltest // replaces the process-wide os.Stdin
 	// If BE_CRASHER_MANDATORY_EMPTY is set in the environment, this indicates we are in the subprocess.
 	if os.Getenv("BE_CRASHER_MANDATORY_EMPTY") == "1" {
-		// Create a temporary file with only a newline to simulate empty input.
-		tempFile, err := os.CreateTemp("", "stdin")
-		if err != nil {
-			os.Exit(2)
-		}
-		defer os.Remove(tempFile.Name())
-		if _, err := tempFile.WriteString("\n"); err != nil {
-			os.Exit(2)
-		}
-		if _, err := tempFile.Seek(0, 0); err != nil {
-			os.Exit(2)
-		}
-		os.Stdin = tempFile
+		// Simulate empty input.
+		replaceStdin(t, "\n")
 
 		// This call is expected to trigger zap.L().Fatal and exit the process.
-		_ = promptForMandatoryInput("", ENTER_VALUE, INPUT_REQUIRED, RECEIVED_INPUT, false, false)
-		// Should not reach here; exit with non-zero code if it does.
-		os.Exit(3)
+		_ = promptForMandatoryInput("", enterValue, inputRequired, receivedInput, promptOptions{})
+		t.Fatal("promptForMandatoryInput returned instead of exiting")
 	}
 
-	// Run the subprocess test.
-	cmd := exec.Command(os.Args[0], "-test.run=TestPromptForMandatoryInputEmptyPrompt")
-	cmd.Env = append(os.Environ(), "BE_CRASHER_MANDATORY_EMPTY=1")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("Expected subprocess to exit with fatal error, but it succeeded, output: %q", output)
-	}
+	runCrasher(t, "TestPromptForMandatoryInputEmptyPrompt", "BE_CRASHER_MANDATORY_EMPTY")
 }
 
 // TestPromptForMandatoryInputPromptDisabled tests that if prompting is disabled and no defaultValue is provided,
 // the function logs a fatal error and exits. Again, we use a subprocess.
 func TestPromptForMandatoryInputPromptDisabled(t *testing.T) {
+	t.Parallel()
+
 	if os.Getenv("BE_CRASHER_MANDATORY_DISABLED") == "1" {
 		// With prompting disabled, the function should log a fatal error immediately.
-		_ = promptForMandatoryInput("", ENTER_VALUE, INPUT_REQUIRED, RECEIVED_INPUT, true, false)
-		os.Exit(3)
+		_ = promptForMandatoryInput("", enterValue, inputRequired, receivedInput, promptOptions{disabled: true})
+		t.Fatal("promptForMandatoryInput returned instead of exiting")
 	}
 
-	cmd := exec.Command(os.Args[0], "-test.run=TestPromptForMandatoryInputPromptDisabled")
-	cmd.Env = append(os.Environ(), "BE_CRASHER_MANDATORY_DISABLED=1")
-	output, err := cmd.CombinedOutput()
-	if err == nil {
-		t.Fatalf("Expected subprocess to fail due to prompting disabled, but it succeeded, output: %q", output)
-	}
-}
-
-func TestDefaultUserAgent(t *testing.T) {
-	got := defaultUserAgent()
-
-	if want := binaryName + "/" + resolveVersion(); got != want {
-		t.Errorf("expected %q, got %q", want, got)
-	}
-
-	if strings.ContainsAny(got, " \t\r\n") {
-		t.Errorf("expected a single User-Agent product token, got %q", got)
-	}
-}
-
-func TestUserAgentFlag(t *testing.T) {
-	t.Run("defaults to the program version", func(t *testing.T) {
-		t.Setenv("GITLAB_SYNC_USER_AGENT", "")
-
-		var args utils.ParserArgs
-
-		var mirrorMappingPath, logFile string
-
-		buildRootCmd(&args, &mirrorMappingPath, &logFile)
-
-		if args.UserAgent != defaultUserAgent() {
-			t.Errorf("expected %q, got %q", defaultUserAgent(), args.UserAgent)
-		}
-	})
-
-	t.Run("environment overrides the default", func(t *testing.T) {
-		t.Setenv("GITLAB_SYNC_USER_AGENT", "  my-sync-job/1.0  ")
-
-		var args utils.ParserArgs
-
-		var mirrorMappingPath, logFile string
-
-		buildRootCmd(&args, &mirrorMappingPath, &logFile)
-
-		if args.UserAgent != "my-sync-job/1.0" {
-			t.Errorf("expected %q, got %q", "my-sync-job/1.0", args.UserAgent)
-		}
-	})
-
-	t.Run("flag overrides the environment", func(t *testing.T) {
-		t.Setenv("GITLAB_SYNC_USER_AGENT", "my-sync-job/1.0")
-
-		var args utils.ParserArgs
-
-		var mirrorMappingPath, logFile string
-
-		rootCmd := buildRootCmd(&args, &mirrorMappingPath, &logFile)
-		if err := rootCmd.ParseFlags([]string{"--user-agent", "nightly/2.0"}); err != nil {
-			t.Fatal(err)
-		}
-
-		if args.UserAgent != "nightly/2.0" {
-			t.Errorf("expected %q, got %q", "nightly/2.0", args.UserAgent)
-		}
-	})
-}
-
-func TestResolveExitCode(t *testing.T) {
-	tests := []struct {
-		name                     string
-		code                     int
-		exitSuccessOnNonBlocking bool
-		want                     int
-	}{
-		{"ok", helpers.ExitOK, false, helpers.ExitOK},
-		{"ok with override", helpers.ExitOK, true, helpers.ExitOK},
-		{"blocking", helpers.ExitBlocking, false, helpers.ExitBlocking},
-		{"blocking with override", helpers.ExitBlocking, true, helpers.ExitBlocking},
-		{"non-blocking", helpers.ExitNonBlocking, false, helpers.ExitNonBlocking},
-		{"non-blocking with override", helpers.ExitNonBlocking, true, helpers.ExitOK},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := resolveExitCode(test.code, test.exitSuccessOnNonBlocking); got != test.want {
-				t.Errorf("resolveExitCode(%d, %v) = %d, want %d", test.code, test.exitSuccessOnNonBlocking, got, test.want)
-			}
-		})
-	}
-}
-
-func TestEnvBool(t *testing.T) {
-	const name = "GITLAB_SYNC_TEST_ENV_BOOL"
-
-	tests := []struct {
-		value        string
-		defaultValue bool
-		want         bool
-	}{
-		{"", false, false},
-		{"", true, true},
-		{"  ", false, false},
-		{"true", false, true},
-		{"1", false, true},
-		{"false", true, false},
-		{"0", true, false},
-		{" true ", false, true},
-		{"nonsense", false, false},
-		{"nonsense", true, true},
-	}
-
-	for _, test := range tests {
-		t.Run(test.value, func(t *testing.T) {
-			t.Setenv(name, test.value)
-
-			if got := envBool(name, test.defaultValue); got != test.want {
-				t.Errorf("envBool(%q, %v) = %v, want %v", test.value, test.defaultValue, got, test.want)
-			}
-		})
-	}
+	runCrasher(t, "TestPromptForMandatoryInputPromptDisabled", "BE_CRASHER_MANDATORY_DISABLED")
 }

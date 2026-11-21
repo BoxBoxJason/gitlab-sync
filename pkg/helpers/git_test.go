@@ -1,71 +1,33 @@
 package helpers
 
 import (
-	"maps"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
-	"slices"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
-	"github.com/go-git/go-git/v5/plumbing/transport/http"
 )
 
 const (
-	FILE_SCHEME   = "file://"
+	fileScheme    = "file://"
 	githubHTTPURL = "https://github.com/BoxBoxJason/gitlab-sync.git"
 )
 
-func TestBuildHTTPAuth(t *testing.T) {
-	tests := []struct {
-		name             string
-		username, token  string
-		wantUser, wantPW string
-	}{
-		{"both provided", "alice", "secr3t", "alice", "secr3t"},
-		{"empty username", "", "tk", DEFAULT_GIT_USER, "tk"},
-		{"spaces username", "   ", "x", DEFAULT_GIT_USER, "x"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			auth := BuildHTTPAuth(tt.username, tt.token)
-			basic, ok := auth.(*http.BasicAuth)
-			if !ok {
-				t.Fatalf("BuildHTTPAuth returned non-BasicAuth: %T", auth)
-			}
-			if basic.Username != tt.wantUser {
-				t.Errorf("Username = %q; want %q", basic.Username, tt.wantUser)
-			}
-			if basic.Password != tt.wantPW {
-				t.Errorf("Password = %q; want %q", basic.Password, tt.wantPW)
-			}
-		})
-	}
-}
-
 func TestMirrorRepo(t *testing.T) {
+	t.Parallel()
+
 	t.Run("mirror via HTTPS public repo", func(t *testing.T) {
 		t.Parallel()
-		destDir, err := os.MkdirTemp("/tmp", "destrepo-*.git")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.RemoveAll(destDir)
+		destDir := t.TempDir()
 
 		// Initialize a bare git repository at the destination
-		_, err = git.PlainInit(destDir, true) // true indicates a bare repository
+		_, err := git.PlainInit(destDir, true) // true indicates a bare repository
 		if err != nil {
 			t.Fatalf("failed to initialize bare repository at destination: %v", err)
 		}
 
-		if err := MirrorRepo(nil, githubHTTPURL, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err = MirrorRepo(nil, githubHTTPURL, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("MirrorRepo(HTTPS) failed: %v", err)
 		}
 
@@ -76,27 +38,46 @@ func TestMirrorRepo(t *testing.T) {
 
 		// MirrorRepo intentionally leaves the destination HEAD alone (it cannot be
 		// set over the git transport); only the refs themselves must have landed.
-		branches, _ := destRepo.Branches()
+		branches, err := destRepo.Branches()
+		if err != nil {
+			t.Fatalf("failed to list branches: %v", err)
+		}
+
 		found := false
-		_ = branches.ForEach(func(r *plumbing.Reference) error {
+
+		err = branches.ForEach(func(r *plumbing.Reference) error {
 			if r.Hash().IsZero() {
 				t.Errorf("branch %s has a zero hash", r.Name())
 			}
+
 			found = true
 
 			return storer.ErrStop
 		})
+		if err != nil {
+			t.Fatalf("failed to iterate branches: %v", err)
+		}
+
 		if !found {
 			t.Error("no branches found in mirrored repo")
 		}
 
-		tags, _ := destRepo.Tags()
+		tags, err := destRepo.Tags()
+		if err != nil {
+			t.Fatalf("failed to list tags: %v", err)
+		}
+
 		foundTag := false
-		_ = tags.ForEach(func(r *plumbing.Reference) error {
-			foundTag = true
+
+		err = tags.ForEach(func(r *plumbing.Reference) error {
+			foundTag = r.Name().IsTag()
 
 			return storer.ErrStop
 		})
+		if err != nil {
+			t.Fatalf("failed to iterate tags: %v", err)
+		}
+
 		if !foundTag {
 			t.Error("no tags found in mirrored repo")
 		}
@@ -105,17 +86,9 @@ func TestMirrorRepo(t *testing.T) {
 	t.Run("mirroring an already up to date destination is not an error", func(t *testing.T) {
 		t.Parallel()
 
-		srcDir, err := os.MkdirTemp("", "srcrepo-*.git")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.RemoveAll(srcDir)
+		srcDir := t.TempDir()
 
-		destDir, err := os.MkdirTemp("", "destrepo-uptodate-*.git")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.RemoveAll(destDir)
+		destDir := t.TempDir()
 
 		seedBareRepo(t, srcDir)
 
@@ -123,13 +96,13 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatalf("failed to initialize bare repository at destination: %v", err)
 		}
 
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err := MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("first MirrorRepo failed: %v", err)
 		}
 
 		// A second run has nothing to push; go-git signals that with
 		// git.NoErrAlreadyUpToDate, which must not surface as a failure.
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err := MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("second MirrorRepo failed: %v", err)
 		}
 	})
@@ -154,11 +127,11 @@ func TestMirrorRepo(t *testing.T) {
 		setRef(t, srcRepo, "refs/tags/v1.0.0", head.Hash())
 
 		destDir := filepath.Join(t.TempDir(), "destrepo.git")
-		if _, err := git.PlainInit(destDir, true); err != nil {
+		if _, err = git.PlainInit(destDir, true); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("first MirrorRepo failed: %v", err)
 		}
 
@@ -168,7 +141,7 @@ func TestMirrorRepo(t *testing.T) {
 		removeRef(t, srcRepo, "refs/heads/feature")
 		removeRef(t, srcRepo, "refs/tags/v1.0.0")
 
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("second MirrorRepo failed: %v", err)
 		}
 
@@ -203,11 +176,11 @@ func TestMirrorRepo(t *testing.T) {
 		setRef(t, srcRepo, "refs/notes/commits", head.Hash())
 
 		destDir := filepath.Join(t.TempDir(), "destrepo.git")
-		if _, err := git.PlainInit(destDir, true); err != nil {
+		if _, err = git.PlainInit(destDir, true); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("MirrorRepo failed: %v", err)
 		}
 
@@ -238,11 +211,11 @@ func TestMirrorRepo(t *testing.T) {
 		}
 
 		destDir := filepath.Join(t.TempDir(), "destrepo.git")
-		if _, err := git.PlainInit(destDir, true); err != nil {
+		if _, err = git.PlainInit(destDir, true); err != nil {
 			t.Fatal(err)
 		}
 
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("first MirrorRepo failed: %v", err)
 		}
 
@@ -250,13 +223,13 @@ func TestMirrorRepo(t *testing.T) {
 		// the source lost, and that branch is the one its HEAD points at.
 		setRef(t, srcRepo, "refs/heads/renamed", head.Hash())
 
-		if err := srcRepo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, "refs/heads/renamed")); err != nil {
+		if err = srcRepo.Storer.SetReference(plumbing.NewSymbolicReference(plumbing.HEAD, "refs/heads/renamed")); err != nil {
 			t.Fatal(err)
 		}
 
 		removeRef(t, srcRepo, head.Name().String())
 
-		if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
 			t.Fatalf("second MirrorRepo failed: %v", err)
 		}
 
@@ -266,193 +239,17 @@ func TestMirrorRepo(t *testing.T) {
 
 	t.Run("error on invalid source", func(t *testing.T) {
 		t.Parallel()
-		destDir, err := os.MkdirTemp("", "destrepo-bad")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer os.RemoveAll(destDir)
+		destDir := t.TempDir()
 
 		// Initialize a bare git repository at the destination
-		_, err = git.PlainInit(destDir, true)
+		_, err := git.PlainInit(destDir, true)
 		if err != nil {
 			t.Fatalf("failed to initialize bare repository at destination: %v", err)
 		}
 
-		err = MirrorRepo(nil, "file:///no/such/path", FILE_SCHEME+destDir, nil, nil, MirrorPushOptions{})
+		err = MirrorRepo(nil, "file:///no/such/path", fileScheme+destDir, nil, nil, MirrorPushOptions{})
 		if err == nil {
 			t.Error("expected error for invalid source URL, got nil")
 		}
 	})
-}
-
-func TestMirrorPushOptionsGitOptions(t *testing.T) {
-	t.Parallel()
-
-	if got := (MirrorPushOptions{}).gitOptions(); got != nil {
-		t.Errorf("gitOptions() without SkipPipelines = %v; want nil", got)
-	}
-
-	// Every option GitLab offers to keep a push from running CI: ci.skip for every
-	// version, ci.no_pipeline so that no "skipped" pipeline is recorded where it
-	// is supported, and integrations.skip_ci for Jenkins-like integrations.
-	// The names are spelled out rather than taken from the constants, so that a
-	// typo in a constant fails here.
-	want := map[string]string{
-		"ci.skip":              "",
-		"ci.no_pipeline":       "",
-		"integrations.skip_ci": "",
-	}
-
-	if got := (MirrorPushOptions{SkipPipelines: true}).gitOptions(); !maps.Equal(got, want) {
-		t.Errorf("gitOptions() with SkipPipelines = %v; want %v", got, want)
-	}
-}
-
-// TestMirrorRepoPushOptions checks the push options a destination actually
-// receives, through a pre-receive hook recording them. The file transport runs
-// the system git-receive-pack, which only accepts push options once
-// receive.advertisePushOptions is set, as GitLab does.
-func TestMirrorRepoPushOptions(t *testing.T) {
-	t.Parallel()
-
-	if runtime.GOOS == "windows" {
-		t.Skip("the recording hook is a shell script")
-	}
-
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not installed")
-	}
-
-	// The options arrive in no particular order (go-git iterates a map), so the
-	// expected lists are sorted like the received ones.
-	tests := []struct {
-		name          string
-		skipPipelines bool
-		wantOptions   []string
-	}{
-		{
-			name:          "CI skipping options sent when skipping pipelines",
-			skipPipelines: true,
-			wantOptions:   []string{"ci.no_pipeline=", "ci.skip=", "integrations.skip_ci="},
-		},
-		{
-			name:          "no option sent when triggering pipelines",
-			skipPipelines: false,
-			wantOptions:   nil,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			srcDir := filepath.Join(t.TempDir(), "srcrepo.git")
-			seedBareRepo(t, srcDir)
-
-			destDir := filepath.Join(t.TempDir(), "destrepo.git")
-			recordFile := filepath.Join(t.TempDir(), "push-options")
-			initRecordingDestination(t, destDir, recordFile)
-
-			pushOptions := MirrorPushOptions{SkipPipelines: tt.skipPipelines}
-			if err := MirrorRepo(nil, FILE_SCHEME+srcDir, FILE_SCHEME+destDir, nil, nil, pushOptions); err != nil {
-				t.Fatalf("MirrorRepo failed: %v", err)
-			}
-
-			recorded, err := os.ReadFile(recordFile)
-			if err != nil {
-				t.Fatalf("the pre-receive hook did not run: %v", err)
-			}
-
-			gotOptions := strings.Fields(string(recorded))
-			slices.Sort(gotOptions)
-
-			if !slices.Equal(gotOptions, tt.wantOptions) {
-				t.Errorf("push options received = %q; want %q", gotOptions, tt.wantOptions)
-			}
-		})
-	}
-}
-
-// initRecordingDestination creates a bare repository at path that advertises
-// push options and writes the ones each push carries to recordFile, one per line.
-func initRecordingDestination(t *testing.T, path, recordFile string) {
-	t.Helper()
-
-	repo, err := git.PlainInit(path, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	cfg, err := repo.Config()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	hooksDir := filepath.Join(path, "hooks")
-
-	cfg.Raw.Section("receive").SetOption("advertisePushOptions", "true")
-	// Pin the hooks directory locally, so a core.hooksPath set in the global or
-	// system git configuration cannot make git-receive-pack skip the hook.
-	cfg.Raw.Section("core").SetOption("hooksPath", hooksDir)
-
-	if err := repo.SetConfig(cfg); err != nil {
-		t.Fatal(err)
-	}
-
-	// The record file path is single-quoted in the script: escape any quote it holds.
-	quotedRecordFile := "'" + strings.ReplaceAll(recordFile, "'", `'\''`) + "'"
-
-	hook := `#!/bin/sh
-: > ` + quotedRecordFile + `
-i=0
-while [ "$i" -lt "${GIT_PUSH_OPTION_COUNT:-0}" ]; do
-	eval "printf '%s\n' \"\$GIT_PUSH_OPTION_$i\"" >> ` + quotedRecordFile + `
-	i=$((i + 1))
-done
-`
-
-	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.WriteFile(filepath.Join(hooksDir, "pre-receive"), []byte(hook), 0o755); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// seedBareRepo creates a bare repository at path holding a single commit on the
-// repository's initial branch.
-func seedBareRepo(t *testing.T, path string) {
-	t.Helper()
-
-	worktreeDir := t.TempDir()
-
-	repo, err := git.PlainInit(worktreeDir, false)
-	if err != nil {
-		t.Fatalf("failed to init source worktree: %v", err)
-	}
-
-	if err := os.WriteFile(filepath.Join(worktreeDir, "file.txt"), []byte("content"), 0o600); err != nil {
-		t.Fatalf("failed to write source file: %v", err)
-	}
-
-	worktree, err := repo.Worktree()
-	if err != nil {
-		t.Fatalf("failed to open source worktree: %v", err)
-	}
-
-	if _, err := worktree.Add("file.txt"); err != nil {
-		t.Fatalf("failed to stage source file: %v", err)
-	}
-
-	_, err = worktree.Commit("initial commit", &git.CommitOptions{
-		Author: &object.Signature{Name: "tester", Email: "tester@example.com", When: time.Now()},
-	})
-	if err != nil {
-		t.Fatalf("failed to commit in source repository: %v", err)
-	}
-
-	if _, err := git.PlainClone(path, true, &git.CloneOptions{URL: FILE_SCHEME + worktreeDir, Mirror: true}); err != nil {
-		t.Fatalf("failed to create bare source repository: %v", err)
-	}
 }

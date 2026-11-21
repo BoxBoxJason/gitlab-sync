@@ -1,22 +1,20 @@
+// Package cmd implements the gitlab-sync command line interface.
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
-	"runtime/debug"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/boxboxjason/gitlab-sync/internal/mirrorcfg"
 	"github.com/boxboxjason/gitlab-sync/internal/mirroring"
-	"github.com/boxboxjason/gitlab-sync/internal/utils"
 	"github.com/boxboxjason/gitlab-sync/pkg/helpers"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -39,10 +37,10 @@ var (
 	buildTime string // set via -X github.com/boxboxjason/gitlab-sync/cmd.buildTime=2006-01-02T15:04:05Z
 )
 
-// Execute runs the CLI command.
-func Execute() {
+// Execute runs the CLI command and returns the process exit code.
+func Execute() int {
 	var (
-		args              utils.ParserArgs
+		args              mirrorcfg.ParserArgs
 		err               error
 		mirrorMappingPath string
 		logFile           string
@@ -53,18 +51,35 @@ func Execute() {
 	err = rootCmd.Execute()
 	if err != nil {
 		zap.L().Error(err.Error())
-		os.Exit(1)
+
+		return 1
 	}
+
+	return resolveExitCode(helpers.ExitCode(), &args)
 }
 
-func buildRootCmd(args *utils.ParserArgs, mirrorMappingPath, logFile *string) *cobra.Command {
+func buildRootCmd(args *mirrorcfg.ParserArgs, mirrorMappingPath, logFile *string) *cobra.Command {
+	// The logger is only installed when the command runs, so problems found while
+	// registering the flags are kept and reported then.
+	var envErrs []error
+
+	cacheMaxAge, err := helpers.EnvDuration("GITLAB_SYNC_CACHE_MAX_AGE", defaultCacheMaxAge)
+	if err != nil {
+		envErrs = append(envErrs, err)
+	}
+
+	exitSuccess, err := helpers.EnvBool("GITLAB_SYNC_EXIT_SUCCESS_ON_NON_BLOCKING", false)
+	if err != nil {
+		envErrs = append(envErrs, err)
+	}
+
 	rootCmd := &cobra.Command{
 		Use:     binaryName,
 		Version: versionInfo(),
 		Short:   "Copy and enable mirroring of gitlab projects and groups",
 		Long:    "Fully customizable gitlab repositories and groups mirroring between two (or one) gitlab instances.",
-		Run: func(cmd *cobra.Command, cmdArgs []string) {
-			executeMirroringCommand(args, mirrorMappingPath, logFile)
+		Run: func(*cobra.Command, []string) {
+			executeMirroringCommand(args, mirrorMappingPath, logFile, envErrs)
 		},
 	}
 
@@ -83,77 +98,22 @@ func buildRootCmd(args *utils.ParserArgs, mirrorMappingPath, logFile *string) *c
 	rootCmd.Flags().IntVarP(&args.Retry, "retry", "r", defaultRetryCount, "Number of retries for failed requests")
 	rootCmd.Flags().StringVar(logFile, "log-file", strings.TrimSpace(os.Getenv("GITLAB_SYNC_LOG_FILE")), "Path to the log file")
 	rootCmd.Flags().StringVar(&args.CacheDir, "cache-dir", strings.TrimSpace(os.Getenv("GITLAB_SYNC_CACHE_DIR")), "Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, empty disables caching)")
-	rootCmd.Flags().DurationVar(&args.CacheMaxAge, "cache-max-age", envDuration("GITLAB_SYNC_CACHE_MAX_AGE", defaultCacheMaxAge), "Delete the cached repositories that have not been synchronized for that long (0 keeps them forever)")
-	rootCmd.Flags().StringVar(&args.UserAgent, "user-agent", envString("GITLAB_SYNC_USER_AGENT", defaultUserAgent()), "User-Agent sent with every GitLab API request")
-	rootCmd.Flags().BoolVar(&args.ExitSuccessOnNonBlocking, "exit-success-on-non-blocking", envBool("GITLAB_SYNC_EXIT_SUCCESS_ON_NON_BLOCKING", false), "Exit with code 0 when only non-blocking errors occurred (blocking errors still exit 1)")
-	_ = rootCmd.MarkFlagFilename("mirror-mapping", "json")
-	_ = rootCmd.MarkFlagFilename("log-file", "log", "txt")
-	_ = rootCmd.MarkFlagDirname("cache-dir")
+	rootCmd.Flags().DurationVar(&args.CacheMaxAge, "cache-max-age", cacheMaxAge, "Delete the cached repositories that have not been synchronized for that long (0 keeps them forever)")
+	rootCmd.Flags().StringVar(&args.UserAgent, "user-agent", helpers.EnvString("GITLAB_SYNC_USER_AGENT", defaultUserAgent()), "User-Agent sent with every GitLab API request")
+	rootCmd.Flags().BoolVar(&args.ExitSuccessOnNonBlocking, "exit-success-on-non-blocking", exitSuccess, "Exit with code 0 when only non-blocking errors occurred (blocking errors still exit 1)")
+	// These only fail when a flag name is misspelled, which is a programming error.
+	flagErr := errors.Join(
+		rootCmd.MarkFlagFilename("mirror-mapping", "json"),
+		rootCmd.MarkFlagFilename("log-file", "log", "txt"),
+		rootCmd.MarkFlagDirname("cache-dir"),
+	)
+	if flagErr != nil {
+		panic(fmt.Sprintf("failed to register flag completions: %v", flagErr))
+	}
 
 	addCompletionCommand(rootCmd)
 
 	return rootCmd
-}
-
-// envString reads a trimmed string from the environment, falling back to
-// defaultValue when the variable is unset or blank.
-func envString(name, defaultValue string) string {
-	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
-		return value
-	}
-
-	return defaultValue
-}
-
-// envDuration reads a Go duration (for example "720h" or "45m") from the
-// environment, falling back to defaultValue when the variable is unset or does
-// not parse. An unparsable value is reported rather than silently ignored, but
-// it does not stop the run: the flag can still override it.
-func envDuration(name string, defaultValue time.Duration) time.Duration {
-	raw := strings.TrimSpace(os.Getenv(name))
-	if raw == "" {
-		return defaultValue
-	}
-
-	parsed, err := time.ParseDuration(raw)
-	if err != nil {
-		zap.L().Warn("Ignoring an invalid duration in the environment", zap.String("variable", name), zap.String("value", raw), zap.Error(err))
-
-		return defaultValue
-	}
-
-	return parsed
-}
-
-// envBool reads a boolean (anything strconv.ParseBool accepts) from the
-// environment, falling back to defaultValue when the variable is unset, blank
-// or does not parse. An unparsable value is reported rather than silently
-// ignored, but it does not stop the run: the flag can still override it.
-func envBool(name string, defaultValue bool) bool {
-	raw := strings.TrimSpace(os.Getenv(name))
-	if raw == "" {
-		return defaultValue
-	}
-
-	parsed, err := strconv.ParseBool(raw)
-	if err != nil {
-		zap.L().Warn("Ignoring an invalid boolean in the environment", zap.String("variable", name), zap.String("value", raw), zap.Error(err))
-
-		return defaultValue
-	}
-
-	return parsed
-}
-
-// resolveExitCode turns the exit code derived from the reported errors into the
-// process exit code: non-blocking errors only exit 0 when exitSuccessOnNonBlocking
-// is set, every other code is kept as is.
-func resolveExitCode(code int, exitSuccessOnNonBlocking bool) int {
-	if code == helpers.ExitNonBlocking && exitSuccessOnNonBlocking {
-		return helpers.ExitOK
-	}
-
-	return code
 }
 
 func addCompletionCommand(rootCmd *cobra.Command) {
@@ -185,9 +145,19 @@ func addCompletionCommand(rootCmd *cobra.Command) {
 	rootCmd.AddCommand(completionCmd)
 }
 
-func executeMirroringCommand(args *utils.ParserArgs, mirrorMappingPath, logFile *string) {
+// warnEach logs every error as a warning.
+func warnEach(errs []error) {
+	for _, err := range errs {
+		zap.L().Warn(err.Error())
+	}
+}
+
+func executeMirroringCommand(args *mirrorcfg.ParserArgs, mirrorMappingPath, logFile *string, envErrs []error) {
 	// Set up the logger
-	SetupZapLogger(args.Verbose, strings.TrimSpace(*logFile))
+	SetupZapLogger(logLevelFor(args), strings.TrimSpace(*logFile))
+
+	warnEach(envErrs)
+
 	zap.L().Debug("Verbose mode enabled")
 	zap.L().Debug("Parsing command line arguments")
 
@@ -197,6 +167,7 @@ func executeMirroringCommand(args *utils.ParserArgs, mirrorMappingPath, logFile 
 		args.Retry = 10000
 	case 0:
 		zap.L().Fatal("retry count must be -1 (no limit) or strictly greater than 0")
+	default:
 	}
 
 	// An explicitly empty --user-agent would make the clients fall back to their
@@ -206,16 +177,16 @@ func executeMirroringCommand(args *utils.ParserArgs, mirrorMappingPath, logFile 
 		args.UserAgent = defaultUserAgent()
 	}
 
-	args.SourceGitlabURL = promptForMandatoryInput(args.SourceGitlabURL, "Input Source GitLab URL (MANDATORY)", "Source GitLab URL is mandatory", "Source GitLab URL", args.NoPrompt, false)
-	args.DestinationGitlabURL = promptForMandatoryInput(args.DestinationGitlabURL, "Input Destination GitLab URL (MANDATORY)", "Destination GitLab URL is mandatory", "Destination GitLab URL", args.NoPrompt, false)
-	args.DestinationGitlabToken = promptForMandatoryInput(args.DestinationGitlabToken, "Input Destination GitLab Token with api permissions (MANDATORY)", "Destination GitLab Token is mandatory", "Destination GitLab Token set", args.NoPrompt, true)
+	args.SourceGitlabURL = promptForMandatoryInput(args.SourceGitlabURL, "Input Source GitLab URL (MANDATORY)", "Source GitLab URL is mandatory", "Source GitLab URL", promptOptions{disabled: args.NoPrompt})
+	args.DestinationGitlabURL = promptForMandatoryInput(args.DestinationGitlabURL, "Input Destination GitLab URL (MANDATORY)", "Destination GitLab URL is mandatory", "Destination GitLab URL", promptOptions{disabled: args.NoPrompt})
+	args.DestinationGitlabToken = promptForMandatoryInput(args.DestinationGitlabToken, "Input Destination GitLab Token with api permissions (MANDATORY)", "Destination GitLab Token is mandatory", "Destination GitLab Token set", promptOptions{disabled: args.NoPrompt, hideOutput: true})
 
-	*mirrorMappingPath = promptForMandatoryInput(*mirrorMappingPath, "Input Mirror Mapping file path (MANDATORY)", "Mirror Mapping file path is mandatory", "Mirror Mapping file path set", args.NoPrompt, false)
+	*mirrorMappingPath = promptForMandatoryInput(*mirrorMappingPath, "Input Mirror Mapping file path (MANDATORY)", "Mirror Mapping file path is mandatory", "Mirror Mapping file path set", promptOptions{disabled: args.NoPrompt})
 	zap.L().Debug("Mirror Mapping file resolved path: " + filepath.Clean(*mirrorMappingPath))
 
 	zap.L().Debug("Parsing mirror mapping file")
 
-	mapping, err := utils.OpenMirrorMapping(*mirrorMappingPath)
+	mapping, err := mirrorcfg.OpenMirrorMapping(*mirrorMappingPath)
 	if err != nil {
 		zap.L().Fatal("Error opening mirror mapping file: " + err.Error())
 	}
@@ -240,10 +211,17 @@ func executeMirroringCommand(args *utils.ParserArgs, mirrorMappingPath, logFile 
 			zap.L().Warn("Mirroring process finished with non-blocking errors")
 		}
 	}
+}
 
-	if exitCode := resolveExitCode(code, args.ExitSuccessOnNonBlocking); exitCode != helpers.ExitOK {
-		os.Exit(exitCode)
+// resolveExitCode turns the exit code derived from the reported errors into the
+// process exit code: non-blocking errors only exit 0 when ExitSuccessOnNonBlocking
+// is set, every other code is kept as is.
+func resolveExitCode(code int, args *mirrorcfg.ParserArgs) int {
+	if code == helpers.ExitNonBlocking && args.ExitSuccessOnNonBlocking {
+		return helpers.ExitOK
 	}
+
+	return code
 }
 
 // promptForInput prompts the user for input and returns the trimmed response.
@@ -265,16 +243,24 @@ func promptForInput(prompt string) string {
 	return strings.TrimSpace(input)
 }
 
+// promptOptions tunes promptForMandatoryInput.
+type promptOptions struct {
+	// disabled makes a missing value fatal instead of prompting for it.
+	disabled bool
+	// hideOutput keeps the entered value out of the logs (tokens).
+	hideOutput bool
+}
+
 // promptForMandatoryInput prompts the user for mandatory input and returns the trimmed response.
 // If the input is empty, it will log a fatal error message and exit the program.
-// It also logs the input value if hideOutput is false.
-func promptForMandatoryInput(defaultValue, prompt, errorMsg, loggerMsg string, promptsDisabled, hideOutput bool) string {
+// It also logs the input value unless options.hideOutput is set.
+func promptForMandatoryInput(defaultValue, prompt, errorMsg, loggerMsg string, options promptOptions) string {
 	input := strings.TrimSpace(defaultValue)
 	if input != "" {
 		return input
 	}
 
-	if promptsDisabled {
+	if options.disabled {
 		zap.L().Fatal("Prompting is disabled")
 	}
 
@@ -283,147 +269,11 @@ func promptForMandatoryInput(defaultValue, prompt, errorMsg, loggerMsg string, p
 		zap.L().Fatal(errorMsg)
 	}
 
-	if !hideOutput {
+	if !options.hideOutput {
 		zap.L().Debug(loggerMsg + ": " + input)
 	} else {
 		zap.L().Debug(loggerMsg)
 	}
 
 	return input
-}
-
-// SetupZapLogger sets up the Zap logger with the specified verbosity level and optional file output.
-// It configures the logger to use ISO8601 time format and capitalizes the log levels.
-// The logger is set to production mode by default, but can be configured for debug mode if verbose is true.
-// If filename is not empty, the logger's output is redirected to the specified file.
-func SetupZapLogger(verbose bool, filename string) {
-	// Set up the logger configuration
-	config := zap.NewProductionConfig()
-	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-
-	config.EncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
-	if verbose {
-		config.Level.SetLevel(zapcore.DebugLevel)
-	} else {
-		config.Level.SetLevel(zapcore.InfoLevel)
-	}
-
-	// If a filename is specified, update the output path.
-	if filename != "" {
-		err := os.MkdirAll(filepath.Dir(filename), logDirPermission)
-		if err != nil {
-			zap.L().Fatal("Failed to create log directory: " + err.Error())
-		}
-
-		config.OutputPaths = []string{filename, "stderr"}
-	}
-
-	// Create the logger
-	logger, err := config.Build()
-	if err != nil {
-		zap.L().Fatal("Failed to create logger: " + err.Error())
-	}
-
-	// Set the global logger
-	zap.ReplaceGlobals(logger)
-}
-
-// versionInfo returns a human-readable version string of the form:
-//
-//	v1.2.3 (go1.25.7, built: 2026-02-22T20:00:00Z)
-//
-// Version resolution order:
-//  1. ldflags-injected version  (make build / make build version=x.y.z)
-//  2. Module version from debug.ReadBuildInfo  (go install @vX.Y.Z)
-//  3. VCS commit hash from build settings  (local go build / go install @latest)
-//  4. "dev" as final fallback
-//
-// Build time resolution order:
-//  1. ldflags-injected buildTime  (make build)
-//  2. vcs.time from build settings
-//  3. "unknown"
-func versionInfo() string {
-	ver := resolveVersion()
-	bt := resolveBuildTime()
-
-	return fmt.Sprintf("%s (go: %s, built: %s)", ver, runtime.Version(), bt)
-}
-
-// defaultUserAgent identifies this program and build to the GitLab instances,
-// for example "gitlab-sync/v1.2.3".
-func defaultUserAgent() string {
-	return binaryName + "/" + resolveVersion()
-}
-
-// resolveVersion returns the most specific version string available.
-func resolveVersion() string {
-	// ldflags injection wins — used by `make build` and CI releases.
-	if version != "" {
-		return version
-	}
-
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "dev"
-	}
-
-	// `go install @vX.Y.Z` populates Main.Version with the module tag.
-	if info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return info.Main.Version
-	}
-
-	// Local `go build` / `go install @latest` — fall back to VCS revision.
-	return vcsRevision(info)
-}
-
-// vcsRevision extracts the short commit hash (and a "-dirty" suffix when the
-// working tree has uncommitted changes) from the VCS build settings.
-func vcsRevision(info *debug.BuildInfo) string {
-	var revision string
-
-	var dirty bool
-
-	for _, setting := range info.Settings {
-		switch setting.Key {
-		case "vcs.revision":
-			if len(setting.Value) > 7 { //nolint:mnd // 7 is the conventional short-hash length
-				revision = setting.Value[:7]
-			} else {
-				revision = setting.Value
-			}
-		case "vcs.modified":
-			dirty = setting.Value == "true"
-		}
-	}
-
-	if revision == "" {
-		return "dev"
-	}
-
-	if dirty {
-		return revision + "-dirty"
-	}
-
-	return revision
-}
-
-// resolveBuildTime returns the build timestamp, falling back through ldflags →
-// vcs.time build setting → "unknown".
-func resolveBuildTime() string {
-	if buildTime != "" {
-		return buildTime
-	}
-
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return "unknown"
-	}
-
-	for _, setting := range info.Settings {
-		if setting.Key == "vcs.time" {
-			return setting.Value
-		}
-	}
-
-	return "unknown"
 }

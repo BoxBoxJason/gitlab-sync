@@ -1,8 +1,12 @@
 package helpers
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestMatchPathAgainstFilters(t *testing.T) {
+	t.Parallel()
+
 	allowList := map[string]struct{}{
 		"/allowed/path": {},
 	}
@@ -21,13 +25,45 @@ func TestMatchPathAgainstFilters(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		prefix, matched := MatchPathAgainstFilters(test.path, &allowList, &prefixList)
+		prefix, matched := MatchPathAgainstFilters(test.path, allowList, prefixList)
 		if prefix != test.expected || matched != test.matched {
 			t.Errorf("For path %s: expected (%s, %t), got (%s, %t)", test.path, test.expected, test.matched, prefix, matched)
 		}
 	}
 }
 
-const (
-	EXPECTED_ERROR_MESSAGE = "expected error: %v, got: %v"
-)
+func TestEnvBool(t *testing.T) {
+	const name = "GITLAB_SYNC_TEST_ENV_BOOL"
+
+	tests := []struct {
+		value        string
+		defaultValue bool
+		want         bool
+	}{
+		{"", false, false},
+		{"", true, true},
+		{"  ", false, false},
+		{"true", false, true},
+		{"1", false, true},
+		{"false", true, false},
+		{"0", true, false},
+		{" true ", false, true},
+		{"nonsense", false, false},
+		{"nonsense", true, true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.value, func(t *testing.T) {
+			t.Setenv(name, test.value)
+
+			got, err := EnvBool(name, test.defaultValue)
+			if got != test.want {
+				t.Errorf("envBool(%q, %v) = %v, want %v", test.value, test.defaultValue, got, test.want)
+			}
+
+			if wantErr := test.value == "nonsense"; (err != nil) != wantErr {
+				t.Errorf("envBool(%q, %v) error = %v, want error: %v", test.value, test.defaultValue, err, wantErr)
+			}
+		})
+	}
+}

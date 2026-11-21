@@ -4,6 +4,9 @@ run:
   timeout: 5m
   modules-download-mode: readonly
   tests: true
+  # The end-to-end harness (test/e2e) is only compiled with this tag.
+  build-tags:
+    - e2e
 
 # Output format to generate checkstyle report (used by CI)
 output:
@@ -82,6 +85,7 @@ linters:
           allow:
             - $gostd
             - github.com/boxboxjason/gitlab-sync
+            - github.com/cucumber/godog
             - github.com/go-git/go-git/v5
             - github.com/hashicorp/go-retryablehttp
             - github.com/Masterminds/semver/v3

@@ -223,7 +223,15 @@ func (g *GitlabInstance) IsVersionGreaterThanThreshold() (bool, error) {
 // IsLicensePremium checks if the GitLab instance has a premium license.
 // It retrieves the license information and checks the plan type.
 func (g *GitlabInstance) IsLicensePremium() (bool, error) {
-	license, _, err := g.Gitlab.License.GetLicense()
+	license, response, err := g.Gitlab.License.GetLicense()
+
+	// GitLab Community Edition has no license endpoint: it answers 404.
+	if response != nil && response.StatusCode == http.StatusNotFound {
+		zap.L().Warn("GitLab license endpoint not found (Community Edition); treating this instance as non-premium", zap.String(RoleKey, g.Role))
+
+		return false, nil
+	}
+
 	if err != nil {
 		return false, fmt.Errorf("failed to get GitLab license: %w", err)
 	}

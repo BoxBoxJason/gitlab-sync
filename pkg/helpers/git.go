@@ -82,6 +82,16 @@ func (o MirrorPushOptions) gitOptions() map[string]string {
 	return skipPipelinesGitOptions
 }
 
+// holdSlot takes a slot with acquireSlot and returns the function releasing it.
+// A nil acquireSlot means no bound.
+func holdSlot(acquireSlot func() (release func())) func() {
+	if acquireSlot == nil {
+		return func() {}
+	}
+
+	return acquireSlot()
+}
+
 func cleanupTempDir(path string) {
 	removeErr := os.RemoveAll(path)
 	if removeErr != nil {
@@ -102,13 +112,22 @@ func cleanupTempDir(path string) {
 // pushOptions tunes the push itself: with SkipPipelines, the destination GitLab
 // is asked not to run CI for the branches and tags the mirroring updates.
 //
+// acquireSlot, when not nil, bounds the transfers running at once: it is called
+// right before the clone or fetch, once the cache entry is locked, and the
+// function it returns is called when the push is over. Taking the slot only after
+// the lock keeps a mirroring that waits for another one on the same cache entry
+// from holding a slot other repositories could use.
+//
 // The destination HEAD (its default branch) is not touched here: it cannot be set
 // over the git transport, and the caller aligns it through the GitLab API when it
 // syncs the project attributes.
-func MirrorRepo(cache *GitCache, sourceURL, destinationURL string, pullAuth, pushAuth transport.AuthMethod, pushOptions MirrorPushOptions) error {
+func MirrorRepo(cache *GitCache, sourceURL, destinationURL string, pullAuth, pushAuth transport.AuthMethod, pushOptions MirrorPushOptions, acquireSlot func() (release func())) error {
 	if cache != nil {
-		return cache.mirrorRepo(sourceURL, destinationURL, pullAuth, pushAuth, pushOptions)
+		return cache.mirrorRepo(sourceURL, destinationURL, pullAuth, pushAuth, pushOptions, acquireSlot)
 	}
+
+	releaseSlot := holdSlot(acquireSlot)
+	defer releaseSlot()
 
 	tmpDir, err := os.MkdirTemp("", "bare-mirror-*")
 	if err != nil {

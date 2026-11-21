@@ -120,8 +120,9 @@ func (c *GitCache) Prune() {
 }
 
 // mirrorRepo refreshes the cached bare mirror of sourceURL, then force-pushes it
-// to destinationURL.
-func (c *GitCache) mirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.AuthMethod, pushOptions MirrorPushOptions) error {
+// to destinationURL. The transfer slot of acquireSlot is only taken once the
+// entry is locked (see MirrorRepo).
+func (c *GitCache) mirrorRepo(sourceURL, destinationURL string, pullAuth, pushAuth transport.AuthMethod, pushOptions MirrorPushOptions, acquireSlot func() (release func())) error {
 	repoPath, err := c.repoPath(sourceURL)
 	if err != nil {
 		return err
@@ -133,6 +134,9 @@ func (c *GitCache) mirrorRepo(sourceURL, destinationURL string, pullAuth, pushAu
 	}
 
 	defer release()
+
+	releaseSlot := holdSlot(acquireSlot)
+	defer releaseSlot()
 
 	repo, err := syncCachedRepo(repoPath, sourceURL, pullAuth)
 	if err != nil {

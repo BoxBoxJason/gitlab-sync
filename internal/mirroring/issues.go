@@ -24,7 +24,11 @@ const (
 func (g *GitlabInstance) FetchProjectIssues(project *gitlab.Project) ([]*gitlab.Issue, error) {
 	zap.L().Debug("Fetching issues for project", zap.String("project", project.PathWithNamespace))
 
+	// Oldest first: issues are created sequentially in this order, so the
+	// destination keeps the source chronology (GitLab defaults to newest first).
 	fetchOpts := &gitlab.ListProjectIssuesOptions{
+		OrderBy: new("created_at"),
+		Sort:    new("asc"),
 		ListOptions: gitlab.ListOptions{
 			PerPage: issuesPerPage,
 			Page:    1,
@@ -80,7 +84,7 @@ func (g *GitlabInstance) MirrorIssue(project *gitlab.Project, issue *gitlab.Issu
 	zap.L().Debug("Creating issue in destination project", zap.String("issue", issue.Title), zap.String(RoleDestination, project.HTTPURLToRepo))
 
 	// Create the issue in the destination project
-	_, _, err := g.Gitlab.Issues.CreateIssue(project.ID, &gitlab.CreateIssueOptions{
+	created, _, err := g.Gitlab.Issues.CreateIssue(project.ID, &gitlab.CreateIssueOptions{
 		Title:        &issue.Title,
 		Description:  &issue.Description,
 		Labels:       (*gitlab.LabelOptions)(&issue.Labels),
@@ -93,13 +97,14 @@ func (g *GitlabInstance) MirrorIssue(project *gitlab.Project, issue *gitlab.Issu
 
 	if err == nil && issue.State == string(gitlab.ClosedEventType) {
 		// If the issue is closed, close it in the destination project
-		err = g.CloseIssue(project, issue)
+		err = g.CloseIssue(project, created)
 	}
 
 	return err
 }
 
-// CloseIssue closes an issue in the destination project.
+// CloseIssue closes an issue of the destination project. issue must be the
+// destination issue (its IID is the one on the destination, not the source one).
 func (g *GitlabInstance) CloseIssue(project *gitlab.Project, issue *gitlab.Issue) error {
 	zap.L().Debug("Closing issue in destination project", zap.String("issue", issue.Title), zap.String(RoleDestination, project.HTTPURLToRepo))
 
@@ -132,5 +137,6 @@ func (g *GitlabInstance) MirrorIssues(sourceGitlab *GitlabInstance, sourceProjec
 		func(project *gitlab.Project, issue *gitlab.Issue) error {
 			return g.MirrorIssue(project, issue)
 		},
+		createSequentially,
 	)
 }

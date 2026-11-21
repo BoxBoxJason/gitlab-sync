@@ -91,7 +91,6 @@ linters:
             - github.com/Masterminds/semver/v3
             - github.com/spf13/cobra
             - github.com/spf13/pflag
-            - github.com/stretchr/testify
             - gitlab.com/gitlab-org/api/client-go/v3
             - go.uber.org/zap
     errcheck:

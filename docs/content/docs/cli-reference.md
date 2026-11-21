@@ -23,7 +23,7 @@ Available Commands:
   completion  Generate shell completion script
 
 Flags:
-      --api-concurrency int                         Maximum number of GitLab API requests in flight at once, per instance (0 or less: unbounded) (default 16)
+      --api-concurrency int                         Maximum number of GitLab API requests in flight at once, per instance, shared when source and destination are the same instance (0 or less: unbounded) (default 16)
       --cache-dir string                            Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, empty disables caching)
       --cache-max-age duration                      Delete the cached repositories that have not been synchronized for that long (0 keeps them forever) (default 168h0m0s)
       --destination-big[=true|false]                Destination GitLab is a big instance

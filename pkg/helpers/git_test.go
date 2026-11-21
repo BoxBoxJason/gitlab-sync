@@ -27,7 +27,7 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatalf("failed to initialize bare repository at destination: %v", err)
 		}
 
-		if err = MirrorRepo(nil, githubHTTPURL, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err = MirrorRepo(nil, githubHTTPURL, fileScheme+destDir, nil, nil, MirrorPushOptions{}, nil); err != nil {
 			t.Fatalf("MirrorRepo(HTTPS) failed: %v", err)
 		}
 
@@ -96,13 +96,13 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatalf("failed to initialize bare repository at destination: %v", err)
 		}
 
-		if err := MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err := MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}, nil); err != nil {
 			t.Fatalf("first MirrorRepo failed: %v", err)
 		}
 
 		// A second run has nothing to push; go-git signals that with
 		// git.NoErrAlreadyUpToDate, which must not surface as a failure.
-		if err := MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err := MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}, nil); err != nil {
 			t.Fatalf("second MirrorRepo failed: %v", err)
 		}
 	})
@@ -131,7 +131,7 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}, nil); err != nil {
 			t.Fatalf("first MirrorRepo failed: %v", err)
 		}
 
@@ -141,7 +141,7 @@ func TestMirrorRepo(t *testing.T) {
 		removeRef(t, srcRepo, "refs/heads/feature")
 		removeRef(t, srcRepo, "refs/tags/v1.0.0")
 
-		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}, nil); err != nil {
 			t.Fatalf("second MirrorRepo failed: %v", err)
 		}
 
@@ -180,7 +180,7 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}, nil); err != nil {
 			t.Fatalf("MirrorRepo failed: %v", err)
 		}
 
@@ -215,7 +215,7 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}, nil); err != nil {
 			t.Fatalf("first MirrorRepo failed: %v", err)
 		}
 
@@ -229,7 +229,7 @@ func TestMirrorRepo(t *testing.T) {
 
 		removeRef(t, srcRepo, head.Name().String())
 
-		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}); err != nil {
+		if err = MirrorRepo(nil, fileScheme+srcDir, fileScheme+destDir, nil, nil, MirrorPushOptions{}, nil); err != nil {
 			t.Fatalf("second MirrorRepo failed: %v", err)
 		}
 
@@ -247,7 +247,7 @@ func TestMirrorRepo(t *testing.T) {
 			t.Fatalf("failed to initialize bare repository at destination: %v", err)
 		}
 
-		err = MirrorRepo(nil, "file:///no/such/path", fileScheme+destDir, nil, nil, MirrorPushOptions{})
+		err = MirrorRepo(nil, "file:///no/such/path", fileScheme+destDir, nil, nil, MirrorPushOptions{}, nil)
 		if err == nil {
 			t.Error("expected error for invalid source URL, got nil")
 		}

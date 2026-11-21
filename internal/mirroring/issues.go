@@ -24,7 +24,11 @@ const (
 func (g *GitlabInstance) FetchProjectIssues(project *gitlab.Project) ([]*gitlab.Issue, error) {
 	zap.L().Debug("Fetching issues for project", zap.String("project", project.PathWithNamespace))
 
+	// Oldest first: issues are created sequentially in this order, so the
+	// destination keeps the source chronology (GitLab defaults to newest first).
 	fetchOpts := &gitlab.ListProjectIssuesOptions{
+		OrderBy: new("created_at"),
+		Sort:    new("asc"),
 		ListOptions: gitlab.ListOptions{
 			PerPage: issuesPerPage,
 			Page:    1,

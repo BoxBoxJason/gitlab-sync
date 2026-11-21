@@ -22,7 +22,7 @@ func addConcurrencyFlags(rootCmd *cobra.Command, args *mirrorcfg.ParserArgs) []e
 		errs = append(errs, err)
 	}
 
-	rootCmd.Flags().IntVar(&args.APIConcurrency, "api-concurrency", apiConcurrency, "Maximum number of GitLab API requests in flight at once, per instance (0 or less: unbounded)")
+	rootCmd.Flags().IntVar(&args.APIConcurrency, "api-concurrency", apiConcurrency, "Maximum number of GitLab API requests in flight at once, per instance, shared when source and destination are the same instance (0 or less: unbounded)")
 	rootCmd.Flags().IntVar(&args.GitConcurrency, "git-concurrency", gitConcurrency, "Maximum number of git clones and pushes running at once (freemium mirroring only, 0 or less: unbounded)")
 
 	return errs

@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
+	"sync"
 )
 
 // limitedTransport bounds the number of requests a client has in flight at once.
@@ -16,12 +19,14 @@ type limitedTransport struct {
 	slots chan struct{}
 }
 
-func newLimitedTransport(next http.RoundTripper, limit int) *limitedTransport {
+// newLimitedTransport bounds next with slots, whose capacity is the number of
+// requests in flight at once. Clients sharing slots share the bound.
+func newLimitedTransport(next http.RoundTripper, slots chan struct{}) *limitedTransport {
 	if next == nil {
 		next = http.DefaultTransport
 	}
 
-	return &limitedTransport{next: next, slots: make(chan struct{}, limit)}
+	return &limitedTransport{next: next, slots: slots}
 }
 
 // RoundTrip implements http.RoundTripper.
@@ -29,6 +34,11 @@ func (t *limitedTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	select {
 	case t.slots <- struct{}{}:
 	case <-req.Context().Done():
+		// A RoundTripper must close the request body, even on errors.
+		if req.Body != nil {
+			_ = req.Body.Close() //nolint:errcheck // the wait error is the one reported
+		}
+
 		return nil, fmt.Errorf("waiting for a request slot: %w", req.Context().Err())
 	}
 
@@ -49,30 +59,78 @@ type slotReleasingBody struct {
 	io.ReadCloser
 
 	release func()
-	closed  bool
+	once    sync.Once
 }
 
 func (b *slotReleasingBody) Close() error {
 	err := b.ReadCloser.Close()
 
-	if !b.closed {
-		b.closed = true
-
-		b.release()
-	}
+	b.once.Do(b.release)
 
 	return err //nolint:wrapcheck // transparent wrapper
 }
 
-// limitConcurrency applies the API and git concurrency bounds of opts.
+// limitConcurrency applies the API and git concurrency bounds of opts. The API
+// requests draw from opts.apiSlots when it is set, so instances talking to the
+// same server share one bound.
 func (g *GitlabInstance) limitConcurrency(opts *GitlabInstanceOpts) {
 	if opts.APIConcurrency > 0 {
+		slots := opts.apiSlots
+		if slots == nil {
+			slots = make(chan struct{}, opts.APIConcurrency)
+		}
+
 		httpClient := g.Gitlab.HTTPClient()
-		httpClient.Transport = newLimitedTransport(httpClient.Transport, opts.APIConcurrency)
+		httpClient.Transport = newLimitedTransport(httpClient.Transport, slots)
 	}
 
 	if opts.GitConcurrency > 0 {
 		g.gitSlots = make(chan struct{}, opts.GitConcurrency)
+	}
+}
+
+// sharedAPISlots returns the API request slots both instances of a run must
+// share, or nil when each one gets its own: the source and destination are the
+// same GitLab server, and one --api-concurrency bound should cover all the
+// requests it receives rather than one bound per role.
+func sharedAPISlots(sourceURL, destinationURL string, apiConcurrency int) chan struct{} {
+	if apiConcurrency <= 0 || !sameGitlabServer(sourceURL, destinationURL) {
+		return nil
+	}
+
+	return make(chan struct{}, apiConcurrency)
+}
+
+// sameGitlabServer reports whether two GitLab URLs point to the same server,
+// ignoring the case of the scheme and host, an explicit default port and a
+// trailing slash.
+func sameGitlabServer(first, second string) bool {
+	firstURL, firstErr := url.Parse(strings.TrimSpace(first))
+	secondURL, secondErr := url.Parse(strings.TrimSpace(second))
+
+	if firstErr != nil || secondErr != nil || firstURL.Host == "" || secondURL.Host == "" {
+		return strings.TrimRight(strings.TrimSpace(first), "/") == strings.TrimRight(strings.TrimSpace(second), "/")
+	}
+
+	return strings.EqualFold(firstURL.Scheme, secondURL.Scheme) &&
+		strings.EqualFold(firstURL.Hostname(), secondURL.Hostname()) &&
+		effectivePort(firstURL) == effectivePort(secondURL) &&
+		strings.TrimRight(firstURL.Path, "/") == strings.TrimRight(secondURL.Path, "/")
+}
+
+// effectivePort returns the port of u, defaulting to the one of its scheme.
+func effectivePort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+
+	switch strings.ToLower(u.Scheme) {
+	case "http":
+		return "80"
+	case "https":
+		return "443"
+	default:
+		return ""
 	}
 }
 

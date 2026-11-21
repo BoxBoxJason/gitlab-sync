@@ -50,6 +50,19 @@ func TestOpenMirrorMapping(t *testing.T) {
 	}
 }
 
+// TestOpenMirrorMappingNullOptions ensures a null mapping entry is reported as invalid instead of panicking.
+func TestOpenMirrorMappingNullOptions(t *testing.T) {
+	t.Parallel()
+
+	for _, raw := range []string{`{"projects": {"a/b": null}}`, `{"groups": {"a": null}}`} {
+		file := createTempTestFile(t, raw)
+
+		if _, err := OpenMirrorMapping(file.Name()); err == nil {
+			t.Errorf("OpenMirrorMapping(%s) expected an error, got nil", raw)
+		}
+	}
+}
+
 func createTempTestFile(t *testing.T, fileContent string) *os.File {
 	t.Helper()
 

@@ -1,4 +1,4 @@
-// Package mirrorcfg contains core types and helpers shared across the application.
+// Package mirrorcfg holds the mirroring configuration: command line arguments, the mirror mapping and its validation.
 package mirrorcfg
 
 import (
@@ -10,10 +10,10 @@ import (
 )
 
 const (
-	// PROJECT is the entity type of a GitLab project.
-	PROJECT = "project"
-	// GROUP is the entity type of a GitLab group.
-	GROUP = "group"
+	// ProjectType is the entity type of a GitLab project.
+	ProjectType = "project"
+	// GroupType is the entity type of a GitLab group.
+	GroupType = "group"
 )
 
 // ParserArgs defines the command line arguments

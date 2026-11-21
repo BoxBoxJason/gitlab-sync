@@ -59,13 +59,27 @@ func Execute() int {
 }
 
 func buildRootCmd(args *mirrorcfg.ParserArgs, mirrorMappingPath, logFile *string) *cobra.Command {
+	// The logger is only installed when the command runs, so problems found while
+	// registering the flags are kept and reported then.
+	var envErrs []error
+
+	cacheMaxAge, err := helpers.EnvDuration("GITLAB_SYNC_CACHE_MAX_AGE", defaultCacheMaxAge)
+	if err != nil {
+		envErrs = append(envErrs, err)
+	}
+
+	exitSuccess, err := helpers.EnvBool("GITLAB_SYNC_EXIT_SUCCESS_ON_NON_BLOCKING", false)
+	if err != nil {
+		envErrs = append(envErrs, err)
+	}
+
 	rootCmd := &cobra.Command{
 		Use:     binaryName,
 		Version: versionInfo(),
 		Short:   "Copy and enable mirroring of gitlab projects and groups",
 		Long:    "Fully customizable gitlab repositories and groups mirroring between two (or one) gitlab instances.",
 		Run: func(*cobra.Command, []string) {
-			executeMirroringCommand(args, mirrorMappingPath, logFile)
+			executeMirroringCommand(args, mirrorMappingPath, logFile, envErrs)
 		},
 	}
 
@@ -84,9 +98,9 @@ func buildRootCmd(args *mirrorcfg.ParserArgs, mirrorMappingPath, logFile *string
 	rootCmd.Flags().IntVarP(&args.Retry, "retry", "r", defaultRetryCount, "Number of retries for failed requests")
 	rootCmd.Flags().StringVar(logFile, "log-file", strings.TrimSpace(os.Getenv("GITLAB_SYNC_LOG_FILE")), "Path to the log file")
 	rootCmd.Flags().StringVar(&args.CacheDir, "cache-dir", strings.TrimSpace(os.Getenv("GITLAB_SYNC_CACHE_DIR")), "Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, empty disables caching)")
-	rootCmd.Flags().DurationVar(&args.CacheMaxAge, "cache-max-age", helpers.EnvDuration("GITLAB_SYNC_CACHE_MAX_AGE", defaultCacheMaxAge), "Delete the cached repositories that have not been synchronized for that long (0 keeps them forever)")
+	rootCmd.Flags().DurationVar(&args.CacheMaxAge, "cache-max-age", cacheMaxAge, "Delete the cached repositories that have not been synchronized for that long (0 keeps them forever)")
 	rootCmd.Flags().StringVar(&args.UserAgent, "user-agent", helpers.EnvString("GITLAB_SYNC_USER_AGENT", defaultUserAgent()), "User-Agent sent with every GitLab API request")
-	rootCmd.Flags().BoolVar(&args.ExitSuccessOnNonBlocking, "exit-success-on-non-blocking", helpers.EnvBool("GITLAB_SYNC_EXIT_SUCCESS_ON_NON_BLOCKING", false), "Exit with code 0 when only non-blocking errors occurred (blocking errors still exit 1)")
+	rootCmd.Flags().BoolVar(&args.ExitSuccessOnNonBlocking, "exit-success-on-non-blocking", exitSuccess, "Exit with code 0 when only non-blocking errors occurred (blocking errors still exit 1)")
 	// These only fail when a flag name is misspelled, which is a programming error.
 	flagErr := errors.Join(
 		rootCmd.MarkFlagFilename("mirror-mapping", "json"),
@@ -131,9 +145,19 @@ func addCompletionCommand(rootCmd *cobra.Command) {
 	rootCmd.AddCommand(completionCmd)
 }
 
-func executeMirroringCommand(args *mirrorcfg.ParserArgs, mirrorMappingPath, logFile *string) {
+// warnEach logs every error as a warning.
+func warnEach(errs []error) {
+	for _, err := range errs {
+		zap.L().Warn(err.Error())
+	}
+}
+
+func executeMirroringCommand(args *mirrorcfg.ParserArgs, mirrorMappingPath, logFile *string, envErrs []error) {
 	// Set up the logger
 	SetupZapLogger(logLevelFor(args), strings.TrimSpace(*logFile))
+
+	warnEach(envErrs)
+
 	zap.L().Debug("Verbose mode enabled")
 	zap.L().Debug("Parsing command line arguments")
 

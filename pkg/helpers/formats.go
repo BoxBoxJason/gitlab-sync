@@ -1,12 +1,11 @@
 package helpers
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 // MatchPathAgainstFilters determines if a given path matches any of the specified filters.
@@ -49,40 +48,38 @@ func EnvString(name, defaultValue string) string {
 
 // EnvDuration reads a Go duration (for example "720h" or "45m") from the
 // environment, falling back to defaultValue when the variable is unset or does
-// not parse. An unparsable value is reported rather than silently ignored, but
-// it does not stop the run: the flag can still override it.
-func EnvDuration(name string, defaultValue time.Duration) time.Duration {
+// not parse. An unparsable value yields defaultValue and a non-nil error, so the
+// caller can report it once its logger is ready: this runs while the flags are
+// registered, before the logger is installed. The flag can still override it.
+func EnvDuration(name string, defaultValue time.Duration) (time.Duration, error) {
 	raw := strings.TrimSpace(os.Getenv(name))
 	if raw == "" {
-		return defaultValue
+		return defaultValue, nil
 	}
 
 	parsed, err := time.ParseDuration(raw)
 	if err != nil {
-		zap.L().Warn("Ignoring an invalid duration in the environment", zap.String("variable", name), zap.String("value", raw), zap.Error(err))
-
-		return defaultValue
+		return defaultValue, fmt.Errorf("ignoring invalid duration %q in %s: %w", raw, name, err)
 	}
 
-	return parsed
+	return parsed, nil
 }
 
 // EnvBool reads a boolean (anything strconv.ParseBool accepts) from the
 // environment, falling back to defaultValue when the variable is unset, blank
-// or does not parse. An unparsable value is reported rather than silently
-// ignored, but it does not stop the run: the flag can still override it.
-func EnvBool(name string, defaultValue bool) bool {
+// or does not parse. An unparsable value yields defaultValue and a non-nil
+// error, so the caller can report it once its logger is ready. The flag can
+// still override it.
+func EnvBool(name string, defaultValue bool) (bool, error) {
 	raw := strings.TrimSpace(os.Getenv(name))
 	if raw == "" {
-		return defaultValue
+		return defaultValue, nil
 	}
 
 	parsed, err := strconv.ParseBool(raw)
 	if err != nil {
-		zap.L().Warn("Ignoring an invalid boolean in the environment", zap.String("variable", name), zap.String("value", raw), zap.Error(err))
-
-		return defaultValue
+		return defaultValue, fmt.Errorf("ignoring invalid boolean %q in %s: %w", raw, name, err)
 	}
 
-	return parsed
+	return parsed, nil
 }

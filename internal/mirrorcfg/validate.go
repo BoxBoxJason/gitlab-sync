@@ -77,33 +77,7 @@ func reportMappingProblem(msg string) {
 // checkProjects validates the projects, logging every problem it finds.
 // It returns the number of problems found.
 func (m *MirrorMapping) checkProjects() int {
-	problems := 0
-
-	duplicateDestinationFinder := make(map[string]struct{}, len(m.Projects))
-	for project, options := range m.Projects {
-		// Check if the destination path is already used
-		if _, ok := duplicateDestinationFinder[options.DestinationPath]; ok {
-			reportMappingProblem("duplicate destination path found in project mapping: " + options.DestinationPath)
-
-			problems++
-		} else {
-			duplicateDestinationFinder[options.DestinationPath] = struct{}{}
-		}
-		// Check the source / destination paths
-		problems += checkCopyPaths(project, options.DestinationPath, PROJECT)
-
-		// Check the visibility
-		options.Visibility = new(strings.TrimSpace(helpers.Deref(options.Visibility, string(gitlab.PublicVisibility))))
-		if options.Visibility != nil && !checkVisibility(*options.Visibility) {
-			reportMappingProblem("invalid project visibility: " + *options.Visibility)
-
-			problems++
-
-			options.Visibility = new(string(gitlab.PublicVisibility))
-		}
-	}
-
-	return problems
+	return checkEntries(m.Projects, ProjectType)
 }
 
 // checkCopyPaths validates a single source/destination path pair, logging every
@@ -131,7 +105,7 @@ func checkCopyPaths(sourcePath, destinationPath, pathType string) int {
 		problems++
 	}
 
-	if pathType == PROJECT && strings.Count(destinationPath, "/") < 1 {
+	if pathType == ProjectType && strings.Count(destinationPath, "/") < 1 {
 		reportMappingProblem("invalid project destination path (must be in a namespace): " + destinationPath)
 
 		problems++
@@ -149,25 +123,39 @@ func checkCopyPaths(sourcePath, destinationPath, pathType string) int {
 // checkGroups validates the groups, logging every problem it finds.
 // It returns the number of problems found.
 func (m *MirrorMapping) checkGroups() int {
+	return checkEntries(m.Groups, GroupType)
+}
+
+// checkEntries validates the project or group entries (according to entityType),
+// logging every problem it finds. It returns the number of problems found.
+func checkEntries(entries map[string]*MirroringOptions, entityType string) int {
 	problems := 0
 
-	duplicateDestinationFinder := make(map[string]struct{}, len(m.Groups))
-	for group, options := range m.Groups {
+	duplicateDestinationFinder := make(map[string]struct{}, len(entries))
+	for source, options := range entries {
+		if options == nil {
+			reportMappingProblem("missing options (null) for " + entityType + " mapping: " + source)
+
+			problems++
+
+			continue
+		}
+
 		// Check if the destination path is already used
 		if _, ok := duplicateDestinationFinder[options.DestinationPath]; ok {
-			reportMappingProblem("duplicate destination path found in group mapping: " + options.DestinationPath)
+			reportMappingProblem("duplicate destination path found in " + entityType + " mapping: " + options.DestinationPath)
 
 			problems++
 		} else {
 			duplicateDestinationFinder[options.DestinationPath] = struct{}{}
 		}
 		// Check the source / destination paths
-		problems += checkCopyPaths(group, options.DestinationPath, GROUP)
+		problems += checkCopyPaths(source, options.DestinationPath, entityType)
 
 		// Check the visibility
 		options.Visibility = new(strings.TrimSpace(helpers.Deref(options.Visibility, string(gitlab.PublicVisibility))))
 		if options.Visibility != nil && !checkVisibility(*options.Visibility) {
-			reportMappingProblem("invalid group visibility: " + *options.Visibility)
+			reportMappingProblem("invalid " + entityType + " visibility: " + *options.Visibility)
 
 			problems++
 

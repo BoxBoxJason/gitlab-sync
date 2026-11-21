@@ -56,8 +56,13 @@ func TestEnvBool(t *testing.T) {
 		t.Run(test.value, func(t *testing.T) {
 			t.Setenv(name, test.value)
 
-			if got := EnvBool(name, test.defaultValue); got != test.want {
+			got, err := EnvBool(name, test.defaultValue)
+			if got != test.want {
 				t.Errorf("envBool(%q, %v) = %v, want %v", test.value, test.defaultValue, got, test.want)
+			}
+
+			if wantErr := test.value == "nonsense"; (err != nil) != wantErr {
+				t.Errorf("envBool(%q, %v) error = %v, want error: %v", test.value, test.defaultValue, err, wantErr)
 			}
 		})
 	}

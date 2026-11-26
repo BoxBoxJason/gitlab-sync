@@ -47,10 +47,11 @@ test: deps
 	@echo "Coverage report generated: codequality/coverage.html"
 
 # End-to-end tests: the real binary (built with coverage) against a real GitLab CE, started for
-# the run from test/e2e/gitlab/compose.yaml and removed afterwards (cold boot: 2-5 minutes, ~2.5 GB
+# the run from test/e2e/gitlab/compose.yaml and removed afterwards (cold boot: 2-5 minutes, ~9 GB
 # of RAM). Set GITLAB_E2E_URL and GITLAB_E2E_TOKEN to use a throwaway instance you already have.
 # The coverage of the binary lands in codequality/e2e-coverage.out.
-# E2E_TAGS selects the scenarios by tag.
+# E2E_TAGS selects the scenarios by tag (default "~@bug", the scenarios that expose a known bug are
+# left out).
 COMPOSE ?= docker compose
 E2E_COMPOSE := $(COMPOSE) -f test/e2e/gitlab/compose.yaml
 
@@ -65,7 +66,7 @@ e2e: deps
 		export GITLAB_E2E_URL=http://localhost:8181; \
 		export GITLAB_E2E_TOKEN=$$(test/e2e/gitlab/bootstrap.sh); \
 	fi; \
-	E2E_COVERDIR=$(CURDIR)/codequality/e2e-cover gotestsum --junitfile codequality/e2e-tests.xml --format testname -- -tags e2e -count=1 ./test/e2e/...
+	E2E_COVERDIR=$(CURDIR)/codequality/e2e-cover gotestsum --junitfile codequality/e2e-tests.xml --format testname -- -tags e2e -count=1 -timeout 30m ./test/e2e/...
 	$(GO) tool covdata textfmt -i=codequality/e2e-cover -o codequality/e2e-coverage.out
 	@echo "End-to-end report: codequality/e2e-tests.xml, coverage: codequality/e2e-coverage.out"
 

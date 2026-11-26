@@ -31,10 +31,10 @@ Feature: Mirroring against a real GitLab
       """
     When I run gitlab-sync
     Then the exit code is 0
-    And the destination project "app" has the opened issue "It crashes"
-    And the destination project "app" has the closed issue "It was slow"
+    And the destination project "app" contains the opened issue "It crashes"
+    And the destination project "app" contains the closed issue "It was slow"
     And the destination project "app" has 2 issues
-    And the destination project "app" has the release "v1"
+    And the destination project "app" contains the release "v1"
 
   Scenario: a second run brings the changes of the source and copies nothing twice
     Given the source project "app" exists with the description "First" and the topics ""

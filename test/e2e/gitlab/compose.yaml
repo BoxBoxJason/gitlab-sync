@@ -1,6 +1,6 @@
 # Minimal GitLab CE for the end-to-end tests: only what gitlab-sync exercises
-# (REST API, git over HTTP, mirroring) is kept, everything else is switched off to fit a
-# small CI runner. Cold boot takes ~3-5 minutes and ~2.5 GB of RAM.
+# (REST API, git over HTTP, package registry, mirroring) is kept, everything else is
+# switched off to fit a CI runner. Cold boot takes ~3-5 minutes and ~9 GB of RAM.
 #
 #   docker compose -f test/e2e/gitlab/compose.yaml up -d --wait
 #   test/e2e/gitlab/bootstrap.sh        # prints a root personal access token
@@ -9,7 +9,7 @@ services:
   gitlab:
     image: gitlab/gitlab-ce:19.6.1-ce.0  # pin; bump deliberately (renovate can track it)
     hostname: localhost
-    shm_size: 256m
+    shm_size: 512m
     ports:
       - "8181:8181"
     environment:
@@ -40,7 +40,6 @@ services:
         gitlab_exporter['enable'] = false
         puma['exporter_enabled'] = false
         sidekiq['metrics_enabled'] = false
-        gitlab_rails['packages_enabled'] = false
         gitlab_rails['dependency_proxy_enabled'] = false
         gitlab_rails['smtp_enable'] = false
         gitlab_rails['gitlab_email_enabled'] = false
@@ -51,19 +50,22 @@ services:
         gitlab_rails['backup_keep_time'] = 0
         logrotate['enable'] = false
 
-        # Memory: single-process Puma, one Sidekiq thread, small Postgres
-        puma['worker_processes'] = 0
-        puma['min_threads'] = 1
-        puma['max_threads'] = 2
-        sidekiq['concurrency'] = 2
-        postgresql['shared_buffers'] = '64MB'
-        postgresql['max_worker_processes'] = 4
+        # Sized for the scenarios running in parallel (a Puma worker takes ~1 GB)
+        puma['worker_processes'] = 4
+        puma['min_threads'] = 4
+        puma['max_threads'] = 4
+        # The background jobs (pipelines, permissions, deletions) are what the scenarios
+        # wait for: three Sidekiq processes
+        sidekiq['queue_groups'] = ['*', '*', '*']
+        sidekiq['concurrency'] = 8
+        postgresql['shared_buffers'] = '256MB'
+        postgresql['max_worker_processes'] = 8
         postgresql['work_mem'] = '4MB'
         postgresql['autovacuum'] = 'off'
-        gitlab_rails['db_pool'] = 4
+        gitlab_rails['db_pool'] = 10
         gitlab_rails['env'] = { 'MALLOC_CONF' => 'dirty_decay_ms:1000,muzzy_decay_ms:1000' }
         gitaly['configuration'] = { daily_maintenance: { disabled: true } }
-        gitaly['env'] = { 'MALLOC_CONF' => 'dirty_decay_ms:1000,muzzy_decay_ms:1000', 'GITALY_COMMAND_SPAWN_MAX_PARALLEL' => '2' }
+        gitaly['env'] = { 'MALLOC_CONF' => 'dirty_decay_ms:1000,muzzy_decay_ms:1000', 'GITALY_COMMAND_SPAWN_MAX_PARALLEL' => '10' }
     healthcheck:
       # The image's own check goes through nginx, which is disabled here
       test: ["CMD", "curl", "-fsS", "http://localhost:8181/-/readiness"]

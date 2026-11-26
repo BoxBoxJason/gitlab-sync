@@ -3,166 +3,226 @@
 package e2e
 
 import (
+	"errors"
 	"fmt"
-	"slices"
+	"path"
 	"strings"
+	"sync"
 
 	"github.com/cucumber/godog"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 )
 
+const (
+	defaultBranch = "main"
+
+	// tableColumns is the width of the attribute / value tables.
+	tableColumns = 2
+	// packageFileParts is the number of parts of a "name/version/file" spec.
+	packageFileParts = 3
+	// seedWorkers bounds how many projects are generated at the same time.
+	seedWorkers = 4
+	// avatarSize is the width and height of the generated avatars.
+	avatarSize = 8
+
+	attrDescription = "description"
+	attrVisibility  = "visibility"
+	kindGroup       = "group"
+)
+
 func (s *steps) registerGivenSteps(scenario *godog.ScenarioContext) {
-	scenario.Step(`^the source project "([^"]+)" exists$`, s.project)
-	scenario.Step(`^the source project "([^"]+)" exists with the description "([^"]*)" and the topics "([^"]*)"$`, s.projectWith)
-	scenario.Step(`^the source project "([^"]+)" has a commit on "([^"]+)"$`, s.commit)
-	scenario.Step(`^the source project "([^"]+)" has the tag "([^"]+)" on "([^"]+)"$`, s.tag)
-	scenario.Step(`^the source project "([^"]+)" has the (opened|closed) issue "([^"]*)"$`, s.issue)
-	scenario.Step(`^the source project "([^"]+)" has the release "([^"]+)"$`, s.release)
+	scenario.Step(`^the `+role+` has the group "([^"]+)"$`, s.group)
+	scenario.Step(`^the `+role+` has the project "([^"]+)"$`, s.project)
+	scenario.Step(`^the `+role+` project "([^"]+)" exists$`, s.project)
+	scenario.Step(`^the source project "([^"]+)" exists with the description "([^"]*)" and the topics "([^"]*)"$`, s.projectWithTopics)
+	scenario.Step(`^the `+role+` has the project "([^"]+)" with:$`, s.projectWithTable)
+	scenario.Step(`^the `+role+` has the project "([^"]+)" with a commit on "([^"]+)"$`, s.projectWithCommit)
+	scenario.Step(`^the `+role+` has the archived project "([^"]+)"$`, s.archivedProject)
+	scenario.Step(`^the source has (\d+) projects under "([^"]+)"$`, s.generatedProjects)
+	scenario.Step(`^the `+role+` project "([^"]+)" has a commit on "([^"]+)"$`, s.commit)
+	scenario.Step(`^the source project "([^"]+)" has a CI configuration$`, s.ciConfiguration)
+	scenario.Step(`^the `+role+` project "([^"]+)" has the tag "([^"]+)" on "([^"]+)"$`, s.tag)
+	scenario.Step(`^the `+role+` project "([^"]+)" has the (opened|closed) issue "([^"]*)"$`, s.issue)
+	scenario.Step(`^the `+role+` project "([^"]+)" has the release "([^"]+)"$`, s.release)
+	scenario.Step(`^the source project "([^"]+)" release "([^"]+)" has the link "([^"]*)" to "([^"]*)"$`, s.releaseLink)
+	scenario.Step(`^the source project "([^"]+)" release "([^"]+)" has the link "([^"]*)" to the package file "([^"]+)" at "([^"]+)"$`, s.releaseLinkToPackage)
+	scenario.Step(`^the source project "([^"]+)" release "([^"]+)" has the link "([^"]*)" to the uploaded file "([^"]+)"$`, s.releaseLinkToUpload)
+	scenario.Step(`^the source project "([^"]+)" has the uploaded file "([^"]+)" with the content "([^"]*)"$`, s.uploadedFile)
+	scenario.Step(`^the source project "([^"]+)" has the generic package file "([^"]+)" with the content "([^"]*)"$`, s.packageFile)
+	scenario.Step(`^the source (group|project) "([^"]+)" has an avatar$`, s.avatar)
 	scenario.Step(`^the source project "([^"]+)" now has the description "([^"]*)"$`, s.setDescription)
+	scenario.Step(`^the source project "([^"]+)" no longer has the (branch|tag) "([^"]+)"$`, s.removeRef)
+	scenario.Step(`^the source project "([^"]+)" no longer has the generic package file "([^"]+)"$`, s.removePackageFile)
+	scenario.Step(`^the source project "([^"]+)" no longer has the release "([^"]+)"$`, s.removeRelease)
+	scenario.Step(`^the source project "([^"]+)" release "([^"]+)" no longer has the link "([^"]*)"$`, s.removeReleaseLink)
 	scenario.Step(`^the mirror mapping:$`, s.mirrorMapping)
 }
 
-// sourceGroupID returns the ID of the source group, created on first use.
-func (s *steps) sourceGroupID() (int64, error) {
-	if s.w.groupID != 0 {
-		return s.w.groupID, nil
+// ensureGroup returns the ID of a group of the scenario, creating it and its
+// parents on first use. The groups are public, so that they can hold projects of
+// any visibility.
+func (s *steps) ensureGroup(fullPath string) (int64, error) {
+	if id, ok := s.w.groups[fullPath]; ok {
+		return id, nil
 	}
 
-	path := s.w.groupPath(roleSource)
+	name := path.Base(fullPath)
+	options := &gitlab.CreateGroupOptions{Name: &name, Path: &name, Visibility: new(gitlab.PublicVisibility)}
 
-	group, _, err := s.w.env.client.Groups.CreateGroup(&gitlab.CreateGroupOptions{Name: &path, Path: &path})
+	if parent := path.Dir(fullPath); parent != "." {
+		id, err := s.ensureGroup(parent)
+		if err != nil {
+			return 0, err
+		}
+
+		options.ParentID = &id
+	}
+
+	group, _, err := s.w.env.client.Groups.CreateGroup(options)
 	if err != nil {
-		return 0, fmt.Errorf("create the group %s: %w", path, err)
+		return 0, fmt.Errorf("create the group %s: %w", fullPath, err)
 	}
 
-	s.w.groupID = group.ID
+	s.w.groups[fullPath] = group.ID
 
 	return group.ID, nil
 }
 
-func (s *steps) project(name string) error {
-	return s.projectWith(name, "", "")
+func (s *steps) group(role, name string) error {
+	_, err := s.ensureGroup(s.w.fullPath(role, name))
+
+	return err
 }
 
-func (s *steps) projectWith(name, description, topics string) error {
-	groupID, err := s.sourceGroupID()
+// createProject creates a project, public unless the options say otherwise, in
+// the group its path names.
+func (s *steps) createProject(role, name string, options *gitlab.CreateProjectOptions) error {
+	fullPath := s.w.fullPath(role, name)
+
+	groupID, err := s.ensureGroup(path.Dir(fullPath))
 	if err != nil {
 		return err
 	}
 
-	options := &gitlab.CreateProjectOptions{Name: &name, Path: &name, NamespaceID: &groupID, Description: &description}
+	base := path.Base(fullPath)
+	options.Name, options.Path, options.NamespaceID = &base, &base, &groupID
 
-	if list := splitList(topics); len(list) > 0 {
-		options.Topics = &list
+	if options.Visibility == nil {
+		options.Visibility = new(gitlab.PublicVisibility)
 	}
 
 	_, _, err = s.w.env.client.Projects.CreateProject(options)
 	if err != nil {
-		return fmt.Errorf("create the project %s: %w", name, err)
+		return fmt.Errorf("create the project %s: %w", fullPath, err)
 	}
 
 	return nil
 }
 
-// commit adds a commit, with a file of its own, to a branch. A new branch starts
-// from the first one of the project: the branches are tracked here, because
-// reading them back right after the first commit can still answer none.
-func (s *steps) commit(name, branch string) error {
-	path := s.w.projectPath(roleSource, name)
+func (s *steps) project(role, name string) error {
+	return s.createProject(role, name, &gitlab.CreateProjectOptions{})
+}
 
-	s.w.files++
+func (s *steps) projectWithTopics(name, description, topics string) error {
+	options := &gitlab.CreateProjectOptions{Description: &description}
 
-	file := fmt.Sprintf("file-%d.txt", s.w.files)
-	message := "add " + file
-	action := gitlab.FileCreate
-
-	options := &gitlab.CreateCommitOptions{
-		Branch:        &branch,
-		CommitMessage: &message,
-		Actions:       []*gitlab.CommitActionOptions{{Action: &action, FilePath: &file, Content: &file}},
+	if list := splitList(topics, ","); len(list) > 0 {
+		options.Topics = &list
 	}
 
-	known := s.w.branches[path]
-	if !slices.Contains(known, branch) && len(known) > 0 {
-		options.StartBranch = &known[0]
+	return s.createProject(roleSource, name, options)
+}
+
+// projectWithTable creates a project with the attributes of a two columns table
+// (description, visibility, default branch, topics).
+func (s *steps) projectWithTable(role, name string, table *godog.Table) error {
+	options := &gitlab.CreateProjectOptions{}
+
+	for _, row := range table.Rows {
+		if len(row.Cells) != tableColumns {
+			return errors.New("the table must have two columns: attribute, value")
+		}
+
+		value := row.Cells[1].Value
+
+		switch attribute := row.Cells[0].Value; attribute {
+		case attrDescription:
+			options.Description = &value
+		case attrVisibility:
+			options.Visibility = new(gitlab.VisibilityValue(value))
+		case "default branch":
+			options.DefaultBranch = &value
+		case "topics":
+			options.Topics = new(splitList(value, ","))
+		default:
+			return fmt.Errorf("unknown project attribute %q (want description, visibility, default branch or topics)", attribute)
+		}
 	}
 
-	_, _, err := s.w.env.client.Commits.CreateCommit(path, options)
+	return s.createProject(role, name, options)
+}
+
+func (s *steps) projectWithCommit(role, name, branch string) error {
+	err := s.project(role, name)
 	if err != nil {
-		return fmt.Errorf("commit to %s of %s: %w", branch, path, err)
+		return err
 	}
 
-	if !slices.Contains(known, branch) {
-		s.w.branches[path] = append(known, branch)
+	return s.commit(role, name, branch)
+}
+
+func (s *steps) archivedProject(role, name string) error {
+	err := s.projectWithCommit(role, name, defaultBranch)
+	if err != nil {
+		return err
+	}
+
+	_, _, err = s.w.env.client.Projects.ArchiveProject(s.w.fullPath(role, name))
+	if err != nil {
+		return fmt.Errorf("archive the project %s: %w", name, err)
 	}
 
 	return nil
 }
 
-func (s *steps) tag(name, tag, branch string) error {
-	path := s.w.projectPath(roleSource, name)
-
-	_, _, err := s.w.env.client.Tags.CreateTag(path, &gitlab.CreateTagOptions{TagName: &tag, Ref: &branch})
+// generatedProjects creates empty projects named project-001, project-002, ...
+func (s *steps) generatedProjects(count int, parent string) error {
+	// The group is created first: the workers only read the cache of groups.
+	err := s.group(roleSource, parent)
 	if err != nil {
-		return fmt.Errorf("create the tag %s of %s: %w", tag, path, err)
+		return err
 	}
 
-	return nil
-}
+	var (
+		waitGroup sync.WaitGroup
+		slots     = make(chan struct{}, seedWorkers)
+		errs      = make([]error, count)
+	)
 
-func (s *steps) issue(name, state, title string) error {
-	path := s.w.projectPath(roleSource, name)
+	for index := range count {
+		slots <- struct{}{}
 
-	issue, _, err := s.w.env.client.Issues.CreateIssue(path, &gitlab.CreateIssueOptions{Title: &title})
-	if err != nil {
-		return fmt.Errorf("create the issue %q of %s: %w", title, path, err)
+		waitGroup.Go(func() {
+			defer func() { <-slots }()
+
+			errs[index] = s.project(roleSource, fmt.Sprintf("%s/project-%03d", parent, index+1))
+		})
 	}
 
-	if state != "closed" {
-		return nil
-	}
+	waitGroup.Wait()
 
-	event := "close"
-
-	_, _, err = s.w.env.client.Issues.UpdateIssue(path, issue.IID, &gitlab.UpdateIssueOptions{StateEvent: &event})
-	if err != nil {
-		return fmt.Errorf("close the issue %q of %s: %w", title, path, err)
-	}
-
-	return nil
-}
-
-func (s *steps) release(name, tag string) error {
-	path := s.w.projectPath(roleSource, name)
-
-	_, _, err := s.w.env.client.Releases.CreateRelease(path, &gitlab.CreateReleaseOptions{TagName: &tag, Name: &tag})
-	if err != nil {
-		return fmt.Errorf("create the release %s of %s: %w", tag, path, err)
-	}
-
-	return nil
-}
-
-func (s *steps) setDescription(name, description string) error {
-	path := s.w.projectPath(roleSource, name)
-
-	_, _, err := s.w.env.client.Projects.EditProject(path, &gitlab.EditProjectOptions{Description: &description})
-	if err != nil {
-		return fmt.Errorf("edit the project %s: %w", path, err)
-	}
-
-	return nil
+	return errors.Join(errs...)
 }
 
 func (s *steps) mirrorMapping(doc *godog.DocString) error {
 	return s.w.writeMapping(doc.Content)
 }
 
-// splitList splits a comma separated list.
-func splitList(value string) []string {
+// splitList splits a separated list, ignoring the empty items.
+func splitList(value, separator string) []string {
 	var items []string
 
-	for item := range strings.SplitSeq(value, ",") {
+	for item := range strings.SplitSeq(value, separator) {
 		item = strings.TrimSpace(item)
 		if item != "" {
 			items = append(items, item)

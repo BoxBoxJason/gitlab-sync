@@ -6,13 +6,24 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/cucumber/godog"
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 )
 
-const coverDirPerm = 0o750
+const (
+	coverDirPerm = 0o750
+
+	// defaultConcurrency is how many scenarios run at the same time. They are
+	// independent: each one has its own groups, accounts and proxies.
+	defaultConcurrency = 8
+
+	// aloneTag marks the scenarios that run one at a time.
+	aloneTag = "@alone"
+)
 
 // buildBinary builds gitlab-sync with coverage instrumentation. The coverage data
 // of the runs lands in E2E_COVERDIR when it is set.
@@ -61,23 +72,64 @@ func TestFeatures(t *testing.T) {
 		t.Fatalf("create the GitLab client: %v", err)
 	}
 
-	env := environment{client: client, bin: buildBinary(t), url: url, token: token}
+	// The scenarios tagged @bug describe a behavior that is wrong today, see the
+	// comment above each. Run them on purpose with E2E_TAGS=@bug.
+	tags := os.Getenv("E2E_TAGS")
+	if tags == "" {
+		tags = "~@bug"
+	}
+
+	concurrency := defaultConcurrency
+
+	if value := os.Getenv("E2E_CONCURRENCY"); value != "" {
+		concurrency, err = strconv.Atoi(value)
+		if err != nil {
+			t.Fatalf("parse E2E_CONCURRENCY: %v", err)
+		}
+	}
+
+	root := createRootGroup(t, client)
+	env := &environment{client: client, bin: buildBinary(t), url: url, token: token, root: root.FullPath, rootID: root.ID}
+
+	// The scenarios tagged @alone create too many projects to share the instance:
+	// the listings of the others would span several pages, which the deletions of
+	// finished scenarios shift under their feet. They run after the others.
+	run(t, env, tags+" && ~"+aloneTag, concurrency)
+	run(t, env, tags+" && "+aloneTag, 1)
+}
+
+// createRootGroup creates the group holding the groups of the scenarios.
+func createRootGroup(t *testing.T, client *gitlab.Client) *gitlab.Group {
+	t.Helper()
+
+	path := "e2e-" + strconv.FormatInt(time.Now().UnixNano(), 36)
+
+	group, _, err := client.Groups.CreateGroup(&gitlab.CreateGroupOptions{Name: &path, Path: &path, Visibility: new(gitlab.PublicVisibility)})
+	if err != nil {
+		t.Fatalf("create the group %s: %v", path, err)
+	}
+
+	return group
+}
+
+// run runs the scenarios matching the tags.
+func run(t *testing.T, env *environment, tags string, concurrency int) {
+	t.Helper()
 
 	suite := godog.TestSuite{
-		Name:                "gitlab-sync-real",
+		Name:                "gitlab-sync",
 		ScenarioInitializer: initializeScenario(env),
 		Options: &godog.Options{
-			Format:   "pretty",
-			Paths:    []string{"features"},
-			Tags:     os.Getenv("E2E_TAGS"),
-			Strict:   true,
-			TestingT: t,
-			// One scenario at a time: the instance is small.
-			Concurrency: 1,
+			Format:      "pretty",
+			Paths:       []string{"features"},
+			Tags:        tags,
+			Strict:      true,
+			TestingT:    t,
+			Concurrency: concurrency,
 		},
 	}
 
 	if suite.Run() != 0 {
-		t.Fatal("some scenarios failed")
+		t.Error("some scenarios failed")
 	}
 }

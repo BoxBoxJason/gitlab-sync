@@ -49,7 +49,9 @@ func (g *GitlabInstance) MirrorProjectGit(sourceGitlabInstance *GitlabInstance, 
 		return err
 	}
 
-	err = helpers.MirrorRepo(g.GitCache, sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, g.GitAuth, mirrorPushOptions(mirrorOptions))
+	// The git slot is taken inside MirrorRepo, once the cache entry is locked, so a
+	// repository waiting on another mirroring of the same source holds no slot.
+	err = helpers.MirrorRepo(g.GitCache, sourceProject.HTTPURLToRepo, destinationProject.HTTPURLToRepo, sourceGitlabInstance.GitAuth, g.GitAuth, mirrorPushOptions(mirrorOptions), g.acquireGitSlot)
 	if err != nil {
 		return fmt.Errorf("failed to mirror repository from %s to %s: %w", sourceProject.PathWithNamespace, destinationProject.PathWithNamespace, err)
 	}

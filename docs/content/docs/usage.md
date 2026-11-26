@@ -32,6 +32,8 @@ The full `--help` output of the CLI is available in the [CLI reference]({{< relr
 | `--destination-big` | `DESTINATION_GITLAB_BIG` | No | Specify if the destination GitLab instance is a big instance (default: false, any non-empty value of the environment variable enables it) |
 | `--mirror-mapping` | `MIRROR_MAPPING` | Yes | Path to a JSON file containing the [mirror mapping]({{< relref "mapping" >}}) |
 | `--retry` or `-r` | N/A | No | Number of retries for failed GitLab API requests (default: 3, `-1` for no limit) |
+| `--api-concurrency` | `GITLAB_SYNC_API_CONCURRENCY` | No | Maximum number of GitLab API requests in flight at once, per instance (default: `16`, `0` or less: unbounded). When the source and destination URLs point to the same instance, both share this one bound. Lower it if the instances answer `429 Too Many Requests` |
+| `--git-concurrency` | `GITLAB_SYNC_GIT_CONCURRENCY` | No | Maximum number of git clones and pushes running at once (freemium mirroring only, default: `4`, `0` or less: unbounded). Each clone needs disk space and memory, and loads the source instance |
 | `--log-file` | `GITLAB_SYNC_LOG_FILE` | No | Path to a log file for output logs (default: `none`, only outputs logs to stderr) |
 | `--cache-dir` | `GITLAB_SYNC_CACHE_DIR` | No | Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, default: `none`, caching disabled). See [caching]({{< relref "freemium#caching-the-cloned-repositories" >}}) |
 | `--cache-max-age` | `GITLAB_SYNC_CACHE_MAX_AGE` | No | Delete the cached repositories that have not been synchronized for that long (Go duration, `0` keeps them forever, default: `168h`, 7 days) |

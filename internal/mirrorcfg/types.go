@@ -41,6 +41,8 @@ type ParserArgs struct {
 	UserAgent                string
 	CacheMaxAge              time.Duration
 	Retry                    int
+	APIConcurrency           int
+	GitConcurrency           int
 	ForcePremium             bool
 	ForceNonPremium          bool
 	DestinationGitlabIsBig   bool

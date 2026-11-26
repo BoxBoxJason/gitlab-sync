@@ -58,13 +58,15 @@ type GitlabInstance struct {
 	// assetTransfers bounds how many release asset files are transferred at once
 	// (see acquireAssetTransfer). A nil channel means no bound.
 	assetTransfers chan struct{}
-	Projects       map[string]*gitlab.Project
-	Groups         map[string]*gitlab.Group
-	Role           string
-	InstanceSize   string
-	UserID         int64
-	muProjects     sync.RWMutex
-	muGroups       sync.RWMutex
+	// gitSlots bounds how many repositories are cloned and pushed at once. A nil channel means no bound.
+	gitSlots     chan struct{}
+	Projects     map[string]*gitlab.Project
+	Groups       map[string]*gitlab.Group
+	Role         string
+	InstanceSize string
+	UserID       int64
+	muProjects   sync.RWMutex
+	muGroups     sync.RWMutex
 	// muEnsureGroups serializes the creation of missing parent groups (see EnsureParentNamespaceID).
 	muEnsureGroups      sync.Mutex
 	PullMirrorAvailable bool
@@ -72,6 +74,9 @@ type GitlabInstance struct {
 
 // GitlabInstanceOpts holds the options used to create a GitlabInstance.
 type GitlabInstanceOpts struct {
+	// apiSlots, when set, are the API request slots shared with another instance
+	// of the same server (see sharedAPISlots); its capacity replaces APIConcurrency.
+	apiSlots     chan struct{}
 	GitlabURL    string
 	GitlabToken  string
 	Role         string
@@ -79,6 +84,10 @@ type GitlabInstanceOpts struct {
 	// UserAgent is sent with every API request. Empty keeps the client-go default.
 	UserAgent  string
 	MaxRetries int
+	// APIConcurrency bounds the API requests in flight at once. Zero or less means no bound.
+	APIConcurrency int
+	// GitConcurrency bounds the git clones and pushes running at once. Zero or less means no bound.
+	GitConcurrency int
 }
 
 // NewGitlabInstance creates a new GitlabInstance with the provided parameters
@@ -111,6 +120,8 @@ func NewGitlabInstance(initArgs *GitlabInstanceOpts) (*GitlabInstance, error) {
 
 		assetTransfers: make(chan struct{}, releaseAssetTransferWorkers),
 	}
+
+	gitlabInstance.limitConcurrency(initArgs)
 
 	if initArgs.GitlabToken != "" {
 		// Get the current user ID

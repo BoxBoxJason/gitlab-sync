@@ -21,7 +21,10 @@ const (
 	// binaryName is the program name, shown in the help and used as the User-Agent product.
 	binaryName        = "gitlab-sync"
 	defaultRetryCount = 3
-	logDirPermission  = 0o700
+	// defaultAPIConcurrency and defaultGitConcurrency bound the work in flight against each instance.
+	defaultAPIConcurrency = 16
+	defaultGitConcurrency = 4
+	logDirPermission      = 0o700
 	// defaultCacheMaxAge is how long a cached repository survives without being
 	// synced. It only applies when --cache-dir is set.
 	defaultCacheMaxAge = 7 * 24 * time.Hour
@@ -96,6 +99,7 @@ func buildRootCmd(args *mirrorcfg.ParserArgs, mirrorMappingPath, logFile *string
 	rootCmd.Flags().StringVar(mirrorMappingPath, "mirror-mapping", os.Getenv("MIRROR_MAPPING"), "Path to the mirror mapping file")
 	rootCmd.Flags().BoolVar(&args.DryRun, "dry-run", false, "Perform a dry run without making any changes")
 	rootCmd.Flags().IntVarP(&args.Retry, "retry", "r", defaultRetryCount, "Number of retries for failed requests")
+	envErrs = append(envErrs, addConcurrencyFlags(rootCmd, args)...)
 	rootCmd.Flags().StringVar(logFile, "log-file", strings.TrimSpace(os.Getenv("GITLAB_SYNC_LOG_FILE")), "Path to the log file")
 	rootCmd.Flags().StringVar(&args.CacheDir, "cache-dir", strings.TrimSpace(os.Getenv("GITLAB_SYNC_CACHE_DIR")), "Directory keeping the cloned repositories between runs, to avoid cloning them again (freemium mirroring only, empty disables caching)")
 	rootCmd.Flags().DurationVar(&args.CacheMaxAge, "cache-max-age", cacheMaxAge, "Delete the cached repositories that have not been synchronized for that long (0 keeps them forever)")

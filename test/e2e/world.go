@@ -108,6 +108,8 @@ func (w *world) expand(text string) string {
 	return strings.NewReplacer(
 		"{source}", w.groupPath(roleSource),
 		"{destination}", w.groupPath(roleDestination),
+		"{work}", w.work,
+		"{cache}", filepath.Join(w.work, "cache"),
 	).Replace(text)
 }
 
@@ -133,6 +135,10 @@ func (w *world) execute(extra []string) error {
 		"--source-url", w.env.url, "--source-token", w.env.token,
 		"--destination-url", w.env.url, "--destination-token", w.env.token,
 		"--mirror-mapping", w.mappingPath, "--no-prompt",
+	}
+
+	for index := range extra {
+		extra[index] = w.expand(extra[index])
 	}
 
 	command := exec.CommandContext(ctx, w.env.bin.path, slices.Concat(base, extra)...) //nolint:gosec // the binary is the one the suite built

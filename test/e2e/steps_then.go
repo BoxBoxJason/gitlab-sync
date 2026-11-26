@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -17,14 +18,61 @@ import (
 func (s *steps) registerThenSteps(scenario *godog.ScenarioContext) {
 	scenario.Step(`^the exit code is (\d+)$`, s.exitCode)
 	scenario.Step(`^the output matches "(.*)"$`, s.outputMatches)
+	scenario.Step(`^the stderr matches "(.*)"$`, s.stderrMatches)
+	scenario.Step(`^the file "([^"]+)" exists$`, s.fileExists)
+	scenario.Step(`^the file "([^"]+)" matches "(.*)"$`, s.fileMatches)
 	scenario.Step(`^the destination has the project "([^"]+)"$`, s.hasProject)
 	scenario.Step(`^the destination has no project "([^"]+)"$`, s.hasNoProject)
 	scenario.Step(`^the destination project "([^"]+)" has the description "([^"]*)"$`, s.description)
 	scenario.Step(`^the destination project "([^"]+)" has the topics "([^"]*)"$`, s.topics)
+	scenario.Step(`^the destination project "([^"]+)" has the visibility "([^"]+)"$`, s.visibility)
 	scenario.Step(`^the destination project "([^"]+)" has the same branches and tags as the source project "([^"]+)"$`, s.sameRefs)
 	scenario.Step(`^the destination project "([^"]+)" has the (opened|closed) issue "([^"]*)"$`, s.hasIssue)
 	scenario.Step(`^the destination project "([^"]+)" has (\d+) issues?$`, s.issueCount)
 	scenario.Step(`^the destination project "([^"]+)" has the release "([^"]+)"$`, s.hasRelease)
+}
+
+func (s *steps) stderrMatches(pattern string) error {
+	if s.w.last == nil {
+		return errNotRun
+	}
+
+	matched, err := regexp.MatchString(pattern, s.w.last.stderr)
+	if err != nil {
+		return fmt.Errorf("bad pattern %q: %w", pattern, err)
+	}
+	if !matched {
+		return fmt.Errorf("stderr does not match %q%s", pattern, s.w.describe())
+	}
+
+	return nil
+}
+
+func (s *steps) fileExists(path string) error {
+	path = s.w.expand(path)
+	if _, err := os.Stat(path); err != nil {
+		return fmt.Errorf("the file %s does not exist: %w", path, err)
+	}
+
+	return nil
+}
+
+func (s *steps) fileMatches(path, pattern string) error {
+	path = s.w.expand(path)
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+
+	matched, err := regexp.Match(pattern, contents)
+	if err != nil {
+		return fmt.Errorf("bad pattern %q: %w", pattern, err)
+	}
+	if !matched {
+		return fmt.Errorf("the file %s does not match %q", path, pattern)
+	}
+
+	return nil
 }
 
 func (s *steps) exitCode(want int) error {
@@ -141,6 +189,26 @@ func (s *steps) topics(name, want string) error {
 	}
 
 	return nil
+}
+
+func (s *steps) visibility(name, want string) error {
+	found, err := s.destinationProject(s.w.projectPath(roleDestination, name))
+	if err != nil {
+		return err
+	}
+	if found == nil || string(found.Visibility) != want {
+		return fmt.Errorf("the destination project %s has visibility %q, want %q", name, describeVisibility(found), want)
+	}
+
+	return nil
+}
+
+func describeVisibility(found *gitlab.Project) string {
+	if found == nil {
+		return "(no such project)"
+	}
+
+	return string(found.Visibility)
 }
 
 // refsOf maps the branches and tags of a project to their commit.

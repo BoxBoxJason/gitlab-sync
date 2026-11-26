@@ -36,7 +36,7 @@ Feature: visibility
     And the destination project "mirror/app" has the visibility "public"
 
   Scenario: changing the option changes the destination project
-    Given the source has the project "team/app" with a commit on "main"
+    Given the source has the read-only project "team/app" with a commit on "main"
     And the mirror mapping:
       """
       {"projects": {"{source}/team/app": {"destination_path": "{destination}/mirror/app", "visibility": "internal"}}}
@@ -65,7 +65,7 @@ Feature: visibility
 
   @observed
   Scenario: an unknown visibility is refused
-    Given the source has the project "team/app" with a commit on "main"
+    Given the source has the read-only project "team/app" with a commit on "main"
     And the mirror mapping:
       """
       {"projects": {"{source}/team/app": {"destination_path": "{destination}/mirror/app", "visibility": "secret"}}}

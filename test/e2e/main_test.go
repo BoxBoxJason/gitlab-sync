@@ -91,6 +91,13 @@ func TestFeatures(t *testing.T) {
 	root := createRootGroup(t, client)
 	env := &environment{client: client, bin: buildBinary(t), url: url, token: token, root: root.FullPath, rootID: root.ID}
 
+	t.Cleanup(func() {
+		cleanupErr := env.removeSharedSource()
+		if cleanupErr != nil {
+			t.Errorf("remove the shared source: %v", cleanupErr)
+		}
+	})
+
 	// The scenarios tagged @alone create too many projects to share the instance:
 	// the listings of the others would span several pages, which the deletions of
 	// finished scenarios shift under their feet. They run after the others.

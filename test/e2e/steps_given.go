@@ -21,7 +21,7 @@ const (
 	// packageFileParts is the number of parts of a "name/version/file" spec.
 	packageFileParts = 3
 	// seedWorkers bounds how many projects are generated at the same time.
-	seedWorkers = 4
+	seedWorkers = 8
 	// avatarSize is the width and height of the generated avatars.
 	avatarSize = 8
 
@@ -31,6 +31,7 @@ const (
 )
 
 func (s *steps) registerGivenSteps(scenario *godog.ScenarioContext) {
+	scenario.Step(`^the source has the read-only project "`+sharedProject+`" with a commit on "`+defaultBranch+`"$`, s.useSharedSource)
 	scenario.Step(`^the `+role+` has the group "([^"]+)"$`, s.group)
 	scenario.Step(`^the `+role+` has the project "([^"]+)"$`, s.project)
 	scenario.Step(`^the `+role+` project "([^"]+)" exists$`, s.project)

@@ -18,6 +18,10 @@ curl -fsS -o /dev/null -X PUT -H "PRIVATE-TOKEN: ${token}" "${GITLAB_URL:-http:/
   -d throttle_authenticated_api_enabled=false -d throttle_authenticated_web_enabled=false \
   -d throttle_unauthenticated_api_enabled=false -d throttle_unauthenticated_web_enabled=false \
   -d version_check_enabled=false -d usage_ping_enabled=false -d gravatar_enabled=false \
-  -d signup_enabled=false -d auto_devops_enabled=false
+  -d signup_enabled=false -d auto_devops_enabled=false -d prometheus_metrics_enabled=false
+
+# No notification emails: nobody reads them and each one is a background job
+curl -fsS -o /dev/null -X PUT -H "PRIVATE-TOKEN: ${token}" "${GITLAB_URL:-http://localhost:8181}/api/v4/notification_settings" \
+  -d level=disabled
 
 echo "$token"

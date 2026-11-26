@@ -93,7 +93,7 @@ Feature: Mirroring projects
   # is already in sync.
   @bug @observed
   Scenario: a run on an up-to-date destination does not edit the project
-    Given the source has the project "team/app" with a commit on "main"
+    Given the source has the read-only project "team/app" with a commit on "main"
     And the mirror mapping:
       """
       {"projects": {"{source}/team/app": {"destination_path": "{destination}/mirror/app"}}}

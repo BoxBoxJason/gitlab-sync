@@ -4,7 +4,7 @@ Feature: --retry
 
   Background:
     Given the destination has the group "mirror"
-    And the source has the project "team/app" with a commit on "main"
+    And the source has the read-only project "team/app" with a commit on "main"
     And the mirror mapping:
       """
       {"projects": {"{source}/team/app": {"destination_path": "{destination}/mirror/app"}}}

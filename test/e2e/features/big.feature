@@ -5,7 +5,7 @@ Feature: Big instances are never listed globally
   @observed
   Scenario: a small source is listed once
     Given the destination has the group "mirror"
-    And the source has the project "team/app" with a commit on "main"
+    And the source has the read-only project "team/app" with a commit on "main"
     And the mirror mapping:
       """
       {"projects": {"{source}/team/app": {"destination_path": "{destination}/mirror/app"}}}
@@ -17,7 +17,7 @@ Feature: Big instances are never listed globally
   @observed
   Scenario: a big source gets its projects one by one
     Given the destination has the group "mirror"
-    And the source has the project "team/app" with a commit on "main"
+    And the source has the read-only project "team/app" with a commit on "main"
     And the mirror mapping:
       """
       {"projects": {"{source}/team/app": {"destination_path": "{destination}/mirror/app"}}}
@@ -31,7 +31,7 @@ Feature: Big instances are never listed globally
   @observed
   Scenario: a big destination gets its projects one by one
     Given the destination has the project "mirror/app"
-    And the source has the project "team/app" with a commit on "main"
+    And the source has the read-only project "team/app" with a commit on "main"
     And the mirror mapping:
       """
       {"projects": {"{source}/team/app": {"destination_path": "{destination}/mirror/app"}}}
@@ -49,7 +49,7 @@ Feature: Big instances are never listed globally
   @bug
   Scenario: a big destination without the project yet is not an error
     Given the destination has the group "mirror"
-    And the source has the project "team/app" with a commit on "main"
+    And the source has the read-only project "team/app" with a commit on "main"
     And the mirror mapping:
       """
       {"projects": {"{source}/team/app": {"destination_path": "{destination}/mirror/app"}}}

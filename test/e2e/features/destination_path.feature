@@ -4,7 +4,7 @@ Feature: destination_path
   the source.
 
   Background:
-    Given the source has the project "team/app" with a commit on "main"
+    Given the source has the read-only project "team/app" with a commit on "main"
 
   Scenario: a project is moved to another namespace
     Given the destination has the group "archive/2026"

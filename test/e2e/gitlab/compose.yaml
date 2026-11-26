@@ -63,7 +63,9 @@ services:
         postgresql['work_mem'] = '4MB'
         postgresql['autovacuum'] = 'off'
         gitlab_rails['db_pool'] = 10
-        gitlab_rails['env'] = { 'MALLOC_CONF' => 'dirty_decay_ms:1000,muzzy_decay_ms:1000' }
+        postgresql['synchronous_commit'] = 'off'
+        # YJIT: the suite is bound by the CPU time of Puma and Sidekiq
+        gitlab_rails['env'] = { 'MALLOC_CONF' => 'dirty_decay_ms:1000,muzzy_decay_ms:1000', 'RUBY_YJIT_ENABLE' => '1' }
         gitaly['configuration'] = { daily_maintenance: { disabled: true } }
         gitaly['env'] = { 'MALLOC_CONF' => 'dirty_decay_ms:1000,muzzy_decay_ms:1000', 'GITALY_COMMAND_SPAWN_MAX_PARALLEL' => '10' }
     healthcheck:

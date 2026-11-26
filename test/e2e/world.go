@@ -50,7 +50,9 @@ type environment struct {
 	url    string
 	token  string
 	// root is the group holding the groups of every scenario of the run.
-	root   string
+	root string
+	// shared is the source project of the scenarios that only read it.
+	shared sharedFixture
 	rootID int64
 }
 
@@ -89,6 +91,8 @@ type world struct {
 	destinationUser int64
 	files           int
 	users           int
+	// sharedSource tells that the source is the one of the shared fixture.
+	sharedSource bool
 }
 
 func newWorld(env *environment) (*world, error) {
@@ -138,14 +142,22 @@ func (w *world) close() error {
 		err = fmt.Errorf("remove the scenario files: %w", err)
 	}
 
-	return errors.Join(err, w.removeGroup(w.groupPath(roleSource)), w.removeGroup(w.groupPath(roleDestination)))
+	// The shared source outlives the scenario: it goes with the root group.
+	if !w.sharedSource {
+		err = errors.Join(err, w.removeGroup(w.groupPath(roleSource)))
+	}
+
+	return errors.Join(err, w.removeGroup(w.groupPath(roleDestination)))
 }
 
 // removeGroup deletes a group for good, if it exists. gitlab-sync lists every
 // project of the instance: keeping them would slow each run down more than the
 // previous one.
 func (w *world) removeGroup(fullPath string) error {
-	group, response, err := w.env.client.Groups.GetGroup(fullPath, nil)
+	// Without the projects of the group, which GitLab is slow to serialize.
+	withoutProjects := &gitlab.GetGroupOptions{WithProjects: new(false)} //nolint:staticcheck // deprecated for client v5, still the way to ask for it
+
+	group, response, err := w.env.client.Groups.GetGroup(fullPath, withoutProjects)
 
 	exists, err := found(response, err)
 	if err != nil || !exists {
@@ -158,7 +170,7 @@ func (w *world) removeGroup(fullPath string) error {
 		return fmt.Errorf("delete the group %s: %w", fullPath, err)
 	}
 
-	marked, _, err := w.env.client.Groups.GetGroup(group.ID, nil)
+	marked, _, err := w.env.client.Groups.GetGroup(group.ID, withoutProjects)
 	if err != nil {
 		return fmt.Errorf("get the deleted group %s: %w", fullPath, err)
 	}
@@ -173,12 +185,16 @@ func (w *world) removeGroup(fullPath string) error {
 
 // groupPath is the group of a role.
 func (w *world) groupPath(role string) string {
-	prefix := "dst-"
-	if role == roleSource {
-		prefix = "src-"
+	if role != roleSource {
+		return w.env.root + "/dst-" + w.suffix
 	}
 
-	return w.env.root + "/" + prefix + w.suffix
+	suffix := w.suffix
+	if w.sharedSource {
+		suffix = sharedSuffix
+	}
+
+	return w.env.root + "/src-" + suffix
 }
 
 // fullPath is the full path of a group or a project of a role.

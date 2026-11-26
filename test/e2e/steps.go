@@ -32,6 +32,10 @@ func initializeScenario(env *environment) func(*godog.ScenarioContext) {
 		scenario.Before(state.before(env))
 		scenario.After(state.after)
 
+		scenario.StepContext().Before(func(ctx context.Context, step *godog.Step) (context.Context, error) {
+			return ctx, state.checkSharedSource(step.Text)
+		})
+
 		state.registerGivenSteps(scenario)
 		state.registerAccountSteps(scenario)
 		state.registerRunSteps(scenario)

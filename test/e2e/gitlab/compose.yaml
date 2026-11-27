@@ -1,0 +1,77 @@
+# Minimal GitLab CE for the end-to-end tests: only what gitlab-sync exercises
+# (REST API, git over HTTP, package registry, mirroring) is kept, everything else is
+# switched off to fit a CI runner. Cold boot takes ~3-5 minutes and ~9 GB of RAM.
+#
+#   docker compose -f test/e2e/gitlab/compose.yaml up -d --wait
+#   test/e2e/gitlab/bootstrap.sh        # prints a root personal access token
+#   docker compose -f test/e2e/gitlab/compose.yaml down -v
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:19.6.1-ce.0  # pin; bump deliberately (renovate can track it)
+    hostname: localhost
+    shm_size: 512m
+    ports:
+      - "8181:8181"
+    environment:
+      GITLAB_ROOT_PASSWORD: Zq7-vK2m-Xw9p-Lr4t-Bn8j
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://localhost:8181'
+        letsencrypt['enable'] = false
+
+        # No nginx: workhorse is exposed directly (it serves the API and git over HTTP)
+        nginx['enable'] = false
+        gitlab_workhorse['listen_network'] = 'tcp'
+        gitlab_workhorse['listen_addr'] = '0.0.0.0:8181'
+
+        # Unused services
+        gitlab_kas['enable'] = false
+        gitlab_rails['gitlab_kas_enabled'] = false
+        gitlab_sshd['enable'] = false
+        registry['enable'] = false
+        gitlab_rails['registry_enabled'] = false
+        gitlab_pages['enable'] = false
+        mattermost['enable'] = false
+        alertmanager['enable'] = false
+        prometheus['enable'] = false
+        prometheus_monitoring['enable'] = false
+        node_exporter['enable'] = false
+        redis_exporter['enable'] = false
+        postgres_exporter['enable'] = false
+        gitlab_exporter['enable'] = false
+        puma['exporter_enabled'] = false
+        sidekiq['metrics_enabled'] = false
+        gitlab_rails['dependency_proxy_enabled'] = false
+        gitlab_rails['smtp_enable'] = false
+        gitlab_rails['gitlab_email_enabled'] = false
+        gitlab_rails['usage_ping_enabled'] = false
+        gitlab_rails['terraform_state_enabled'] = false
+        gitlab_rails['ci_secure_files_enabled'] = false
+        gitlab_rails['incoming_email_enabled'] = false
+        gitlab_rails['backup_keep_time'] = 0
+        logrotate['enable'] = false
+
+        # Sized for the scenarios running in parallel (a Puma worker takes ~1 GB)
+        puma['worker_processes'] = 4
+        puma['min_threads'] = 4
+        puma['max_threads'] = 4
+        # The background jobs (pipelines, permissions, deletions) are what the scenarios
+        # wait for: three Sidekiq processes
+        sidekiq['queue_groups'] = ['*', '*', '*']
+        sidekiq['concurrency'] = 8
+        postgresql['shared_buffers'] = '256MB'
+        postgresql['max_worker_processes'] = 8
+        postgresql['work_mem'] = '4MB'
+        postgresql['autovacuum'] = 'off'
+        gitlab_rails['db_pool'] = 10
+        postgresql['synchronous_commit'] = 'off'
+        # YJIT: the suite is bound by the CPU time of Puma and Sidekiq
+        gitlab_rails['env'] = { 'MALLOC_CONF' => 'dirty_decay_ms:1000,muzzy_decay_ms:1000', 'RUBY_YJIT_ENABLE' => '1' }
+        gitaly['configuration'] = { daily_maintenance: { disabled: true } }
+        gitaly['env'] = { 'MALLOC_CONF' => 'dirty_decay_ms:1000,muzzy_decay_ms:1000', 'GITALY_COMMAND_SPAWN_MAX_PARALLEL' => '10' }
+    healthcheck:
+      # The image's own check goes through nginx, which is disabled here
+      test: ["CMD", "curl", "-fsS", "http://localhost:8181/-/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 120s

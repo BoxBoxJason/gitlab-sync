@@ -46,6 +46,30 @@ test: deps
 	gotestsum --junitfile codequality/unit-tests.xml --format-icons octicons -- -coverprofile=codequality/coverage.out -covermode=atomic ./...
 	@echo "Coverage report generated: codequality/coverage.html"
 
+# End-to-end tests: the real binary (built with coverage) against a real GitLab CE, started for
+# the run from test/e2e/gitlab/compose.yaml and removed afterwards (cold boot: 2-5 minutes, ~9 GB
+# of RAM). Set GITLAB_E2E_URL and GITLAB_E2E_TOKEN to use a throwaway instance you already have.
+# The coverage of the binary lands in codequality/e2e-coverage.out.
+# E2E_TAGS selects the scenarios by tag (default "~@bug", the scenarios that expose a known bug are
+# left out).
+COMPOSE ?= docker compose
+E2E_COMPOSE := $(COMPOSE) -f test/e2e/gitlab/compose.yaml
+
+e2e: deps
+	@command -v gotestsum >/dev/null 2>&1 || { echo "Installing gotestsum..."; go install gotest.tools/gotestsum@$(gotestsum_version); }
+	@rm -rf codequality/e2e-cover
+	@mkdir -p codequality/e2e-cover
+	@set -e; \
+	if [ -z "$$GITLAB_E2E_URL" ]; then \
+		trap '$(E2E_COMPOSE) down -v >/dev/null 2>&1' EXIT; \
+		$(E2E_COMPOSE) up -d --wait --wait-timeout 900 || { $(E2E_COMPOSE) logs --tail=100 gitlab; exit 1; }; \
+		export GITLAB_E2E_URL=http://localhost:8181; \
+		export GITLAB_E2E_TOKEN=$$(test/e2e/gitlab/bootstrap.sh); \
+	fi; \
+	E2E_COVERDIR=$(CURDIR)/codequality/e2e-cover gotestsum --junitfile codequality/e2e-tests.xml --format testname -- -tags e2e -count=1 -timeout 30m ./test/e2e/...
+	$(GO) tool covdata textfmt -i=codequality/e2e-cover -o codequality/e2e-coverage.out
+	@echo "End-to-end report: codequality/e2e-tests.xml, coverage: codequality/e2e-coverage.out"
+
 # Scan dependencies and stdlib for known vulnerabilities (govulncheck).
 vuln: deps
 	@command -v govulncheck >/dev/null 2>&1 || { echo "Installing govulncheck..."; go install golang.org/x/vuln/cmd/govulncheck@$(govulncheck_version); }
@@ -73,4 +97,4 @@ package:
 	$(DOCKER_ENGINE) build -t $(PROJECT_NAME):dev -f $(DOCKERFILE) .
 
 # Phony targets
-.PHONY: deps build lint dependency-check test vuln docs-generate docs docs-serve package
+.PHONY: deps build lint dependency-check test e2e vuln docs-generate docs docs-serve package

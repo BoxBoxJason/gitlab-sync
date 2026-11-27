@@ -80,7 +80,7 @@ func (g *GitlabInstance) MirrorIssue(project *gitlab.Project, issue *gitlab.Issu
 	zap.L().Debug("Creating issue in destination project", zap.String("issue", issue.Title), zap.String(RoleDestination, project.HTTPURLToRepo))
 
 	// Create the issue in the destination project
-	_, _, err := g.Gitlab.Issues.CreateIssue(project.ID, &gitlab.CreateIssueOptions{
+	created, _, err := g.Gitlab.Issues.CreateIssue(project.ID, &gitlab.CreateIssueOptions{
 		Title:        &issue.Title,
 		Description:  &issue.Description,
 		Labels:       (*gitlab.LabelOptions)(&issue.Labels),
@@ -92,14 +92,15 @@ func (g *GitlabInstance) MirrorIssue(project *gitlab.Project, issue *gitlab.Issu
 	})
 
 	if err == nil && issue.State == string(gitlab.ClosedEventType) {
-		// If the issue is closed, close it in the destination project
-		err = g.CloseIssue(project, issue)
+		// If the issue is closed, close the issue just created in the destination project (by its
+		// own IID: the destination does not number its issues like the source does).
+		err = g.CloseIssue(project, created)
 	}
 
 	return err
 }
 
-// CloseIssue closes an issue in the destination project.
+// CloseIssue closes an issue of the destination project, given as the destination knows it.
 func (g *GitlabInstance) CloseIssue(project *gitlab.Project, issue *gitlab.Issue) error {
 	zap.L().Debug("Closing issue in destination project", zap.String("issue", issue.Title), zap.String(RoleDestination, project.HTTPURLToRepo))
 

@@ -92,6 +92,8 @@ func TestIsLicensePremium(t *testing.T) {
 	tests := []struct {
 		name             string
 		license          string
+		status           int
+		noEndpoint       bool
 		expectedError    bool
 		expectedResponse bool
 	}{
@@ -121,8 +123,15 @@ func TestIsLicensePremium(t *testing.T) {
 		},
 		{
 			name:             "Error API response",
-			license:          "",
+			status:           http.StatusInternalServerError,
 			expectedError:    true,
+			expectedResponse: false,
+		},
+		{
+			// GitLab Community Edition answers 404 on the license endpoint.
+			name:             "Community Edition without the license endpoint",
+			noEndpoint:       true,
+			expectedError:    false,
 			expectedResponse: false,
 		},
 	}
@@ -132,9 +141,15 @@ func TestIsLicensePremium(t *testing.T) {
 			t.Parallel()
 
 			mux, gitlabInstance := setupEmptyTestServer(t, RoleDestination)
-			if !test.expectedError {
+			if !test.noEndpoint {
 				mux.HandleFunc("/api/v4/license", func(w http.ResponseWriter, r *http.Request) {
 					if !requireGet(w, r) {
+						return
+					}
+
+					if test.status != 0 {
+						w.WriteHeader(test.status)
+
 						return
 					}
 

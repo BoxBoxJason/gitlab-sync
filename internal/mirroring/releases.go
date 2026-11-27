@@ -3,6 +3,7 @@ package mirroring
 import (
 	"errors"
 	"fmt"
+	"net/http"
 
 	gitlab "gitlab.com/gitlab-org/api/client-go/v3"
 	"go.uber.org/zap"
@@ -103,12 +104,34 @@ func (g *GitlabInstance) MirrorRelease(project *gitlab.Project, release *gitlab.
 func (g *GitlabInstance) DeleteStaleRelease(project *gitlab.Project, release *gitlab.Release, referenced map[genericPackageFile]struct{}) error {
 	zap.L().Info("Deleting release that no longer exists on the source", zap.String("release", release.TagName), zap.String(RoleDestination, project.HTTPURLToRepo))
 
-	_, _, err := g.Gitlab.Releases.DeleteRelease(project.ID, release.TagName)
-	if err != nil {
+	_, response, err := g.Gitlab.Releases.DeleteRelease(project.ID, release.TagName)
+	if err != nil && !g.releaseAlreadyDeleted(project, release.TagName, response) {
 		return fmt.Errorf("failed to delete release %s in project %s: %w", release.TagName, project.PathWithNamespace, err)
 	}
 
 	return g.CleanUpReleaseFiles(project, release, referenced)
+}
+
+// releaseAlreadyDeleted tells whether a refused deletion is due to the release being
+// gone. GitLab deletes the release of a deleted tag in the background, so a release
+// whose tag the git mirroring just removed can still be listed and then vanish before
+// it is deleted here. GitLab answers 403 for a release that does not exist, the same
+// as for a lack of permission: only listing the releases again tells them apart.
+func (g *GitlabInstance) releaseAlreadyDeleted(project *gitlab.Project, tagName string, response *gitlab.Response) bool {
+	if response == nil || (response.StatusCode != http.StatusForbidden && response.StatusCode != http.StatusNotFound) {
+		return false
+	}
+
+	tags, err := g.FetchProjectReleasesTags(project)
+	if err != nil {
+		zap.L().Debug("Could not check whether the release still exists", zap.String("release", tagName), zap.Error(err))
+
+		return false
+	}
+
+	_, exists := tags[tagName]
+
+	return !exists
 }
 
 // CleanUpReleaseFiles deletes the files the links of a deleted destination release
